@@ -1,0 +1,93 @@
+/**
+ * TITAN LLM Provider — Base Interface
+ * All LLM providers implement this interface for a unified API.
+ */
+
+/** A single message in a conversation */
+export interface ChatMessage {
+    role: 'system' | 'user' | 'assistant' | 'tool';
+    content: string;
+    name?: string;
+    toolCallId?: string;
+    toolCalls?: ToolCall[];
+}
+
+/** A tool call requested by the LLM */
+export interface ToolCall {
+    id: string;
+    type: 'function';
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
+/** A tool definition for the LLM */
+export interface ToolDefinition {
+    type: 'function';
+    function: {
+        name: string;
+        description: string;
+        parameters: Record<string, unknown>;
+    };
+}
+
+/** Options for a chat completion request */
+export interface ChatOptions {
+    model?: string;
+    messages: ChatMessage[];
+    tools?: ToolDefinition[];
+    maxTokens?: number;
+    temperature?: number;
+    stream?: boolean;
+    thinking?: boolean;
+}
+
+/** Response from a chat completion */
+export interface ChatResponse {
+    id: string;
+    content: string;
+    toolCalls?: ToolCall[];
+    usage?: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+    };
+    finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
+    model: string;
+}
+
+/** Streaming chunk from a chat completion */
+export interface ChatStreamChunk {
+    type: 'text' | 'tool_call' | 'done' | 'error';
+    content?: string;
+    toolCall?: ToolCall;
+    error?: string;
+}
+
+/** Abstract LLM Provider interface */
+export abstract class LLMProvider {
+    abstract readonly name: string;
+    abstract readonly displayName: string;
+
+    /** Send a chat completion request */
+    abstract chat(options: ChatOptions): Promise<ChatResponse>;
+
+    /** Send a streaming chat completion request */
+    abstract chatStream(options: ChatOptions): AsyncGenerator<ChatStreamChunk>;
+
+    /** List available models */
+    abstract listModels(): Promise<string[]>;
+
+    /** Check if the provider is configured and reachable */
+    abstract healthCheck(): Promise<boolean>;
+
+    /** Get the provider identifier from a model string like "anthropic/claude-3" */
+    static parseModelId(modelId: string): { provider: string; model: string } {
+        const parts = modelId.split('/');
+        if (parts.length >= 2) {
+            return { provider: parts[0], model: parts.slice(1).join('/') };
+        }
+        return { provider: 'anthropic', model: modelId };
+    }
+}

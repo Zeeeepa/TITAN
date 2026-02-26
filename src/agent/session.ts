@@ -1,0 +1,168 @@
+/**
+ * TITAN — Session Manager
+ * Manages per-user/per-channel isolated sessions with history and context.
+ */
+import { v4 as uuid } from 'uuid';
+import { getDb, getHistory, saveMessage, type ConversationMessage } from '../memory/memory.js';
+import type { ChatMessage } from '../providers/base.js';
+import { MAX_CONTEXT_MESSAGES, SESSION_TIMEOUT_MS } from '../utils/constants.js';
+import logger from '../utils/logger.js';
+
+const COMPONENT = 'Session';
+
+export interface Session {
+    id: string;
+    channel: string;
+    userId: string;
+    agentId: string;
+    status: 'active' | 'idle' | 'closed';
+    messageCount: number;
+    createdAt: string;
+    lastActive: string;
+}
+
+/** Active sessions cache */
+const activeSessions: Map<string, Session> = new Map();
+
+/** Create or retrieve a session */
+export function getOrCreateSession(channel: string, userId: string, agentId: string = 'default'): Session {
+    const sessionKey = `${channel}:${userId}:${agentId}`;
+
+    // Check cache
+    const cached = activeSessions.get(sessionKey);
+    if (cached && cached.status === 'active') {
+        return cached;
+    }
+
+    // Check data store
+    const store = getDb();
+    const existing = store.sessions.find(
+        (s) => s.channel === channel && s.user_id === userId && s.agent_id === agentId && s.status === 'active'
+    );
+
+    if (existing) {
+        const lastActive = new Date(existing.last_active || existing.created_at).getTime();
+        if (Date.now() - lastActive > SESSION_TIMEOUT_MS) {
+            existing.status = 'idle';
+            logger.debug(COMPONENT, `Session ${existing.id} timed out, creating new one`);
+        } else {
+            const session: Session = {
+                id: existing.id,
+                channel: existing.channel,
+                userId: existing.user_id,
+                agentId: existing.agent_id,
+                status: existing.status as 'active',
+                messageCount: existing.message_count,
+                createdAt: existing.created_at,
+                lastActive: existing.last_active,
+            };
+            activeSessions.set(sessionKey, session);
+            return session;
+        }
+    }
+
+    // Create new session
+    const session: Session = {
+        id: uuid(),
+        channel,
+        userId,
+        agentId,
+        status: 'active',
+        messageCount: 0,
+        createdAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+    };
+
+    store.sessions.push({
+        id: session.id,
+        channel,
+        user_id: userId,
+        agent_id: agentId,
+        status: 'active',
+        message_count: 0,
+        created_at: session.createdAt,
+        last_active: session.lastActive,
+    });
+
+    activeSessions.set(sessionKey, session);
+    logger.info(COMPONENT, `Created new session: ${session.id} (${channel}/${userId})`);
+    return session;
+}
+
+/** Add a message to a session */
+export function addMessage(
+    session: Session,
+    role: 'user' | 'assistant' | 'system' | 'tool',
+    content: string,
+    extra?: { toolCalls?: string; toolCallId?: string; model?: string; tokenCount?: number }
+): void {
+    const messageId = uuid();
+    saveMessage({
+        id: messageId,
+        sessionId: session.id,
+        role,
+        content,
+        toolCalls: extra?.toolCalls,
+        toolCallId: extra?.toolCallId,
+        model: extra?.model,
+        tokenCount: extra?.tokenCount || 0,
+    });
+
+    // Update session
+    session.messageCount++;
+    session.lastActive = new Date().toISOString();
+
+    const store = getDb();
+    const sessionRec = store.sessions.find((s) => s.id === session.id);
+    if (sessionRec) {
+        sessionRec.message_count = session.messageCount;
+        sessionRec.last_active = session.lastActive;
+    }
+}
+
+/** Get the context messages for a session (for sending to LLM) */
+export function getContextMessages(session: Session, maxMessages: number = MAX_CONTEXT_MESSAGES): ChatMessage[] {
+    const history = getHistory(session.id, maxMessages);
+    return history.map((msg) => ({
+        role: msg.role as ChatMessage['role'],
+        content: msg.content,
+        toolCallId: msg.toolCallId || undefined,
+        toolCalls: msg.toolCalls ? JSON.parse(msg.toolCalls) : undefined,
+    }));
+}
+
+/** List all active sessions */
+export function listSessions(): Session[] {
+    const store = getDb();
+    return store.sessions
+        .filter((s) => s.status === 'active')
+        .sort((a, b) => b.last_active.localeCompare(a.last_active))
+        .map((s) => ({
+            id: s.id,
+            channel: s.channel,
+            userId: s.user_id,
+            agentId: s.agent_id,
+            status: s.status as 'active',
+            messageCount: s.message_count,
+            createdAt: s.created_at,
+            lastActive: s.last_active,
+        }));
+}
+
+/** Close a session */
+export function closeSession(sessionId: string): void {
+    const store = getDb();
+    const sessionRec = store.sessions.find((s) => s.id === sessionId);
+    if (sessionRec) {
+        sessionRec.status = 'closed';
+    }
+
+    for (const [key, session] of activeSessions) {
+        if (session.id === sessionId) {
+            activeSessions.delete(key);
+            break;
+        }
+    }
+
+    logger.info(COMPONENT, `Closed session: ${sessionId}`);
+}

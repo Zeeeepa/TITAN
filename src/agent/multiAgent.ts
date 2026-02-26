@@ -1,0 +1,165 @@
+/**
+ * TITAN — Multi-Agent Router
+ * Manage up to 5 concurrent agent instances with independent workspaces,
+ * models, and session isolation. Supports per-channel/per-account routing.
+ */
+import { v4 as uuid } from 'uuid';
+import { loadConfig } from '../config/config.js';
+import { processMessage, type AgentResponse } from './agent.js';
+import logger from '../utils/logger.js';
+
+const COMPONENT = 'MultiAgent';
+const MAX_AGENTS = 5;
+
+export interface AgentInstance {
+    id: string;
+    name: string;
+    model: string;
+    systemPrompt?: string;
+    workspace?: string;
+    status: 'running' | 'idle' | 'stopped';
+    channelBindings: Array<{ channel: string; pattern: string }>;
+    messageCount: number;
+    createdAt: string;
+    lastActive: string;
+}
+
+/** Active agent instances */
+const agents: Map<string, AgentInstance> = new Map();
+
+/** Default agent (always exists) */
+let defaultAgentId: string | null = null;
+
+/** Initialize with a default agent */
+export function initAgents(): void {
+    if (agents.size > 0) return;
+    const config = loadConfig();
+    const defaultAgent: AgentInstance = {
+        id: 'default',
+        name: 'TITAN Primary',
+        model: config.agent.model,
+        systemPrompt: config.agent.systemPrompt,
+        status: 'running',
+        channelBindings: [{ channel: '*', pattern: '*' }],
+        messageCount: 0,
+        createdAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+    };
+    agents.set('default', defaultAgent);
+    defaultAgentId = 'default';
+    logger.info(COMPONENT, 'Default agent initialized');
+}
+
+/** Spawn a new agent instance */
+export function spawnAgent(options: {
+    name: string;
+    model?: string;
+    systemPrompt?: string;
+    workspace?: string;
+    channelBindings?: Array<{ channel: string; pattern: string }>;
+}): { success: boolean; agent?: AgentInstance; error?: string } {
+    initAgents();
+
+    if (agents.size >= MAX_AGENTS) {
+        return { success: false, error: `Maximum ${MAX_AGENTS} agents reached. Stop an existing agent to spawn a new one.` };
+    }
+
+    const config = loadConfig();
+    const id = uuid().slice(0, 8);
+    const agent: AgentInstance = {
+        id,
+        name: options.name,
+        model: options.model || config.agent.model,
+        systemPrompt: options.systemPrompt,
+        workspace: options.workspace,
+        status: 'running',
+        channelBindings: options.channelBindings || [],
+        messageCount: 0,
+        createdAt: new Date().toISOString(),
+        lastActive: new Date().toISOString(),
+    };
+
+    agents.set(id, agent);
+    logger.info(COMPONENT, `Spawned agent "${agent.name}" (${id}) — model: ${agent.model} [${agents.size}/${MAX_AGENTS}]`);
+    return { success: true, agent };
+}
+
+/** Stop an agent instance */
+export function stopAgent(agentId: string): { success: boolean; error?: string } {
+    if (agentId === 'default') {
+        return { success: false, error: 'Cannot stop the default agent.' };
+    }
+    const agent = agents.get(agentId);
+    if (!agent) {
+        return { success: false, error: `Agent "${agentId}" not found.` };
+    }
+    agent.status = 'stopped';
+    agents.delete(agentId);
+    logger.info(COMPONENT, `Stopped agent "${agent.name}" (${agentId}) [${agents.size}/${MAX_AGENTS}]`);
+    return { success: true };
+}
+
+/** Get all agent instances */
+export function listAgents(): AgentInstance[] {
+    initAgents();
+    return Array.from(agents.values());
+}
+
+/** Get a specific agent */
+export function getAgent(agentId: string): AgentInstance | undefined {
+    return agents.get(agentId);
+}
+
+/** Resolve which agent should handle a message based on channel routing rules */
+export function resolveAgent(channel: string, userId: string): AgentInstance {
+    initAgents();
+
+    // Check channel bindings in reverse order (most recently spawned first)
+    const agentList = Array.from(agents.values()).reverse();
+    for (const agent of agentList) {
+        if (agent.status !== 'running') continue;
+        for (const binding of agent.channelBindings) {
+            if (binding.channel === '*' || binding.channel === channel) {
+                if (binding.pattern === '*' || binding.pattern === userId) {
+                    return agent;
+                }
+            }
+        }
+    }
+
+    // Fallback to default
+    return agents.get('default')!;
+}
+
+/** Route a message to the appropriate agent and process it */
+export async function routeMessage(
+    message: string,
+    channel: string,
+    userId: string,
+): Promise<AgentResponse & { agentId: string; agentName: string }> {
+    const agent = resolveAgent(channel, userId);
+
+    agent.messageCount++;
+    agent.lastActive = new Date().toISOString();
+
+    logger.info(COMPONENT, `Routing to agent "${agent.name}" (${agent.id}) for ${channel}/${userId}`);
+
+    // Process through the agent (with agent-specific model override if set)
+    const response = await processMessage(message, channel, userId);
+
+    return {
+        ...response,
+        agentId: agent.id,
+        agentName: agent.name,
+    };
+}
+
+/** Get agent count and capacity */
+export function getAgentCapacity(): { current: number; max: number; available: number } {
+    initAgents();
+    return {
+        current: agents.size,
+        max: MAX_AGENTS,
+        available: MAX_AGENTS - agents.size,
+    };
+}

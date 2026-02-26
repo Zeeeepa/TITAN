@@ -4,7 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { TITAN_SKILLS_DIR } from '../utils/constants.js';
+import { TITAN_HOME, TITAN_SKILLS_DIR } from '../utils/constants.js';
 import { registerTool, type ToolHandler } from '../agent/toolRunner.js';
 import { ensureDir } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
@@ -106,6 +106,9 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerProcessSkill } = await import('./builtin/process.js');
     const { registerWebFetchSkill } = await import('./builtin/web_fetch.js');
     const { registerApplyPatchSkill } = await import('./builtin/apply_patch.js');
+    const { registerAutoGenerateSkill } = await import('./builtin/auto_generate.js');
+    const { registerVisionSkill } = await import('./builtin/vision.js');
+    const { registerVoiceSkills } = await import('./builtin/voice.js');
 
     registerShellSkill();
     registerFilesystemSkill();
@@ -118,6 +121,52 @@ export async function initBuiltinSkills(): Promise<void> {
     registerProcessSkill();
     registerWebFetchSkill();
     registerApplyPatchSkill();
+    registerAutoGenerateSkill();
+    registerVisionSkill();
+    registerVoiceSkills();
 
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
+}
+
+/** 
+ * Discover and load auto-generated skills from ~/.titan/skills/auto/
+ */
+export async function loadAutoSkills(): Promise<void> {
+    const autoDir = join(TITAN_HOME, 'skills', 'auto');
+    if (!existsSync(autoDir)) return;
+
+    logger.info(COMPONENT, 'Checking for auto-generated skills...');
+    const files = readdirSync(autoDir).filter(f => f.endsWith('.js'));
+
+    let loadedCount = 0;
+    for (const file of files) {
+        try {
+            const skillPath = join(autoDir, file);
+            // Append cache buster to force hot-reload of ES modules
+            const modulePath = `file://${skillPath}?t=${Date.now()}`;
+            const mod = await import(modulePath);
+
+            if (mod.default && mod.default.name && mod.default.execute) {
+                const handler = mod.default as ToolHandler;
+
+                // Add to our registry metadata
+                const meta: SkillMeta = {
+                    name: handler.name,
+                    description: handler.description || 'Auto-generated skill',
+                    version: '1.0.0',
+                    source: 'workspace', // Consider it part of user workspace
+                    enabled: true,
+                };
+
+                registerSkill(meta, handler);
+                loadedCount++;
+            }
+        } catch (e: any) {
+            logger.error(COMPONENT, `Failed to load auto skill ${file}: ${e.message}`);
+        }
+    }
+
+    if (loadedCount > 0) {
+        logger.info(COMPONENT, `Successfully loaded ${loadedCount} auto-generated skills`);
+    }
 }

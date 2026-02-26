@@ -19,13 +19,14 @@ export interface Session {
     messageCount: number;
     createdAt: string;
     lastActive: string;
+    e2eKey?: string; // Stored only in memory for active sessions
 }
 
 /** Active sessions cache */
 const activeSessions: Map<string, Session> = new Map();
 
 /** Create or retrieve a session */
-export function getOrCreateSession(channel: string, userId: string, agentId: string = 'default'): Session {
+export function getOrCreateSession(channel: string, userId: string, agentId: string = 'default', isEncrypted: boolean = false): Session {
     const sessionKey = `${channel}:${userId}:${agentId}`;
 
     // Check cache
@@ -45,6 +46,7 @@ export function getOrCreateSession(channel: string, userId: string, agentId: str
         if (Date.now() - lastActive > SESSION_TIMEOUT_MS) {
             existing.status = 'idle';
             logger.debug(COMPONENT, `Session ${existing.id} timed out, creating new one`);
+            // Fall through to create a new session
         } else {
             const session: Session = {
                 id: existing.id,
@@ -55,7 +57,13 @@ export function getOrCreateSession(channel: string, userId: string, agentId: str
                 messageCount: existing.message_count,
                 createdAt: existing.created_at,
                 lastActive: existing.last_active,
+                // Note: If a session was encrypted but dropped from memory, we cannot recover the key
+                // A robust implementation would involve key exchange, but for now we warn:
+                e2eKey: undefined
             };
+            if (isEncrypted) {
+                logger.warn(COMPONENT, `Recovered session ${existing.id}, but E2E key was lost from memory.`);
+            }
             activeSessions.set(sessionKey, session);
             return session;
         }
@@ -72,6 +80,15 @@ export function getOrCreateSession(channel: string, userId: string, agentId: str
         createdAt: new Date().toISOString(),
         lastActive: new Date().toISOString(),
     };
+
+    if (isEncrypted) {
+        import('../security/encryption.js').then(({ generateKey }) => {
+            session.e2eKey = generateKey().toString('base64');
+            logger.info(COMPONENT, `Generated E2E key for session ${session.id}`);
+        }).catch(err => {
+            logger.error(COMPONENT, `Failed to load encryption module: ${err}`);
+        });
+    }
 
     store.sessions.push({
         id: session.id,
@@ -106,7 +123,7 @@ export function addMessage(
         toolCallId: extra?.toolCallId,
         model: extra?.model,
         tokenCount: extra?.tokenCount || 0,
-    });
+    }, session.e2eKey);
 
     // Update session
     session.messageCount++;
@@ -122,7 +139,7 @@ export function addMessage(
 
 /** Get the context messages for a session (for sending to LLM) */
 export function getContextMessages(session: Session, maxMessages: number = MAX_CONTEXT_MESSAGES): ChatMessage[] {
-    const history = getHistory(session.id, maxMessages);
+    const history = getHistory(session.id, maxMessages, session.e2eKey);
     return history.map((msg) => ({
         role: msg.role as ChatMessage['role'],
         content: msg.content,

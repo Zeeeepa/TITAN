@@ -8,6 +8,7 @@ import { join, dirname } from 'path';
 import { TITAN_DB_PATH, TITAN_HOME } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
+import { encrypt, decrypt, type EncryptedPayload } from '../security/encryption.js';
 
 const COMPONENT = 'Memory';
 
@@ -158,13 +159,31 @@ export interface ConversationMessage {
   model?: string;
   tokenCount: number;
   createdAt: string;
+  isEncrypted?: boolean;
 }
 
 /** Save a message to conversation history */
-export function saveMessage(message: Omit<ConversationMessage, 'createdAt'>): void {
+export function saveMessage(message: Omit<ConversationMessage, 'createdAt'>, e2eKey?: string): void {
   const s = loadStore();
+
+  let content = message.content;
+  let isEncrypted = false;
+
+  if (e2eKey) {
+    try {
+      const payload = encrypt(message.content, Buffer.from(e2eKey, 'base64'));
+      content = JSON.stringify(payload);
+      isEncrypted = true;
+    } catch (e) {
+      logger.error(COMPONENT, `Failed to encrypt message for storage`);
+      content = "[ENCRYPTION FAILED] " + content; // Fallback, though we should probably throw in strict environments
+    }
+  }
+
   s.conversations.push({
     ...message,
+    content,
+    isEncrypted,
     createdAt: new Date().toISOString(),
   });
   // Keep only last 5000 messages total to prevent unbounded growth
@@ -175,11 +194,34 @@ export function saveMessage(message: Omit<ConversationMessage, 'createdAt'>): vo
 }
 
 /** Get conversation history for a session */
-export function getHistory(sessionId: string, limit: number = 50): ConversationMessage[] {
+export function getHistory(sessionId: string, limit: number = 50, e2eKey?: string): ConversationMessage[] {
   const s = loadStore();
-  return s.conversations
+  const rawHistory = s.conversations
     .filter((m) => m.sessionId === sessionId)
     .slice(-limit);
+
+  if (!e2eKey) {
+    // If no key is provided, we just return the raw payload. 
+    // If it's encrypted, it'll just show the JSON string of the EncryptedPayload.
+    return rawHistory;
+  }
+
+  // Decrypt the ones that were encrypted
+  return rawHistory.map(m => {
+    if (m.isEncrypted) {
+      try {
+        const payload = JSON.parse(m.content) as EncryptedPayload;
+        return {
+          ...m,
+          content: decrypt(payload, Buffer.from(e2eKey, 'base64'))
+        };
+      } catch (e) {
+        logger.error(COMPONENT, `Failed to decrypt message ${m.id}`);
+        return { ...m, content: "[DECRYPTION FAILED]" };
+      }
+    }
+    return m;
+  });
 }
 
 /** Clear conversation history for a session */

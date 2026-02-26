@@ -93,14 +93,24 @@ No more infinite tool loops. Three detection algorithms:
 | **Runtime** | `exec` (background/timeout), `process` (list/poll/kill/log), `shell` |
 | **Filesystem** | `read`, `write`, `edit`, `list_dir`, `apply_patch` |
 | **Web** | `web_search`, `web_fetch`, `browser` (CDP) |
+| **Intelligence** | `auto_generate_skill`, `analyze_image` (Vision), `transcribe_audio` (STT), `generate_speech` (TTS) |
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `learning` |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
+
+### 🧬 Skill Auto-Generation & Plugin Marketplace
+- **Self-Writing Code** — If TITAN lacks a tool for your request, it uses `auto_generate_skill` to write it in TypeScript, compile it, and hot-load it instantly.
+- **Plugin Marketplace** — Browse and install community skills via `titan skills install <name>`.
+
+### 👁️ Multimodal (Vision & Voice)
+- **Vision** — TITAN can "see" images via Claude 3.5 Sonnet / GPT-4o using the `analyze_image` tool.
+- **Voice** — TITAN handles Speech-to-Text (Whisper) and Text-to-Speech via the `transcribe_audio` and `generate_speech` tools.
 
 ### 📡 10+ Channel Adapters
 Discord · Telegram · Slack · Google Chat · WebChat · WhatsApp · Matrix · Signal · MS Teams · BlueBubbles
 
 ### 🔐 Security
+- **E2E Encrypted Sessions** — AES-256-GCM encryption for sensitive conversations (keys held securely in-memory).
 - DM pairing (approve/deny new senders)
 - Docker sandbox for non-main sessions
 - Tool/path/network allowlisting
@@ -190,12 +200,12 @@ TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard
 - [x] DM pairing security
 - [x] Docker support
 
-### 🔜 v2026.4 — Intelligence Update
-- [ ] **Skill auto-generation** — TITAN writes its own new skills when it encounters tasks it can't solve
-- [ ] **Image analysis tool** — Vision capabilities for screenshots, diagrams, photos
-- [ ] **Voice channel support** — Discord/Telegram voice with speech-to-text and text-to-speech
-- [ ] **Plugin marketplace** — Community-contributed skills with one-click install
-- [ ] **E2E encrypted sessions** — End-to-end encryption for sensitive conversations
+### ✅ v2026.4 — Intelligence Update (Current)
+- [x] **Skill auto-generation** — TITAN writes its own new skills when it encounters tasks it can't solve
+- [x] **Image analysis tool** — Vision capabilities for screenshots, diagrams, photos
+- [x] **Voice channel support** — Discord/Telegram voice with speech-to-text and text-to-speech
+- [x] **Plugin marketplace** — Community-contributed skills with one-click install
+- [x] **E2E encrypted sessions** — End-to-end encryption for sensitive conversations
 
 ### 🔮 v2026.6 — Autonomy Update
 - [ ] **Proactive agent mode** — TITAN monitors your system and takes action without being asked

@@ -10,8 +10,11 @@ import { setLogLevel, LogLevel } from '../utils/logger.js';
 import { loadConfig } from '../config/config.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory } from '../memory/memory.js';
-import { initBuiltinSkills, getSkills } from '../skills/registry.js';
+import { initBuiltinSkills, getSkills, loadAutoSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
+import { join } from 'path';
+import { existsSync, writeFileSync, unlinkSync } from 'fs';
+import { TITAN_HOME } from '../utils/constants.js';
 import { runDoctor } from './doctor.js';
 import { runOnboard } from './onboard.js';
 import { approvePairing, denyPairing, listPendingPairings, listApprovedUsers } from '../security/pairing.js';
@@ -210,7 +213,77 @@ program
         initMemory();
         await initBuiltinSkills();
 
-        if (options.list || (!options.install && !options.remove)) {
+        if (options.install) {
+            const skillName = options.install as string;
+            console.log(chalk.cyan(`\n🔍 Searching marketplace for '${skillName}'...`));
+
+            try {
+                // In a real scenario, this would point to a central repo like https://raw.githubusercontent.com/.../manifest.json
+                // For demonstration, we'll use a mocked public gist URL or a structure placeholder.
+                const MANIFEST_URL = 'https://raw.githubusercontent.com/Djtony707/TITAN/main/marketplace/manifest.json';
+
+                // Fallback direct URL if the manifest isn't deployed yet, mimicking what the manifest would provide
+                const skillUrl = `https://raw.githubusercontent.com/Djtony707/TITAN/main/marketplace/skills/${skillName}.ts`;
+
+                let fetchUrl = skillUrl;
+                try {
+                    const manifestRes = await fetch(MANIFEST_URL);
+                    if (manifestRes.ok) {
+                        const manifest = await manifestRes.json() as Record<string, { url: string }>;
+                        if (manifest[skillName]) {
+                            fetchUrl = manifest[skillName].url;
+                        }
+                    }
+                } catch {
+                    // Ignore manifest fetch error and try direct URL
+                }
+
+                console.log(chalk.gray(`📥 Downloading from ${fetchUrl}...`));
+                const res = await fetch(fetchUrl);
+
+                if (!res.ok) {
+                    throw new Error(`Skill '${skillName}' not found in marketplace (HTTP ${res.status}).`);
+                }
+
+                const code = await res.text();
+                const autoDir = join(TITAN_HOME, 'skills', 'auto');
+                const tsPath = join(autoDir, `${skillName}.ts`);
+
+                writeFileSync(tsPath, code, 'utf-8');
+                console.log(chalk.green(`✅ Successfully downloaded source to ${tsPath}`));
+
+                // Compile it
+                const { execSync } = await import('child_process');
+                console.log(chalk.gray(`⚙️ Compiling ${skillName}...`));
+                execSync(`npx tsc ${tsPath} --module NodeNext --moduleResolution NodeNext --target ES2022`, { stdio: 'pipe' });
+
+                console.log(chalk.green(`✨ Skill '${skillName}' installed successfully! It will be available on next boot.`));
+            } catch (e: any) {
+                console.log(chalk.red(`❌ Installation failed: ${e.message}`));
+            }
+        } else if (options.remove) {
+            const skillName = options.remove as string;
+            const autoDir = join(TITAN_HOME, 'skills', 'auto');
+            const tsPath = join(autoDir, `${skillName}.ts`);
+            const jsPath = join(autoDir, `${skillName}.js`);
+
+            let removed = false;
+            if (existsSync(tsPath)) {
+                unlinkSync(tsPath);
+                removed = true;
+            }
+            if (existsSync(jsPath)) {
+                unlinkSync(jsPath);
+                removed = true;
+            }
+
+            if (removed) {
+                console.log(chalk.green(`🗑️ Successfully removed '${skillName}'.`));
+            } else {
+                console.log(chalk.yellow(`⚠️ Skill '${skillName}' not found in auto-generated directory.`));
+                console.log(chalk.gray('Note: Built-in skills cannot be removed via CLI.'));
+            }
+        } else if (options.list || (!options.install && !options.remove)) {
             const skills = getSkills();
             console.log(chalk.cyan(`\n📦 TITAN Skills (${skills.length} installed)\n`));
             for (const skill of skills) {

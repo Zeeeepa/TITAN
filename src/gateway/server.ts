@@ -24,6 +24,7 @@ import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCa
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION, TITAN_NAME } from '../utils/constants.js';
+import { getMissionControlHTML } from './dashboard.js';
 
 const COMPONENT = 'Gateway';
 
@@ -320,7 +321,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Serve dashboard
   app.get('/', (_req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.send(getDashboardHtml());
+    res.send(getMissionControlHTML());
   });
 
   // API routes

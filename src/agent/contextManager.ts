@@ -1,0 +1,166 @@
+/**
+ * TITAN — Smart Context Manager
+ * Intelligent context window management that none of the competitors do well.
+ *
+ * Problems this solves:
+ * - Auto-GPT wastes tokens on irrelevant history (high cost)
+ * - CrewAI has prompt sprawl across agents (unpredictable cost)
+ * - Open Interpreter has no context management at all
+ *
+ * TITAN's approach:
+ * - Automatic summarization of old conversation history
+ * - Priority-based context allocation (recent > relevant > old)
+ * - Token budget tracking and enforcement
+ * - Smart truncation that preserves tool call context
+ */
+import logger from '../utils/logger.js';
+import type { ChatMessage } from '../providers/base.js';
+
+const COMPONENT = 'Context';
+
+interface ContextBudget {
+    maxTokens: number;
+    systemPromptTokens: number;
+    toolDefinitionTokens: number;
+    remainingForHistory: number;
+}
+
+/** Estimate token count (fast approximation: ~4 chars per token) */
+export function estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+}
+
+/** Calculate the context budget */
+export function calculateBudget(
+    maxContextTokens: number,
+    systemPrompt: string,
+    toolDefinitionsCount: number,
+): ContextBudget {
+    const systemTokens = estimateTokens(systemPrompt);
+    const toolTokens = toolDefinitionsCount * 120; // ~120 tokens per tool definition
+    const reserveForResponse = 2000; // Reserve for completion
+
+    return {
+        maxTokens: maxContextTokens,
+        systemPromptTokens: systemTokens,
+        toolDefinitionTokens: toolTokens,
+        remainingForHistory: Math.max(0, maxContextTokens - systemTokens - toolTokens - reserveForResponse),
+    };
+}
+
+/** Summarize a batch of messages into a single summary message */
+export function summarizeMessages(messages: ChatMessage[]): ChatMessage {
+    const userMessages = messages.filter((m) => m.role === 'user').map((m) => m.content).filter(Boolean);
+    const assistantMessages = messages.filter((m) => m.role === 'assistant').map((m) => m.content).filter(Boolean);
+    const toolMessages = messages.filter((m) => m.role === 'tool').length;
+
+    const summary = [
+        `[Earlier conversation summary — ${messages.length} messages, ${toolMessages} tool calls]`,
+        userMessages.length > 0 ? `User discussed: ${userMessages.slice(-3).map((m) => m.slice(0, 80)).join('; ')}` : '',
+        assistantMessages.length > 0 ? `Assistant actions: ${assistantMessages.slice(-2).map((m) => m.slice(0, 80)).join('; ')}` : '',
+    ].filter(Boolean).join('\n');
+
+    return { role: 'system', content: summary };
+}
+
+/** Smart context builder — fits messages within token budget */
+export function buildSmartContext(
+    messages: ChatMessage[],
+    tokenBudget: number,
+): ChatMessage[] {
+    if (messages.length === 0) return [];
+
+    // Calculate total tokens
+    let totalTokens = 0;
+    const tokenCounts = messages.map((m) => {
+        const tokens = estimateTokens(m.content || '') +
+            (m.toolCalls ? m.toolCalls.length * 100 : 0);
+        totalTokens += tokens;
+        return tokens;
+    });
+
+    // If everything fits, return as-is
+    if (totalTokens <= tokenBudget) return messages;
+
+    logger.debug(COMPONENT, `Context overflow: ${totalTokens} tokens > ${tokenBudget} budget. Compressing.`);
+
+    // Strategy: Keep the most recent messages, summarize the oldest
+    const result: ChatMessage[] = [];
+    let usedTokens = 0;
+
+    // Always keep the last N messages (most important for context)
+    const recentCount = Math.min(messages.length, 20);
+    const recentMessages = messages.slice(-recentCount);
+    const recentTokens = tokenCounts.slice(-recentCount).reduce((a, b) => a + b, 0);
+
+    if (recentTokens > tokenBudget) {
+        // Even recent messages are too big — truncate from the start
+        const fits: ChatMessage[] = [];
+        let used = 0;
+        for (let i = recentMessages.length - 1; i >= 0; i--) {
+            const msgTokens = estimateTokens(recentMessages[i].content || '') + (recentMessages[i].toolCalls ? 100 : 0);
+            if (used + msgTokens > tokenBudget) break;
+            fits.unshift(recentMessages[i]);
+            used += msgTokens;
+        }
+        return fits;
+    }
+
+    // Summarize older messages
+    const olderMessages = messages.slice(0, -recentCount);
+    if (olderMessages.length > 0) {
+        const summary = summarizeMessages(olderMessages);
+        result.push(summary);
+        usedTokens += estimateTokens(summary.content || '');
+    }
+
+    // Add recent messages
+    for (const msg of recentMessages) {
+        const msgTokens = estimateTokens(msg.content || '') + (msg.toolCalls ? 100 : 0);
+        if (usedTokens + msgTokens > tokenBudget) {
+            // Truncate this message's content
+            const available = (tokenBudget - usedTokens) * 4;
+            if (available > 100) {
+                result.push({
+                    ...msg,
+                    content: (msg.content || '').slice(0, available) + '\n[truncated]',
+                });
+            }
+            break;
+        }
+        result.push(msg);
+        usedTokens += msgTokens;
+    }
+
+    logger.debug(COMPONENT, `Compressed ${messages.length} messages → ${result.length} (${usedTokens} tokens)`);
+    return result;
+}
+
+/** Get context window stats */
+export function getContextStats(messages: ChatMessage[]): {
+    messageCount: number;
+    estimatedTokens: number;
+    userMessages: number;
+    assistantMessages: number;
+    toolCalls: number;
+} {
+    let tokens = 0;
+    let userMsgs = 0;
+    let assistantMsgs = 0;
+    let toolCalls = 0;
+
+    for (const m of messages) {
+        tokens += estimateTokens(m.content || '');
+        if (m.role === 'user') userMsgs++;
+        if (m.role === 'assistant') assistantMsgs++;
+        if (m.toolCalls) toolCalls += m.toolCalls.length;
+    }
+
+    return {
+        messageCount: messages.length,
+        estimatedTokens: tokens,
+        userMessages: userMsgs,
+        assistantMessages: assistantMsgs,
+        toolCalls,
+    };
+}

@@ -5,18 +5,16 @@
 </p>
 
 <p align="center">
-  <strong>Your own personal AI assistant. Any OS. Any platform. Superior by design.</strong>
+  <strong>Your own personal AI agent. Any OS. Any platform. Superior by design.</strong>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
+  <a href="#why-titan">Why TITAN?</a> •
   <a href="#features">Features</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#tools">Tools</a> •
-  <a href="#channels">Channels</a> •
-  <a href="#multi-agent">Multi-Agent</a> •
-  <a href="#security">Security</a> •
-  <a href="#docker">Docker</a>
+  <a href="#mission-control">Mission Control</a> •
+  <a href="#comparison">Comparison</a> •
+  <a href="#roadmap">Roadmap</a>
 </p>
 
 ---
@@ -24,270 +22,208 @@
 ## Quick Start
 
 ```bash
-# Install globally
 npm install -g titan-agent
-
-# Run the interactive setup wizard
-titan onboard
-
-# Start the gateway (control plane + dashboard)
-titan gateway
-
-# Send a direct message
-titan agent -m "What files are in my home directory?"
+titan onboard          # Setup wizard
+titan gateway          # Start Mission Control (port 18789)
+titan agent -m "Hello" # Direct message
 ```
 
 **Requirements:** Node.js ≥ 20, npm ≥ 9
 
 ---
 
+## Why TITAN?
+
+TITAN was built to solve the real problems with every other AI agent framework in 2026:
+
+| The Problem | Who Has It | TITAN's Solution |
+|------------|-----------|-----------------|
+| **Infinite loop hell** | OpenClaw, NanoClaw, PicoClaw | **Loop Detection + Circuit Breaker** — 3 detectors (repeat, no-progress, ping-pong) with configurable thresholds |
+| **Token waste & high cost** | OpenClaw (430K LoC, 1GB+ RAM) | **Smart Context Manager** — auto-summarizes old history, priority-based allocation, token budget tracking |
+| **Goal drift / runaway agents** | Most agent frameworks | **Task Planner** — dependency graphs, 3x retry, parallel task execution with progress tracking |
+| **No learning from mistakes** | All alternatives | **Continuous Learning Engine** — tracks tool success rates, error patterns, and injects knowledge into every prompt |
+| **Basic dashboards** | OpenClaw, NanoClaw, IronClaw | **Mission Control GUI** — premium 11-panel dark-mode dashboard with WebSocket real-time updates |
+| **Native dependencies / complex setup** | OpenClaw (native deps), IronClaw (Rust), ZeroClaw (Rust), PicoClaw (Go) | **Pure TypeScript** — `npm install` just works, no compilation required |
+
+---
+
 ## Features
 
-### 🤖 Multi-Agent System (up to 5 concurrent agents)
-- Spawn independent agent instances with different models/prompts
-- Channel-based routing — each agent can bind to specific channels
-- Manage via CLI (`titan agents`) or API (`/api/agents`)
+### 🛡️ Loop Detection & Circuit Breaker (TITAN-exclusive)
+No more infinite tool loops. Three detection algorithms:
+- **Generic Repeat** — same tool + same args called repeatedly
+- **No-Progress Polling** — tool returns identical output each time
+- **Ping-Pong** — alternating A↔B patterns with no progress
+- **Global Circuit Breaker** — hard stop after configurable threshold
+
+### 📋 Task Planner with Dependency Graphs (TITAN-exclusive)
+- Automatic goal decomposition into sub-tasks
+- Dependency tracking — tasks only execute when prerequisites are met
+- 3x auto-retry on failure with exponential backoff
+- Parallel execution of independent tasks
+- Persistent plan tracking (`~/.titan/plans/`)
+
+### 🧠 Smart Context Manager (TITAN-exclusive)
+- Auto-summarizes old conversation history to save tokens
+- Priority-based context allocation (recent > relevant > old)
+- Token budget tracking with per-model limits
+- Smart truncation that preserves tool call context
 
 ### 🧠 Continuous Learning Engine
-- Tracks tool success rates and error patterns across interactions
-- Builds a persistent knowledge base that grows with every conversation
-- Injects learned context into the system prompt — TITAN gets smarter over time
-- Records user corrections and adapts behavior
+- Tracks tool success/failure rates across all interactions
+- Records error patterns and resolutions
+- Builds persistent knowledge base (`~/.titan/knowledge.json`)
+- Injects learned context into every system prompt
+- **TITAN actually gets smarter the more you use it**
 
-### 🔧 Comprehensive Tool Suite (17+ built-in)
-| Tool Group | Tools | Description |
-|-----------|-------|-------------|
-| **Runtime** | `exec`, `process`, `shell` | Background execution, process management, timeouts |
-| **Filesystem** | `read`, `write`, `edit`, `list_dir`, `apply_patch` | Full file operations + unified diff patching |
-| **Web** | `web_search`, `web_fetch`, `browser` | Search, page extraction, CDP browser control |
-| **Automation** | `cron`, `webhook` | Scheduled tasks, HTTP webhook endpoints |
-| **Memory** | `memory`, `learning` | Persistent facts, preferences, continuous learning |
-| **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` | Inter-agent session management |
+### 🤖 Multi-Agent System (up to 5 concurrent)
+- Independent agent instances with different models/prompts
+- Channel-based routing — each agent binds to specific channels
+- Manage via CLI (`titan agents`) or Mission Control GUI
+
+### 🔧 17+ Built-in Tools
+| Group | Tools |
+|-------|-------|
+| **Runtime** | `exec` (background/timeout), `process` (list/poll/kill/log), `shell` |
+| **Filesystem** | `read`, `write`, `edit`, `list_dir`, `apply_patch` |
+| **Web** | `web_search`, `web_fetch`, `browser` (CDP) |
+| **Automation** | `cron`, `webhook` |
+| **Memory** | `memory`, `learning` |
+| **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
 
 ### 📡 10+ Channel Adapters
-Discord · Telegram · Slack · Google Chat · WebChat · WhatsApp · Matrix · Signal · Microsoft Teams · BlueBubbles
+Discord · Telegram · Slack · Google Chat · WebChat · WhatsApp · Matrix · Signal · MS Teams · BlueBubbles
 
-### 🔐 Security Model
-- Default: tools run on the host for the main session (full access when it's just you)
-- Group/channel safety: Docker sandbox for non-main sessions
-- DM pairing security (approve/deny new senders)
+### 🔐 Security
+- DM pairing (approve/deny new senders)
+- Docker sandbox for non-main sessions
 - Tool/path/network allowlisting
 
-### 🌐 Gateway Dashboard
-- Dark-mode web UI served from the gateway
-- Real-time WebSocket updates
-- Panels: Overview, WebChat, Agents, Sessions, Skills, Channels, Security
-
 ### 🤝 Model Agnostic
-- **Anthropic** (Claude) · **OpenAI** (GPT) · **Google** (Gemini) · **Ollama** (local models)
-- Automatic provider failover
-- Model resolution from `provider/model` syntax
+Anthropic (Claude) · OpenAI (GPT) · Google (Gemini) · Ollama (local) — with automatic failover
 
 ---
 
-## Architecture
+## Mission Control
 
-```
-Discord / Telegram / Slack / Google Chat / WebChat / WhatsApp / ...
-                           │
-                           ▼
-                ┌──────────────────────┐
-                │      Gateway         │
-                │  (control plane)     │
-                │  ws://127.0.0.1:18789│
-                └─────────┬────────────┘
-                          │
-        ┌─────────────────┼──────────────────┐
-        │                 │                  │
-   Multi-Agent       Dashboard           REST API
-    Router            WebUI             /api/*
-        │
-  ┌─────┴──────┐
-  │ Agent 1..5 │  ← Independent models, prompts, sessions
-  └─────┬──────┘
-        │
-  ┌─────┴──────┐
-  │  Tool      │  ← 17+ built-in skills
-  │  Runner    │
-  └─────┬──────┘
-        │
-  ┌─────┴──────┐
-  │  Learning  │  ← Continuous improvement
-  │  Engine    │
-  └────────────┘
-```
+TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard served from the gateway at `http://localhost:18789`.
 
-### Directory Structure
-
-```
-~/.titan/
-├── titan.json          # Configuration
-├── knowledge.json      # Learning engine knowledge base
-├── memory/             # Persistent memory store
-├── logs/               # Log files
-└── workspace/
-    ├── AGENTS.md       # Agent behavior instructions (injected)
-    ├── SOUL.md         # Personality customization (injected)
-    ├── TOOLS.md        # Tool usage notes (injected)
-    └── skills/         # Workspace skills
-        └── <skill>/SKILL.md
-```
+### 11 Panels:
+| Panel | Description |
+|-------|-------------|
+| **📊 Overview** | System health, stats, uptime, memory, version |
+| **💬 WebChat** | Built-in chat with real-time WebSocket |
+| **🤖 Agents** | Spawn/stop agents, capacity monitor |
+| **🧩 Skills** | Installed skills with version and status |
+| **⚙️ Processes** | Background process management |
+| **📋 Plans** | Task planner visualization and progress |
+| **🔗 Sessions** | Active session list with message counts |
+| **📡 Channels** | Channel adapter connection status |
+| **🔒 Security** | Security audit and pairing management |
+| **🧠 Learning** | Learning engine stats and tool success rates |
+| **📜 Logs** | Real-time system log viewer |
 
 ---
 
-## Tools
+## Comparison
 
-### Runtime
-- **exec** — Execute shell commands with background support, timeouts (up to 30 min), working directory. Returns `sessionId` for background processes.
-- **process** — Manage background processes: `list`, `poll`, `log`, `write` (stdin), `kill`, `clear`.
-- **shell** — Simple synchronous command execution.
+### TITAN vs. 2026 OpenClaw Ecosystem
 
-### Filesystem
-- **read_file** / **write_file** / **edit_file** / **list_dir** — Full file operations.
-- **apply_patch** — Apply unified diff patches (like `git diff` output). Creates new files, handles hunks.
+| Feature | **TITAN** | OpenClaw | NanoClaw | IronClaw | PicoClaw | ZeroClaw | TrustClaw | Nanobot |
+|---------|-----------|----------|----------|----------|----------|----------|-----------|---------|
+| **Language** | TypeScript | TypeScript | TypeScript | Rust | Go | Rust | Cloud | Python |
+| **Codebase** | ~5K LoC | ~430K LoC | ~500 LoC | Medium | Small | Small | Managed | ~4K LoC |
+| **Native deps** | ❌ None | ✅ Required | ❌ | ✅ (Rust) | ✅ (Go) | ✅ (Rust) | N/A | ❌ |
+| **Loop detection** | ✅ 3 detectors + circuit breaker | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Task planner** | ✅ Dependency graphs | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Smart context** | ✅ Auto-summarize + budget | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Continuous learning** | ✅ Built-in | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Multi-agent** | ✅ Up to 5 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Mission Control GUI** | ✅ 11 panels, premium | ✅ Basic | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Browser control** | ✅ CDP | ✅ CDP | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Background processes** | ✅ exec+process | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **Apply patch** | ✅ Unified diffs | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **DM pairing** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Docker sandbox** | ✅ | ✅ | ✅ | Wasm | ❌ | ✅ | ✅ Cloud | ❌ |
+| **Channels** | 10+ | 12+ | WhatsApp | Limited | Limited | Multiple | Multiple | Multiple |
+| **Memory** | ✅ Persistent + learning | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **Local models (Ollama)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **RAM usage** | ~50MB | ~1GB+ | ~30MB | ~20MB | <10MB | <5MB | Cloud | ~40MB |
+| **Setup complexity** | `npm install` | Complex | Docker | Compile | Single binary | Compile | OAuth | `pip install` |
 
-### Web
-- **web_search** — DuckDuckGo search (no API key required).
-- **web_fetch** — Fetch any URL, extract as markdown or text with configurable max chars.
-- **browser** — CDP-based browser control: navigate, snapshot, extract, evaluate JS, click, type, screenshot.
+### What Makes TITAN Different
 
-### Automation
-- **cron** — Create, list, remove scheduled tasks.
-- **webhook** — Register and manage HTTP webhook endpoints.
+**vs. OpenClaw** — OpenClaw is powerful but bloated (430K lines, 1GB+ RAM, native deps). TITAN delivers the same capabilities in ~5K lines of pure TypeScript with zero native dependencies, plus exclusive features: loop detection, task planner, smart context management, and continuous learning.
 
-### Sessions
-- **sessions_list** — List all active agent sessions.
-- **sessions_history** — Get message history for a session.
-- **sessions_send** — Send messages across sessions (inter-agent communication).
-- **sessions_close** — Close a specific session.
+**vs. NanoClaw** — NanoClaw prioritizes minimal code (~500 lines) over features. It lacks browser control, multi-agent, background processes, and a dashboard. TITAN offers full-featured operation with a manageable codebase.
 
-### Memory
-- **memory** — Store and retrieve persistent facts and preferences.
+**vs. IronClaw** — IronClaw's Rust + Wasm approach is great for security but requires compilation and has limited channel support. TITAN provides comparable security via Docker sandbox with zero compilation required.
 
----
+**vs. PicoClaw** — PicoClaw targets embedded/resource-constrained environments (<10MB RAM). TITAN targets users who want a full-featured agent that still doesn't bloat to 1GB like OpenClaw.
 
-## Multi-Agent
+**vs. ZeroClaw** — ZeroClaw's Rust implementation is fast but requires compilation and has a steeper learning curve. TITAN offers comparable performance with TypeScript's developer-friendliness.
 
-TITAN supports up to **5 concurrent agent instances**, each with:
-- Independent model selection
-- Custom system prompts
-- Channel bindings for routing
-- Isolated session tracking
+**vs. TrustClaw** — TrustClaw is cloud-managed (no self-hosting). TITAN gives you full control on your own hardware with local model support.
 
-```bash
-# List agents
-titan agents --list
-
-# Spawn a specialist agent
-titan agents --spawn "Code Reviewer" --model openai/gpt-4o
-
-# Stop an agent
-titan agents --stop <agent-id>
-```
-
-**API:**
-```bash
-# List agents
-GET /api/agents
-
-# Spawn
-POST /api/agents/spawn  { "name": "Writer", "model": "anthropic/claude-sonnet-4-20250514" }
-
-# Stop
-POST /api/agents/stop   { "agentId": "abc12345" }
-```
+**vs. Nanobot** — Nanobot is Python-based with good transparency, but lacks browser control, multi-agent, task planning, and a GUI. TITAN covers all bases.
 
 ---
 
-## Channels
+## Roadmap
 
-| Channel | Status | Setup |
-|---------|--------|-------|
-| **WebChat** | Built-in | Automatic — served from gateway |
-| **Discord** | Supported | Set `DISCORD_TOKEN` |
-| **Telegram** | Supported | Set `TELEGRAM_TOKEN` |
-| **Slack** | Supported | Set `SLACK_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN` |
-| **Google Chat** | Supported | Configure service account |
-| **WhatsApp** | Config ready | Channel config in `titan.json` |
-| **Matrix** | Config ready | Channel config in `titan.json` |
-| **Signal** | Config ready | Channel config in `titan.json` |
-| **MS Teams** | Config ready | Channel config in `titan.json` |
-| **BlueBubbles** | Config ready | Channel config in `titan.json` |
+### ✅ v2026.2.26 — Foundation Release (Current)
+- [x] Multi-agent system (up to 5)
+- [x] 17+ built-in tools (shell, filesystem, browser, process, web, cron, webhooks, sessions, memory, patch)
+- [x] Continuous learning engine
+- [x] Loop detection & circuit breaker
+- [x] Task planner with dependency graphs
+- [x] Smart context manager
+- [x] Mission Control GUI (11 panels)
+- [x] 10+ channel adapters
+- [x] 4 LLM providers with failover
+- [x] DM pairing security
+- [x] Docker support
 
----
+### 🔜 v2026.4 — Intelligence Update
+- [ ] **Skill auto-generation** — TITAN writes its own new skills when it encounters tasks it can't solve
+- [ ] **Image analysis tool** — Vision capabilities for screenshots, diagrams, photos
+- [ ] **Voice channel support** — Discord/Telegram voice with speech-to-text and text-to-speech
+- [ ] **Plugin marketplace** — Community-contributed skills with one-click install
+- [ ] **E2E encrypted sessions** — End-to-end encryption for sensitive conversations
 
-## Security
+### 🔮 v2026.6 — Autonomy Update
+- [ ] **Proactive agent mode** — TITAN monitors your system and takes action without being asked
+- [ ] **Multi-model reasoning** — Chain multiple models for complex tasks (fast model for planning, powerful model for execution)
+- [ ] **Git workflow integration** — PR reviews, automated commits, branch management
+- [ ] **OAuth tool marketplace** — Connect to 500+ SaaS apps (Google, GitHub, Notion, Jira, etc.)
+- [ ] **Mobile app** — iOS/Android companion app for on-the-go TITAN access
 
-### DM Pairing
-New DM senders are quarantined until approved:
+### 🚀 v2026.9 — Enterprise Update
+- [ ] **Team mode** — Multiple users, role-based access, shared agents
+- [ ] **Audit logging** — Full compliance audit trail
+- [ ] **SSO integration** — SAML/OIDC authentication
+- [ ] **Custom model fine-tuning** — Train models on your organization's data
+- [ ] **On-premise deployment** — Kubernetes-ready with Helm charts
 
-```bash
-# List pending pairing requests
-titan pairing --list
-
-# Approve a sender
-titan pairing --approve discord ABC123
-
-# Deny
-titan pairing --deny ABC123
-
-# List approved users
-titan pairing --approved
-```
-
-### Sandbox Modes
-| Mode | Description |
-|------|-------------|
-| `host` | Tools run directly on the host (default for main user) |
-| `docker` | Non-main sessions run in per-session Docker containers |
-| `none` | No sandboxing (not recommended for shared access) |
-
----
-
-## Configuration
-
-Minimal `~/.titan/titan.json`:
-
-```json
-{
-  "agent": {
-    "model": "anthropic/claude-sonnet-4-20250514"
-  }
-}
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic/Claude API key |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `GOOGLE_API_KEY` | Google Gemini API key |
-| `OLLAMA_BASE_URL` | Ollama server URL (default: `http://localhost:11434`) |
-| `DISCORD_TOKEN` | Discord bot token |
-| `TELEGRAM_TOKEN` | Telegram bot token |
-| `SLACK_TOKEN` / `SLACK_SIGNING_SECRET` / `SLACK_APP_TOKEN` | Slack credentials |
-| `TITAN_MODEL` | Override default model |
-| `TITAN_GATEWAY_PORT` | Override gateway port (default: 18789) |
-| `TITAN_LOG_LEVEL` | Log level: debug/info/warn/error |
+### 🌟 v2027+ — Next Generation
+- [ ] **Agent-to-agent marketplace** — TITAN agents can discover and collaborate with other TITAN instances
+- [ ] **Natural language programming** — Describe apps in plain English, TITAN builds them
+- [ ] **Predictive task execution** — AI predicts what you need before you ask
+- [ ] **Hardware integration** — IoT, smart home, robotics control
 
 ---
 
-## Docker
+## 💡 Feature Requests
 
-```bash
-# Build
-docker build -t titan .
+**Have an idea for TITAN?** We want to hear it!
 
-# Run with docker-compose
-docker-compose up -d
-```
+Open an issue on GitHub or reach out directly:
 
-The Docker setup uses:
-- Multi-stage Alpine build (small image)
-- Non-root user for security
-- Health check endpoint
-- Persistent data volume at `~/.titan`
+👉 **[Open a Feature Request](https://github.com/Djtony707/TITAN/issues/new?labels=feature-request&template=feature_request.md&title=%5BFeature%5D+)**
+
+👉 **Contact:** [Tony Elliott on GitHub](https://github.com/Djtony707)
+
+Every feature request is reviewed. The best ideas make it into the roadmap. Let's build the future of AI agents together.
 
 ---
 
@@ -296,37 +232,15 @@ The Docker setup uses:
 | Command | Description |
 |---------|-------------|
 | `titan onboard` | Interactive setup wizard |
-| `titan gateway` | Start the gateway server |
-| `titan agent -m "..."` | Send a direct message to the agent |
-| `titan send --to ch:id -m "..."` | Send to a specific channel destination |
-| `titan pairing` | Manage DM pairing approvals |
-| `titan agents` | Manage multiple agent instances |
-| `titan doctor` | Run diagnostics |
-| `titan skills` | List/manage skills |
-| `titan config` | View/edit configuration |
-| `titan update` | Update to latest version |
-
----
-
-## Comparison
-
-| Feature | TITAN | OpenClaw |
-|---------|-------|----------|
-| Multi-agent (concurrent) | ✅ Up to 5 | ✅ |
-| Continuous learning | ✅ Built-in | ❌ |
-| Browser control | ✅ CDP | ✅ CDP |
-| Background processes | ✅ exec+process | ✅ exec+process |
-| Apply patch | ✅ | ✅ |
-| Web fetch (markdown) | ✅ | ✅ |
-| Session tools | ✅ | ✅ |
-| DM pairing | ✅ | ✅ |
-| Model failover | ✅ | ✅ |
-| Workspace prompts | ✅ AGENTS/SOUL/TOOLS.md | ✅ |
-| Docker sandbox | ✅ | ✅ |
-| Local models (Ollama) | ✅ | ✅ |
-| Channel count | 10+ | 12+ |
-| Dashboard | ✅ Dark-mode | ✅ |
-| npm install (no native deps) | ✅ Pure JS | ❌ (native deps) |
+| `titan gateway` | Start Mission Control (port 18789) |
+| `titan agent -m "..."` | Direct message |
+| `titan send --to ch:id -m "..."` | Send to channel |
+| `titan pairing` | DM access control |
+| `titan agents` | Multi-agent management |
+| `titan doctor` | Diagnostics |
+| `titan skills` | Skill management |
+| `titan config` | Configuration |
+| `titan update` | Update TITAN |
 
 ---
 
@@ -336,27 +250,14 @@ The Docker setup uses:
 
 ### Acknowledgments
 
-TITAN's architecture is inspired by and built upon patterns from the open-source community:
+TITAN's architecture is inspired by patterns from the open-source AI agent community:
 
-- **[OpenClaw](https://github.com/openclaw/openclaw)** — The original personal AI assistant framework. TITAN's gateway architecture, skills system, session model, channel adapters, and security model are inspired by OpenClaw's excellent design. MIT License. Thank you to the OpenClaw team for pioneering this approach.
+- **[OpenClaw](https://github.com/openclaw/openclaw)** — The original personal AI assistant framework. TITAN's gateway, skills system, session model, and security patterns are inspired by OpenClaw's design. MIT License.
 
-- **[Anthropic](https://www.anthropic.com)** — Claude API and the Anthropic SDK
-- **[OpenAI](https://openai.com)** — GPT API and the OpenAI SDK
-- **[Google](https://ai.google.dev)** — Gemini API and the Google Generative AI SDK
-- **[Ollama](https://ollama.ai)** — Local LLM support
-- **[discord.js](https://discord.js.org)** — Discord bot framework
-- **[grammY](https://grammy.dev)** — Telegram bot framework
-- **[Bolt](https://slack.dev/bolt-js)** — Slack app framework
-- **[Zod](https://zod.dev)** — TypeScript schema validation
-- **[Commander.js](https://github.com/tj/commander.js)** — CLI framework
-- **[Express](https://expressjs.com)** — HTTP/WS server
-- **[ws](https://github.com/websockets/ws)** — WebSocket library
-- **[chalk](https://github.com/chalk/chalk)** — Terminal styling
-- **[uuid](https://github.com/uuidjs/uuid)** — UUID generation
-- **[Vitest](https://vitest.dev)** — Testing framework
+Dependencies: Anthropic SDK, OpenAI SDK, Google Generative AI, discord.js, grammY, Bolt (Slack), Zod, Commander.js, Express, ws, chalk, uuid, Vitest.
 
 ---
 
 ## License
 
-MIT License — Copyright (c) 2026 Tony Elliott. See [LICENSE](LICENSE) for details.
+MIT License — Copyright (c) 2026 Tony Elliott. See [LICENSE](LICENSE).

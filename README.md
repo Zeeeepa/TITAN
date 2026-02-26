@@ -49,6 +49,12 @@ TITAN was built to solve the real problems with every other AI agent framework i
 
 ## Features
 
+### 🛡️ Prompt Injection Shield & RBAC (TITAN-exclusive)
+Zero tolerance for unauthorized takeovers:
+- **Heuristic Engine** — Detects and blocks "ignore previous instructions", "developer mode", and system prompt extraction logic.
+- **Strict Mode** — Scans for keyword density and tail manipulations in massive payloads.
+- **Role-Based Access Control (RBAC)** — Unverified / guest users are structurally blocked from executing dangerous tools, even if TITAN is in full autonomous mode.
+
 ### 🛡️ Loop Detection & Circuit Breaker (TITAN-exclusive)
 No more infinite tool loops. Three detection algorithms:
 - **Generic Repeat** — same tool + same args called repeatedly

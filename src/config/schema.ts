@@ -37,6 +37,10 @@ export const SecurityConfigSchema = z.object({
     commandTimeout: z.number().default(30000),
     fileSystemAllowlist: z.array(z.string()).default([]),
     networkAllowlist: z.array(z.string()).default(['*']),
+    shield: z.object({
+        enabled: z.boolean().default(true),
+        mode: z.enum(['standard', 'strict']).default('strict'),
+    }).default({}),
 });
 
 export const GatewayConfigSchema = z.object({

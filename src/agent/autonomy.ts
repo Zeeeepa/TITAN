@@ -99,11 +99,19 @@ export async function checkAutonomy(
     toolName: string,
     args: Record<string, unknown>,
     sessionChannel?: string,
+    userRole: 'admin' | 'guest' = 'admin',
 ): Promise<{ allowed: boolean; reason?: string }> {
     const mode = getAutonomyMode();
     const risk = getToolRisk(toolName);
 
+    // RBAC: Guests can NEVER run dangerous tools, even in autonomous mode
+    if (userRole === 'guest' && risk === 'dangerous') {
+        logger.warn(COMPONENT, `[RBAC] Blocked guest from running dangerous tool: ${toolName}`);
+        return { allowed: false, reason: `Permission denied: Guests cannot execute dangerous operation "${toolName}"` };
+    }
+
     // Autonomous mode — everything is allowed
+
     if (mode === 'autonomous') {
         logger.debug(COMPONENT, `[autonomous] ${toolName} → allowed`);
         return { allowed: true };

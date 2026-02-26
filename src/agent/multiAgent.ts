@@ -6,6 +6,7 @@
 import { v4 as uuid } from 'uuid';
 import { loadConfig } from '../config/config.js';
 import { processMessage, type AgentResponse } from './agent.js';
+import { checkPromptInjection } from '../security/shield.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'MultiAgent';
@@ -144,7 +145,23 @@ export async function routeMessage(
 
     logger.info(COMPONENT, `Routing to agent "${agent.name}" (${agent.id}) for ${channel}/${userId}`);
 
-    // Process through the agent (with agent-specific model override if set)
+    // Shield Check: intercept prompt injection before the LLM sees it
+    const shieldResult = checkPromptInjection(message);
+    if (!shieldResult.safe) {
+        logger.warn(COMPONENT, `Message rejected by Shield: ${shieldResult.reason}`);
+        return {
+            content: `🛡️ Message rejected by TITAN Security Shield: ${shieldResult.reason}`,
+            sessionId: channel + ':' + userId,
+            toolsUsed: [],
+            tokenUsage: { prompt: 0, completion: 0, total: 0 },
+            model: 'shield-interceptor',
+            durationMs: 0,
+            agentId: agent.id,
+            agentName: agent.name,
+        };
+    }
+
+    // Process through the agent
     const response = await processMessage(message, channel, userId);
 
     return {

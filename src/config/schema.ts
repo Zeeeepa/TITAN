@@ -95,6 +95,16 @@ export const TitanConfigSchema = z.object({
         level: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
         file: z.boolean().default(true),
     }).default({}),
+    autonomy: z.object({
+        /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
+        mode: z.enum(['autonomous', 'supervised', 'locked']).default('supervised'),
+        /** Auto-approve moderate-risk tools in main session (cli/webchat) */
+        autoApproveMainSession: z.boolean().default(true),
+        /** Timeout for HITL approval requests (ms). Auto-deny after timeout. */
+        approvalTimeoutMs: z.number().default(60000),
+        /** Notify user of auto-approved actions */
+        notifyOnAutoApprove: z.boolean().default(true),
+    }).default({}),
 });
 
 export type TitanConfig = z.infer<typeof TitanConfigSchema>;

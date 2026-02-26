@@ -117,12 +117,35 @@ export async function runOnboard(installDaemon?: boolean): Promise<void> {
     });
     config.security.sandboxMode = sandboxMode as 'host' | 'docker' | 'none';
 
-    // Step 5: Gateway
-    console.log(chalk.yellow('\n─── Step 5: Gateway ───\n'));
+    // Step 5: Autonomy Mode
+    console.log(chalk.yellow('\n─── Step 5: Autonomy ───\n'));
+    console.log(chalk.gray('  This controls how much freedom TITAN has to act on its own.\n'));
+
+    const autonomyMode = await select({
+        message: 'How much autonomy should TITAN have?',
+        choices: [
+            {
+                name: '🟡 Supervised (Recommended) — Safe ops run freely, dangerous ops ask you first',
+                value: 'supervised',
+            },
+            {
+                name: '🟢 Autonomous — Full auto, TITAN acts without asking. Best for power users.',
+                value: 'autonomous',
+            },
+            {
+                name: '🔴 Locked — Every action requires your approval. Maximum control.',
+                value: 'locked',
+            },
+        ],
+    });
+    (config as any).autonomy = { mode: autonomyMode };
+
+    // Step 6: Gateway
+    console.log(chalk.yellow('\n─── Step 6: Gateway ───\n'));
 
     const gatewayPort = await input({
         message: 'Gateway port:',
-        default: '19789',
+        default: '18789',
     });
     config.gateway.port = parseInt(gatewayPort, 10);
 
@@ -144,12 +167,17 @@ export async function runOnboard(installDaemon?: boolean): Promise<void> {
         await installDaemonService();
     }
 
+    const modeEmoji = autonomyMode === 'autonomous' ? '🟢' : autonomyMode === 'locked' ? '🔴' : '🟡';
     console.log(chalk.green('\n✅ TITAN setup complete!\n'));
-    console.log(chalk.white('  Quick start:'));
-    console.log(chalk.gray('  $ titan gateway          # Start the gateway'));
+    console.log(chalk.white('  Configuration:'));
+    console.log(chalk.gray(`  Model:    ${config.agent.model}`));
+    console.log(chalk.gray(`  Autonomy: ${modeEmoji} ${autonomyMode}`));
+    console.log(chalk.gray(`  Sandbox:  ${config.security.sandboxMode}`));
+    console.log(chalk.white('\n  Quick start:'));
+    console.log(chalk.gray('  $ titan gateway          # Start Mission Control'));
     console.log(chalk.gray('  $ titan agent -m "Hello" # Send a message'));
     console.log(chalk.gray('  $ titan doctor           # Check everything is OK'));
-    console.log(chalk.gray(`\n  Config: ${TITAN_CONFIG_PATH}`));
+    console.log(chalk.gray(`\n  Config:    ${TITAN_CONFIG_PATH}`));
     console.log(chalk.gray(`  Dashboard: http://127.0.0.1:${config.gateway.port}\n`));
 }
 

@@ -132,7 +132,7 @@ TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard
 | Feature | **TITAN** | OpenClaw | NanoClaw | IronClaw | PicoClaw | ZeroClaw | TrustClaw | Nanobot |
 |---------|-----------|----------|----------|----------|----------|----------|-----------|---------|
 | **Language** | TypeScript | TypeScript | TypeScript | Rust | Go | Rust | Cloud | Python |
-| **Codebase** | ~5K LoC | ~430K LoC | ~500 LoC | Medium | Small | Small | Managed | ~4K LoC |
+| **Codebase** | ~7K LoC | ~430K LoC | ~500 LoC | Medium | Small | Small | Managed | ~4K LoC |
 | **Native deps** | ❌ None | ✅ Required | ❌ | ✅ (Rust) | ✅ (Go) | ✅ (Rust) | N/A | ❌ |
 | **Loop detection** | ✅ 3 detectors + circuit breaker | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Task planner** | ✅ Dependency graphs | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |

@@ -9,6 +9,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import { loadConfig, updateConfig } from '../config/config.js';
+import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relationship.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory, getUsageStats } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
@@ -434,19 +435,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ token });
   });
 
-  // ── Auth middleware ───────────────────────────────────────────
-  app.use((req, res, next) => {
+  // ── Auth middleware (API routes only) ────────────────────────
+  // HTML pages (/ and /login) are always served — the JS handles
+  // the redirect to /login if localStorage has no token.
+  // Only /api/* routes require a valid token.
+  app.use('/api', (req, res, next) => {
     const cfg = loadConfig();
     const auth = cfg.gateway.auth;
     if (!auth || auth.mode === 'none') { next(); return; }
+    // Skip /api/login itself
+    if (req.path === '/login') { next(); return; }
     const header = req.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice(7) : (req.query.token as string);
     if (isValidToken(token, cfg)) { next(); return; }
-    if (req.path.startsWith('/api/')) {
-      res.status(401).json({ error: 'Unauthorized' });
-    } else {
-      res.redirect('/login');
-    }
+    res.status(401).json({ error: 'Unauthorized' });
   });
 
   // Serve dashboard
@@ -549,24 +551,116 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({
       agent: cfg.agent,
       autonomy: cfg.autonomy,
-      security: { sandboxMode: cfg.security.sandboxMode, shield: cfg.security.shield },
-      gateway: { port: cfg.gateway.port, host: cfg.gateway.host, auth: { mode: cfg.gateway.auth.mode } },
+      security: {
+        sandboxMode: cfg.security.sandboxMode,
+        shield: cfg.security.shield,
+        deniedTools: cfg.security.deniedTools || [],
+        networkAllowlist: cfg.security.networkAllowlist || [],
+      },
+      gateway: {
+        port: cfg.gateway.port,
+        host: cfg.gateway.host,
+        auth: { mode: cfg.gateway.auth.mode },
+      },
       logging: cfg.logging,
+      providers: {
+        anthropic: { configured: Boolean(cfg.providers.anthropic?.apiKey) },
+        openai: { configured: Boolean(cfg.providers.openai?.apiKey) },
+        google: { configured: Boolean(cfg.providers.google?.apiKey) },
+        ollama: { baseUrl: cfg.providers.ollama?.baseUrl || 'http://localhost:11434' },
+      },
       channels: Object.fromEntries(
-        Object.entries(cfg.channels).map(([k, v]) => [k, { enabled: (v as { enabled: boolean }).enabled }])
+        Object.entries(cfg.channels).map(([k, v]) => {
+          const ch = v as { enabled?: boolean; token?: string; dmPolicy?: string };
+          return [k, { enabled: Boolean(ch.enabled), dmPolicy: ch.dmPolicy || 'pairing' }];
+        })
       ),
     });
   });
 
   app.post('/api/config', (req, res) => {
     try {
-      const { model, autonomyMode, sandboxMode, logLevel } = req.body as Record<string, string>;
+      const body = req.body as Record<string, unknown>;
       const cfg = loadConfig();
-      if (model) cfg.agent.model = model;
-      if (autonomyMode) cfg.autonomy.mode = autonomyMode as 'supervised' | 'autonomous' | 'locked';
-      if (sandboxMode) cfg.security.sandboxMode = sandboxMode as 'host' | 'docker' | 'none';
-      if (logLevel) cfg.logging.level = logLevel as 'info' | 'debug' | 'warn' | 'silent';
+      if (body.model) cfg.agent.model = body.model as string;
+      if (body.autonomyMode) cfg.autonomy.mode = body.autonomyMode as 'supervised' | 'autonomous' | 'locked';
+      if (body.sandboxMode) cfg.security.sandboxMode = body.sandboxMode as 'host' | 'docker' | 'none';
+      if (body.logLevel) cfg.logging.level = body.logLevel as 'info' | 'debug' | 'warn' | 'silent';
+      // Provider API keys
+      if (body.anthropicKey !== undefined) cfg.providers.anthropic.apiKey = body.anthropicKey as string;
+      if (body.openaiKey !== undefined) cfg.providers.openai.apiKey = body.openaiKey as string;
+      if (body.googleKey !== undefined) cfg.providers.google.apiKey = body.googleKey as string;
+      if (body.ollamaUrl !== undefined) cfg.providers.ollama.baseUrl = body.ollamaUrl as string;
+      // Agent settings
+      if (body.maxTokens !== undefined) cfg.agent.maxTokens = Number(body.maxTokens);
+      if (body.temperature !== undefined) cfg.agent.temperature = Number(body.temperature);
+      if (body.systemPrompt !== undefined) cfg.agent.systemPrompt = body.systemPrompt as string;
+      // Security shield
+      if (body.shieldEnabled !== undefined) cfg.security.shield.enabled = Boolean(body.shieldEnabled);
+      if (body.shieldMode !== undefined) cfg.security.shield.mode = body.shieldMode as 'strict' | 'standard';
+      if (body.deniedTools !== undefined) cfg.security.deniedTools = body.deniedTools as string[];
+      if (body.networkAllowlist !== undefined) cfg.security.networkAllowlist = body.networkAllowlist as string[];
+      // Gateway
+      if (body.gatewayPort !== undefined) cfg.gateway.port = Number(body.gatewayPort);
+      if (body.gatewayAuthMode !== undefined) cfg.gateway.auth.mode = body.gatewayAuthMode as 'none' | 'token' | 'password';
+      if (body.gatewayPassword !== undefined) cfg.gateway.auth.password = body.gatewayPassword as string;
+      if (body.gatewayToken !== undefined) cfg.gateway.auth.token = body.gatewayToken as string;
+      // Channels
+      if (body.channels !== undefined && typeof body.channels === 'object') {
+        for (const [ch, val] of Object.entries(body.channels as Record<string, unknown>)) {
+          if (cfg.channels[ch as keyof typeof cfg.channels]) {
+            Object.assign(cfg.channels[ch as keyof typeof cfg.channels], val);
+          }
+        }
+      }
       updateConfig(cfg);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // Models endpoint — lists all providers + live Ollama models
+  app.get('/api/models', async (_req, res) => {
+    const cfg = loadConfig();
+    const ollamaBase = cfg.providers.ollama?.baseUrl || 'http://localhost:11434';
+    let ollamaModels: string[] = [];
+    try {
+      const r = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      const j = await r.json() as { models?: { name: string }[] };
+      ollamaModels = (j.models || []).map((m) => `ollama/${m.name}`);
+    } catch { /* Ollama not running */ }
+    res.json({
+      anthropic: [
+        'anthropic/claude-sonnet-4-20250514',
+        'anthropic/claude-opus-4-0',
+        'anthropic/claude-3-5-haiku-20241022',
+      ],
+      openai: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'],
+      google: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'google/gemini-2.0-flash'],
+      ollama: ollamaModels,
+      current: cfg.agent.model,
+    });
+  });
+
+  // Profile endpoints
+  app.get('/api/profile', (_req, res) => {
+    const profile = loadProfile();
+    res.json({
+      name: profile.name || '',
+      technicalLevel: profile.technicalLevel || 'unknown',
+      projectCount: profile.projects.length,
+      goalCount: profile.goals.length,
+    });
+  });
+
+  app.post('/api/profile', (req, res) => {
+    try {
+      const { name, technicalLevel } = req.body as { name?: string; technicalLevel?: string };
+      const profile = loadProfile();
+      if (name !== undefined) profile.name = name;
+      if (technicalLevel !== undefined) profile.technicalLevel = technicalLevel as PersonalProfile['technicalLevel'];
+      saveProfile(profile);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });

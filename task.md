@@ -1,50 +1,44 @@
-# TITAN — Full Debug Task Tracker
+# TITAN Implementation Task Checklist
+# Plan: Identity Fix + Full Settings WebGUI + Openclaw-Inspired Onboarding
+# Version: 2026.4.15 — COMPLETE
 
-## Status: COMPLETE — v2026.4.9
+Each task: [x] = done
 
-## CRITICAL BUGS (C1–C6) — Process Crashes
+### TASK 1 — Identity Fix (src/agent/agent.ts) ✅
+- [x] Extract modelId from config.agent.model
+- [x] Prepend CRITICAL: Your Identity block as FIRST content in buildSystemPrompt()
+- [x] Identity block: forbids "Claude/Anthropic/GPT/Gemini", includes answer scripts
+- [x] Rest of system prompt unchanged
+- [x] 0 typecheck errors, 25/25 tests
 
-| ID | File | Bug | Status |
-|----|------|-----|--------|
-| C1 | `src/memory/learning.ts` | writeFileSync in setTimeout no try-catch | ✅ Fixed |
-| C2 | `src/memory/relationship.ts` | writeFileSync no error handling | ✅ Fixed |
-| C3 | `src/agent/stallDetector.ts` | async setTimeout without .catch() | ✅ Fixed |
-| C4 | `src/memory/learning.ts` | non-null assertion kb! on load failure | ✅ Fixed |
-| C5 | `src/skills/scanner.ts` | Math.max on empty array | ✅ Fixed |
-| C6 | `src/agent/costOptimizer.ts` | undefined MODEL_COSTS fallback | ✅ Fixed |
+### TASK 2 — New API Endpoints (src/gateway/server.ts) ✅
+- [x] GET /api/models — grouped provider list + live Ollama detection (3s timeout)
+- [x] GET /api/profile — returns name, technicalLevel, projectCount, goalCount
+- [x] POST /api/profile — saves name + technicalLevel to relationship profile
+- [x] POST /api/config — expanded: anthropicKey, openaiKey, googleKey, ollamaUrl, maxTokens, temperature, systemPrompt, shieldEnabled, shieldMode, deniedTools, networkAllowlist, gatewayPort, gatewayAuthMode, gatewayPassword, gatewayToken, channels
+- [x] GET /api/config — expanded: providers (configured:bool), security (deniedTools, networkAllowlist), channels (enabled+dmPolicy)
 
-## HIGH PRIORITY BUGS (H1–H12) — Runtime failures / wrong behavior
+### TASK 3 — Full Settings WebGUI (src/gateway/dashboard.ts) ✅
+- [x] 6-tab settings panel with tab navigation + showStab() JS function
+- [x] Tab 1 AI & Model: model dropdown (optgroup per provider), manual override, refresh Ollama, autonomy, log level, temperature slider, max tokens, custom system prompt
+- [x] Tab 2 Providers: masked API key inputs with configured status, Ollama URL + test button
+- [x] Tab 3 Channels: 8 channel cards (discord/telegram/slack/googlechat/whatsapp/signal/matrix/msteams) with enabled toggle, token, DM policy, save per channel
+- [x] Tab 4 Security: sandbox mode, shield toggle + strictness, denied tools, network allowlist
+- [x] Tab 5 Gateway: port, auth mode (none/token/password), conditional token/password fields, warning banner
+- [x] Tab 6 Profile: name, technical level, project/goal count stats
+- [x] Settings nav click triggers loadConfig() + populateModels() + loadProfileTab()
 
-| ID | File | Bug | Status |
-|----|------|-----|--------|
-| H1 | `src/agent/agent.ts` | executeTools not in try-catch | ✅ Fixed |
-| H2 | `src/agent/agent.ts` | empty finalContent on budget break | N/A (already fixed) |
-| H3 | `src/providers/google.ts` | tool role mapped to 'user' incorrectly | ✅ Fixed |
-| H4 | `src/agent/monitor.ts` | unawaited async trigger calls | ✅ Fixed |
-| H5 | `src/agent/monitor.ts` | missing error event handler on file watcher | ✅ Fixed |
-| H6 | `src/skills/builtin/process.ts` | child process memory leak on error | ✅ Fixed |
-| H7 | `src/channels/discord.ts` | message.author access without null guard | ✅ Fixed |
-| H8 | `src/skills/builtin/sessions.ts` | response.content without null check | ✅ Fixed |
-| H9 | `src/cli/doctor.ts` | parseInt on undefined → NaN | ✅ Fixed |
-| H10 | `src/cli/index.ts` | unhandled rejection in top-level IIFE | ✅ Fixed |
-| H11 | `src/skills/builtin/web_fetch.ts` | shell injection via unescaped URL | ✅ Fixed |
-| H12 | `src/skills/marketplace.ts` | shell injection via unquoted filePath | ✅ Fixed |
+### TASK 4 — Improved Onboarding (src/cli/onboard.ts) ✅
+- [x] Step 0: Node.js version check, Ollama model detection, Docker check
+- [x] Step 0: Profile name + technical level prompt (saved to relationship profile at end)
+- [x] Step 5: Added Google Chat (webhook URL) + WhatsApp (pairing note)
+- [x] Step 6.5: Daemon install prompt (calls existing installDaemonService())
+- [x] Completion: shows provider/model, enabled channels, daemon status, profile name
 
-## MEDIUM BUGS (M1–M4) — Silent failures / wrong behavior
-
-| ID | File | Bug | Status |
-|----|------|-----|--------|
-| M1 | `src/memory/memory.ts` | usage stats ID collision | ✅ Fixed |
-| M2 | `src/skills/builtin/shell.ts` | `\|\|` prevents valid 0 timeout | ✅ Fixed |
-| M3 | `src/skills/builtin/process.ts` | same `\|\|` vs `??` timeout issue | ✅ Fixed |
-| M4 | `src/agent/responseCache.ts` | no Array check on messages input | ✅ Fixed |
-
-## Verification Results
-
-| Check | Result |
-|-------|--------|
-| `npm run typecheck` | ✅ 0 errors |
-| `npm test` | ✅ 25/25 passed |
-| `npm run build` | ✅ Clean ESM build |
-
-Released as `titan-agent@2026.4.9` on npm and pushed to GitHub main.
+### TASK 5 — Verification ✅
+- [x] TITAN_VERSION = '2026.4.15' in constants.ts
+- [x] Test assertion updated to '2026.4.15'
+- [x] npm run typecheck: 0 errors
+- [x] npm test: 25/25 passed
+- [x] npm run build: clean ESM build
+- [x] npm install -g .: titan --version = 2026.4.15

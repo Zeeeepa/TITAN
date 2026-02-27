@@ -4,10 +4,12 @@
  */
 import { select, input, confirm, password, checkbox } from '@inquirer/prompts';
 import chalk from 'chalk';
+import { exec } from 'child_process';
 import { saveConfig, getDefaultConfig } from '../config/config.js';
 import { TITAN_HOME, TITAN_WORKSPACE, TITAN_SKILLS_DIR, TITAN_CONFIG_PATH } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
 import { initMemory } from '../memory/memory.js';
+import { loadProfile, saveProfile } from '../memory/relationship.js';
 
 // ─── Ollama helpers ───────────────────────────────────────────────
 async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
@@ -60,8 +62,52 @@ export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
 
     const config = getDefaultConfig();
 
+    // ─── Step 0: System Check + Profile ──────────────────────────
+    console.log(chalk.yellow('─── Step 0: System Check ───\n'));
+
+    // Node.js version
+    console.log(chalk.green(`  ✅ Node.js ${process.version}`));
+
+    // Check Ollama
+    const ollamaModelsCheck = await fetchOllamaModels('http://localhost:11434');
+    if (ollamaModelsCheck.length > 0) {
+        console.log(chalk.green(`  ✅ Ollama detected (${ollamaModelsCheck.length} model(s): ${ollamaModelsCheck.slice(0, 3).join(', ')}${ollamaModelsCheck.length > 3 ? ', ...' : ''})`));
+    } else {
+        console.log(chalk.yellow('  ⚠️  Ollama not detected (local free AI unavailable — install from ollama.ai)'));
+    }
+
+    // Check Docker
+    await new Promise<void>((resolve) => {
+        exec('docker info --format "{{.ServerVersion}}"', { timeout: 3000 }, (err, stdout) => {
+            if (!err && stdout.trim()) {
+                console.log(chalk.green(`  ✅ Docker available (v${stdout.trim()} — docker sandbox mode enabled)`));
+            } else {
+                console.log(chalk.yellow('  ⚠️  Docker not found (docker sandbox mode won\'t be available)'));
+            }
+            resolve();
+        });
+    });
+
+    console.log('');
+    console.log(chalk.yellow('─── Step 0: Personalization ───\n'));
+    console.log(chalk.gray('  This helps TITAN respond in your style — like a JARVIS that knows you.\n'));
+
+    const profileName = await input({
+        message: 'Your first name (optional, for personalization):',
+        default: '',
+    });
+
+    const profileLevel = await select({
+        message: 'Your technical level:',
+        choices: [
+            { name: 'Beginner — explain everything in plain English', value: 'beginner' },
+            { name: 'Intermediate — I know the basics', value: 'intermediate' },
+            { name: 'Expert — no hand-holding', value: 'expert' },
+        ],
+    });
+
     // ─── Step 1: Primary AI Provider ─────────────────────────────
-    console.log(chalk.yellow('─── Step 1 of 7: AI Provider ───\n'));
+    console.log(chalk.yellow('\n─── Step 1 of 7: AI Provider ───\n'));
 
     const provider = await select({
         message: 'Which AI provider would you like to use as your primary?',
@@ -264,22 +310,33 @@ export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
             { name: '🎮 Discord', value: 'discord' },
             { name: '✈️  Telegram', value: 'telegram' },
             { name: '💼 Slack', value: 'slack' },
-            { name: '⏭️  Skip — configure later with `titan config`', value: 'skip' },
+            { name: '💬 Google Chat (webhook)', value: 'googlechat' },
+            { name: '📱 WhatsApp (requires phone pairing after setup)', value: 'whatsapp' },
+            { name: '⏭️  Skip — configure later in Mission Control Settings', value: 'skip' },
         ],
     });
 
     if (!channelChoices.includes('skip')) {
         for (const channel of channelChoices) {
-            const token = await password({ message: `  ${channel} bot token:`, mask: '*' });
-            if (channel === 'discord') {
-                config.channels.discord.enabled = true;
-                config.channels.discord.token = token;
-            } else if (channel === 'telegram') {
-                config.channels.telegram.enabled = true;
-                config.channels.telegram.token = token;
-            } else if (channel === 'slack') {
-                config.channels.slack.enabled = true;
-                config.channels.slack.token = token;
+            if (channel === 'whatsapp') {
+                config.channels.whatsapp.enabled = true;
+                console.log(chalk.gray('  ℹ️  Run titan pairing after setup to link your phone'));
+            } else if (channel === 'googlechat') {
+                const webhook = await input({ message: '  Google Chat incoming webhook URL:' });
+                config.channels.googlechat.enabled = true;
+                config.channels.googlechat.token = webhook;
+            } else {
+                const token = await password({ message: `  ${channel} bot token:`, mask: '*' });
+                if (channel === 'discord') {
+                    config.channels.discord.enabled = true;
+                    config.channels.discord.token = token;
+                } else if (channel === 'telegram') {
+                    config.channels.telegram.enabled = true;
+                    config.channels.telegram.token = token;
+                } else if (channel === 'slack') {
+                    config.channels.slack.enabled = true;
+                    config.channels.slack.token = token;
+                }
             }
         }
     }
@@ -317,6 +374,20 @@ export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
         }
     }
 
+    // ─── Step 6.5: Daemon Installation ───────────────────────────
+    console.log(chalk.yellow('\n─── Auto-Start: System Service ───\n'));
+    console.log(chalk.gray('  Install TITAN as a system service so it auto-starts on login.\n'));
+
+    let daemonInstalled = false;
+    const installDaemon = await confirm({
+        message: 'Install TITAN as a system service? (auto-starts on login)',
+        default: true,
+    });
+    if (installDaemon) {
+        await installDaemonService();
+        daemonInstalled = true;
+    }
+
     // ─── Step 7: Logging ─────────────────────────────────────────
     console.log(chalk.yellow('\n─── Step 7 of 7: Logging ───\n'));
 
@@ -339,16 +410,33 @@ export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
     initMemory();
     saveConfig(config);
 
-    const modeEmoji = autonomyMode === 'autonomous' ? '🟢' : autonomyMode === 'locked' ? '🔴' : '🟡';
+    // Save user profile
+    if (profileName || profileLevel) {
+        const profile = loadProfile();
+        if (profileName) profile.name = profileName;
+        if (profileLevel) profile.technicalLevel = profileLevel as typeof profile.technicalLevel;
+        saveProfile(profile);
+    }
 
-    console.log(chalk.green('\n╔══════════════════════════════════════════╗'));
-    console.log(chalk.green('║   ✅  TITAN is ready!                    ║'));
-    console.log(chalk.green('╚══════════════════════════════════════════╝\n'));
+    const modeEmoji = autonomyMode === 'autonomous' ? '🟢' : autonomyMode === 'locked' ? '🔴' : '🟡';
+    const providerName = config.agent.model.split('/')[0];
+    const modelName = config.agent.model.split('/').slice(1).join('/');
+    const enabledChannels = ['discord','telegram','slack','googlechat','whatsapp']
+        .filter(ch => config.channels[ch as keyof typeof config.channels]?.enabled);
+
+    console.log(chalk.green('\n╔══════════════════════════════════════════════════╗'));
+    console.log(chalk.green('║   ✅  TITAN is ready!                            ║'));
+    console.log(chalk.green('╚══════════════════════════════════════════════════╝\n'));
     console.log(chalk.white('  Your configuration:'));
-    console.log(chalk.gray(`    Model:    ${config.agent.model}`));
+    if (profileName) console.log(chalk.gray(`    Name:     ${profileName} (${profileLevel})`));
+    console.log(chalk.gray(`    Provider: ${providerName} / ${modelName}`));
     console.log(chalk.gray(`    Autonomy: ${modeEmoji} ${autonomyMode}`));
     console.log(chalk.gray(`    Sandbox:  ${config.security.sandboxMode}`));
     console.log(chalk.gray(`    Logs:     ${config.logging.level}`));
+    if (enabledChannels.length > 0) {
+        console.log(chalk.gray(`    Channels: ${enabledChannels.map(ch => '✅ ' + ch).join(', ')}`));
+    }
+    console.log(chalk.gray(`    Service:  ${daemonInstalled ? '✅ Installed (auto-starts on login)' : '❌ Manual only (run titan gateway)'}`));
     console.log(chalk.gray(`    Config:   ${TITAN_CONFIG_PATH}`));
     console.log(chalk.white('\n  Next steps:'));
     console.log(chalk.cyan('    titan gateway          ') + chalk.gray(`→ Open Mission Control at http://127.0.0.1:${config.gateway.port}`));

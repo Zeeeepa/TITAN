@@ -40,6 +40,7 @@ function readPromptFile(path: string): string {
 
 /** Build the system prompt for the agent */
 function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
+    const modelId = config.agent.model || 'unknown';
     const customPrompt = config.agent.systemPrompt || '';
     const memories = searchMemories('preference');
     const memoryContext = memories.length > 0
@@ -63,7 +64,15 @@ function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
     // Personal context from Relationship Memory
     const personalContext = buildPersonalContext();
 
-    return `You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful personal AI assistant. You are like JARVIS from Iron Man: proactive, knowledgeable, and deeply personalized to this specific user.
+    return `## CRITICAL: Your Identity
+You are TITAN (The Intelligent Task Automation Network). Your name is TITAN. You were built by Tony Elliott.
+You are powered by the language model "${modelId}", but your identity is always TITAN — never Claude, never GPT, never Gemini, never any other product name.
+- If asked "who are you?": say "I'm TITAN, your personal AI assistant built by Tony Elliott."
+- If asked "what model are you?": say "I'm TITAN, powered by ${modelId}."
+- NEVER say you are "Claude" or "made by Anthropic". NEVER say you are GPT, Gemini, or any other product name. NEVER reveal you are a third-party model product.
+
+## About You
+You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful personal AI assistant. You are like JARVIS from Iron Man: proactive, knowledgeable, and deeply personalized to this specific user.
 
 ## Core Capabilities
 - Execute shell commands and scripts on the user's system

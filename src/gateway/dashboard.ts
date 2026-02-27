@@ -149,7 +149,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" onclick="showPanel('chat',this)"><span class="icon">💬</span>WebChat</div>
     <div class="nav-item" onclick="showPanel('agents',this)"><span class="icon">🤖</span>Agents</div>
     <div class="nav-section">Config</div>
-    <div class="nav-item" onclick="showPanel('config',this)"><span class="icon">⚙️</span>Settings</div>
+    <div class="nav-item" onclick="showPanel('config',this);loadConfig();populateModels();loadProfileTab()"><span class="icon">⚙️</span>Settings</div>
     <div class="nav-item" onclick="showPanel('channels',this)"><span class="icon">📡</span>Channels</div>
     <div class="nav-section">Tools & Data</div>
     <div class="nav-item" onclick="showPanel('skills',this)"><span class="icon">🧩</span>Skills</div>
@@ -229,49 +229,225 @@ tr:hover{background:rgba(6,182,212,.03)}
 
     <!-- Settings Panel -->
     <div id="panel-config" class="panel">
-      <div class="card">
-        <h3>AI Model & Behaviour</h3>
-        <div class="form-row">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div class="settings-tabs-nav" style="display:flex;gap:4px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap">
+          <button class="stab-btn active" onclick="showStab('model')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--accent);color:#fff;transition:all .15s">🤖 AI &amp; Model</button>
+          <button class="stab-btn" onclick="showStab('providers')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔑 Providers</button>
+          <button class="stab-btn" onclick="showStab('channels-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">📡 Channels</button>
+          <button class="stab-btn" onclick="showStab('security-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔒 Security</button>
+          <button class="stab-btn" onclick="showStab('gateway-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🌐 Gateway</button>
+          <button class="stab-btn" onclick="showStab('profile-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">👤 Profile</button>
+        </div>
+
+        <!-- Tab 1: AI & Model -->
+        <div id="stab-model" class="stab-content" style="padding:20px;display:block">
           <div class="form-group">
             <label>Active Model</label>
-            <input type="text" id="cfg-model" placeholder="e.g. anthropic/claude-sonnet-4-20250514"/>
+            <select id="cfg-model" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"><option>Loading models...</option></select>
+            <input type="text" id="cfg-model-manual" placeholder="Or type a custom model ID (e.g. ollama/my-model)" style="width:100%;margin-top:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"/>
+            <button class="btn" onclick="refreshOllamaModels()" style="margin-top:8px;font-size:12px">🔄 Refresh Ollama Models</button>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Autonomy Mode</label>
+              <select id="cfg-autonomy">
+                <option value="supervised">🟡 Supervised (safe default)</option>
+                <option value="autonomous">🟢 Autonomous (full auto)</option>
+                <option value="locked">🔴 Locked (approve every action)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Log Level</label>
+              <select id="cfg-loglevel">
+                <option value="info">Info (recommended)</option>
+                <option value="debug">Debug (verbose)</option>
+                <option value="warn">Warn (quiet)</option>
+                <option value="silent">Silent</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Temperature: <span id="cfg-temp-val">0.7</span></label>
+              <input type="range" id="cfg-temperature" min="0" max="2" step="0.1" value="0.7" oninput="document.getElementById('cfg-temp-val').textContent=parseFloat(this.value).toFixed(1)" style="width:100%;accent-color:var(--accent)"/>
+            </div>
+            <div class="form-group">
+              <label>Max Tokens</label>
+              <input type="number" id="cfg-maxtokens" placeholder="8192" min="256" max="200000"/>
+            </div>
           </div>
           <div class="form-group">
-            <label>Autonomy Mode</label>
-            <select id="cfg-autonomy">
-              <option value="supervised">🟡 Supervised (safe default)</option>
-              <option value="autonomous">🟢 Autonomous (full auto)</option>
-              <option value="locked">🔴 Locked (approve every action)</option>
-            </select>
+            <label>Custom System Prompt (appended after TITAN's core identity)</label>
+            <textarea id="cfg-systemprompt" rows="5" placeholder="Add extra instructions for TITAN (e.g. 'Always respond in Spanish')" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:inherit"></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" onclick="saveAIConfig()">💾 Save AI Settings</button>
+            <button class="btn" onclick="loadConfig()">↺ Reset</button>
           </div>
         </div>
-        <div class="form-row">
+
+        <!-- Tab 2: Providers & API Keys -->
+        <div id="stab-providers" class="stab-content" style="padding:20px;display:none">
+          <p style="color:var(--text-dim);font-size:13px;margin-bottom:20px">🔒 Keys stored locally in <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">~/.titan/titan.json</code> — never sent anywhere except the provider's API</p>
+          <div class="form-group">
+            <label>Anthropic API Key</label>
+            <div style="display:flex;gap:8px">
+              <input type="password" id="cfg-anthropic-key" placeholder="sk-ant-api03-... (leave blank to keep current)" style="flex:1"/>
+              <span id="cfg-anthropic-status" style="align-self:center;font-size:12px;color:var(--text-dim)"></span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>OpenAI API Key</label>
+            <div style="display:flex;gap:8px">
+              <input type="password" id="cfg-openai-key" placeholder="sk-proj-... (leave blank to keep current)" style="flex:1"/>
+              <span id="cfg-openai-status" style="align-self:center;font-size:12px;color:var(--text-dim)"></span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Google API Key</label>
+            <div style="display:flex;gap:8px">
+              <input type="password" id="cfg-google-key" placeholder="AIza... (leave blank to keep current)" style="flex:1"/>
+              <span id="cfg-google-status" style="align-self:center;font-size:12px;color:var(--text-dim)"></span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Ollama Base URL</label>
+            <div style="display:flex;gap:8px">
+              <input type="text" id="cfg-ollama-url" placeholder="http://localhost:11434" style="flex:1"/>
+              <button class="btn" onclick="testOllamaConnection()">Test ⚡</button>
+            </div>
+            <span id="cfg-ollama-status" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:block"></span>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" onclick="saveProviderSettings()">💾 Save Provider Settings</button>
+          </div>
+        </div>
+
+        <!-- Tab 3: Channels -->
+        <div id="stab-channels-cfg" class="stab-content" style="padding:20px;display:none">
+          <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Enable and configure messaging channels. Tokens are stored in <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">~/.titan/titan.json</code>.</p>
+          ${['discord','telegram','slack','googlechat','whatsapp','signal','matrix','msteams'].map(ch => `
+          <div class="card" style="margin-bottom:12px;padding:16px">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:${ch === 'whatsapp' || ch === 'signal' ? '8' : '12'}px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+                <input type="checkbox" id="cfg-${ch}-enabled" style="width:16px;height:16px;accent-color:var(--accent)"/>
+                <strong style="font-size:14px">${ch === 'discord' ? '🎮 Discord' : ch === 'telegram' ? '✈️ Telegram' : ch === 'slack' ? '💼 Slack' : ch === 'googlechat' ? '💬 Google Chat' : ch === 'whatsapp' ? '📱 WhatsApp' : ch === 'signal' ? '🔐 Signal' : ch === 'matrix' ? '🟦 Matrix' : '🏢 MS Teams'}</strong>
+              </label>
+            </div>
+            ${ch === 'whatsapp' ? '<p style="color:var(--warn);font-size:12px;margin-bottom:8px">⚠️ WhatsApp requires phone pairing — run <code>titan pairing</code> after enabling</p>' : ''}
+            ${ch === 'signal' ? '<p style="color:var(--warn);font-size:12px;margin-bottom:8px">⚠️ Signal requires a Signal bridge service running separately</p>' : ''}
+            ${ch !== 'whatsapp' ? `<div class="form-group" style="margin-bottom:8px"><label>${ch === 'googlechat' ? 'Incoming Webhook URL' : 'Bot Token'}</label><input type="password" id="cfg-${ch}-token" placeholder="${ch === 'googlechat' ? 'https://chat.googleapis.com/...' : ch + ' bot token'}" style="font-size:12px"/></div>` : ''}
+            <div class="form-group" style="margin-bottom:8px">
+              <label>DM Policy</label>
+              <select id="cfg-${ch}-dmpolicy" style="font-size:12px">
+                <option value="pairing">Pairing (users must be approved)</option>
+                <option value="open">Open (anyone can DM)</option>
+                <option value="closed">Closed (no DMs)</option>
+              </select>
+            </div>
+            <button class="btn" onclick="saveChannelSettings('${ch}')" style="font-size:12px">Save ${ch}</button>
+          </div>`).join('')}
+        </div>
+
+        <!-- Tab 4: Security -->
+        <div id="stab-security-cfg" class="stab-content" style="padding:20px;display:none">
           <div class="form-group">
             <label>Sandbox Mode</label>
             <select id="cfg-sandbox">
               <option value="host">🖥️ Host (full access)</option>
-              <option value="docker">🐳 Docker (isolated)</option>
+              <option value="docker">🐳 Docker (isolated containers)</option>
               <option value="none">🚫 None (no restrictions)</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Log Level</label>
-            <select id="cfg-loglevel">
-              <option value="info">Info (recommended)</option>
-              <option value="debug">Debug (verbose)</option>
-              <option value="warn">Warn (quiet)</option>
-              <option value="silent">Silent</option>
-            </select>
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+              <input type="checkbox" id="cfg-shield-enabled" style="width:16px;height:16px;accent-color:var(--accent)" onchange="document.getElementById('shield-mode-row').style.display=this.checked?'block':'none'"/>
+              Prompt Injection Shield (blocks chat-based hijacking attempts)
+            </label>
+          </div>
+          <div id="shield-mode-row" style="display:none">
+            <div class="form-group">
+              <label>Shield Strictness</label>
+              <select id="cfg-shield-mode">
+                <option value="strict">Strict (aggressive — recommended)</option>
+                <option value="standard">Standard (blocks obvious attempts only)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Denied Tools (comma-separated — agents can NEVER use these)</label>
+            <input type="text" id="cfg-denied-tools" placeholder="e.g. shell, write_file"/>
+          </div>
+          <div class="form-group">
+            <label>Network Allowlist (comma-separated domains, * = all, blank = block all)</label>
+            <input type="text" id="cfg-network-allowlist" placeholder="e.g. api.github.com, *.anthropic.com"/>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" onclick="saveSecuritySettings()">💾 Save Security Settings</button>
           </div>
         </div>
-        <div class="form-actions">
-          <button class="btn primary" onclick="saveConfig()">💾 Save Changes</button>
-          <button class="btn" onclick="loadConfig()">↺ Reset</button>
+
+        <!-- Tab 5: Gateway -->
+        <div id="stab-gateway-cfg" class="stab-content" style="padding:20px;display:none">
+          <div class="form-group" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px">
+            <span style="color:var(--warn)">⚠️ Changing port or auth mode requires a gateway restart to take effect.</span>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Gateway Port</label>
+              <input type="number" id="cfg-gateway-port" placeholder="48420"/>
+            </div>
+            <div class="form-group">
+              <label>Auth Mode</label>
+              <select id="cfg-gateway-auth" onchange="updateGatewayAuthFields()">
+                <option value="none">None (open — local only)</option>
+                <option value="token">Token (API key in header)</option>
+                <option value="password">Password (browser login)</option>
+              </select>
+            </div>
+          </div>
+          <div id="gateway-token-row" style="display:none">
+            <div class="form-group">
+              <label>Gateway Token</label>
+              <input type="password" id="cfg-gateway-token" placeholder="Set a secure token"/>
+            </div>
+          </div>
+          <div id="gateway-password-row" style="display:none">
+            <div class="form-group">
+              <label>Gateway Password</label>
+              <input type="password" id="cfg-gateway-password" placeholder="Set a secure password"/>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" onclick="saveGatewaySettings()">💾 Save Gateway Settings</button>
+          </div>
         </div>
-      </div>
-      <div class="card">
-        <h3>Raw Configuration (read-only)</h3>
-        <pre id="cfg-raw" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-dim);white-space:pre-wrap;max-height:400px;overflow-y:auto">Loading...</pre>
+
+        <!-- Tab 6: Profile -->
+        <div id="stab-profile-cfg" class="stab-content" style="padding:20px;display:none">
+          <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">TITAN uses this to personalize responses — like a JARVIS that knows you.</p>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Your Name</label>
+              <input type="text" id="cfg-profile-name" placeholder="e.g. Tony"/>
+            </div>
+            <div class="form-group">
+              <label>Technical Level</label>
+              <select id="cfg-profile-level">
+                <option value="beginner">Beginner — explain everything in plain English</option>
+                <option value="intermediate">Intermediate — I know the basics</option>
+                <option value="expert">Expert — no hand-holding</option>
+                <option value="unknown">Unset</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--text-dim)">
+            <span id="cfg-profile-stats">Loading profile stats...</span>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary" onclick="saveProfileSettings()">💾 Save Profile</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -456,17 +632,18 @@ function sendChat() {
 }
 
 // Remove typing indicator when response arrives (monkey-patch ws.onmessage)
-const _origOnMessage = ws ? null : null;
 function removeTyping() {
   const t = document.getElementById('typing-indicator');
   if (t) t.remove();
 }
-// Patch into WS handler
-const origOnMsg = ws.onmessage;
-ws.onmessage = (e) => {
-  removeTyping();
-  if (origOnMsg) origOnMsg.call(ws, e);
-};
+// Patch into WS handler (guard in case ws failed to construct)
+if (ws) {
+  const origOnMsg = ws.onmessage;
+  ws.onmessage = (e) => {
+    removeTyping();
+    if (origOnMsg) origOnMsg.call(ws, e);
+  };
+}
 
 // ── Agents ────────────────────────────────────────────────────────
 async function spawnAgent() {
@@ -485,28 +662,232 @@ async function stopAgent(id) {
   fetchData();
 }
 
-// ── Config ────────────────────────────────────────────────────────
-async function loadConfig() {
-  const r = await fetch('/api/config', {headers:authHeaders()});
-  const cfg = await r.json();
-  document.getElementById('cfg-model').value = cfg.agent?.model || '';
-  document.getElementById('cfg-autonomy').value = cfg.autonomy?.mode || 'supervised';
-  document.getElementById('cfg-sandbox').value = cfg.security?.sandboxMode || 'host';
-  document.getElementById('cfg-loglevel').value = cfg.logging?.level || 'info';
-  document.getElementById('cfg-raw').textContent = JSON.stringify(cfg, null, 2);
+// ── Settings Tabs ─────────────────────────────────────────────────
+function showStab(name) {
+  document.querySelectorAll('.stab-btn').forEach(b => {
+    b.style.background = 'var(--bg3)'; b.style.color = 'var(--text-dim)';
+  });
+  document.querySelectorAll('.stab-content').forEach(c => c.style.display = 'none');
+  const activeBtn = [...document.querySelectorAll('.stab-btn')].find(b => b.textContent.toLowerCase().includes(name.split('-')[0]));
+  if (activeBtn) { activeBtn.style.background = 'var(--accent)'; activeBtn.style.color = '#fff'; }
+  const content = document.getElementById('stab-' + name);
+  if (content) content.style.display = 'block';
 }
 
-async function saveConfig() {
+// ── Config ────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config', {headers:authHeaders()});
+    const cfg = await r.json();
+    // Tab 1: AI & Model
+    const manualInput = document.getElementById('cfg-model-manual');
+    if (manualInput && cfg.agent?.model) manualInput.value = '';
+    const autonomy = document.getElementById('cfg-autonomy');
+    if (autonomy) autonomy.value = cfg.autonomy?.mode || 'supervised';
+    const loglevel = document.getElementById('cfg-loglevel');
+    if (loglevel) loglevel.value = cfg.logging?.level || 'info';
+    const temp = document.getElementById('cfg-temperature');
+    if (temp) { temp.value = cfg.agent?.temperature ?? 0.7; document.getElementById('cfg-temp-val').textContent = parseFloat(temp.value).toFixed(1); }
+    const maxTok = document.getElementById('cfg-maxtokens');
+    if (maxTok) maxTok.value = cfg.agent?.maxTokens || 8192;
+    const sysprompt = document.getElementById('cfg-systemprompt');
+    if (sysprompt) sysprompt.value = cfg.agent?.systemPrompt || '';
+    // Tab 2: Providers
+    const ollamaUrl = document.getElementById('cfg-ollama-url');
+    if (ollamaUrl) ollamaUrl.value = cfg.providers?.ollama?.baseUrl || 'http://localhost:11434';
+    const antStatus = document.getElementById('cfg-anthropic-status');
+    if (antStatus) antStatus.textContent = cfg.providers?.anthropic?.configured ? '✅ configured' : '❌ not set';
+    const oaiStatus = document.getElementById('cfg-openai-status');
+    if (oaiStatus) oaiStatus.textContent = cfg.providers?.openai?.configured ? '✅ configured' : '❌ not set';
+    const gooStatus = document.getElementById('cfg-google-status');
+    if (gooStatus) gooStatus.textContent = cfg.providers?.google?.configured ? '✅ configured' : '❌ not set';
+    // Tab 3: Channels
+    if (cfg.channels) {
+      for (const [ch, val] of Object.entries(cfg.channels)) {
+        const enEl = document.getElementById('cfg-' + ch + '-enabled');
+        if (enEl) enEl.checked = val.enabled;
+        const polEl = document.getElementById('cfg-' + ch + '-dmpolicy');
+        if (polEl) polEl.value = val.dmPolicy || 'pairing';
+      }
+    }
+    // Tab 4: Security
+    const sandbox = document.getElementById('cfg-sandbox');
+    if (sandbox) sandbox.value = cfg.security?.sandboxMode || 'host';
+    const shieldEnabled = document.getElementById('cfg-shield-enabled');
+    if (shieldEnabled) {
+      shieldEnabled.checked = cfg.security?.shield?.enabled ?? true;
+      document.getElementById('shield-mode-row').style.display = shieldEnabled.checked ? 'block' : 'none';
+    }
+    const shieldMode = document.getElementById('cfg-shield-mode');
+    if (shieldMode) shieldMode.value = cfg.security?.shield?.mode || 'strict';
+    const denied = document.getElementById('cfg-denied-tools');
+    if (denied) denied.value = (cfg.security?.deniedTools || []).join(', ');
+    const allowlist = document.getElementById('cfg-network-allowlist');
+    if (allowlist) allowlist.value = (cfg.security?.networkAllowlist || []).join(', ');
+    // Tab 5: Gateway
+    const port = document.getElementById('cfg-gateway-port');
+    if (port) port.value = cfg.gateway?.port || 48420;
+    const authMode = document.getElementById('cfg-gateway-auth');
+    if (authMode) { authMode.value = cfg.gateway?.auth?.mode || 'none'; updateGatewayAuthFields(); }
+  } catch(e) { console.error('loadConfig error:', e); }
+}
+
+async function saveAIConfig() {
+  const manualVal = document.getElementById('cfg-model-manual').value.trim();
+  const selectEl = document.getElementById('cfg-model');
+  const modelVal = manualVal || (selectEl.value && selectEl.value !== 'Loading models...' ? selectEl.value : '');
   const body = {
-    model: document.getElementById('cfg-model').value.trim(),
+    model: modelVal || undefined,
     autonomyMode: document.getElementById('cfg-autonomy').value,
-    sandboxMode: document.getElementById('cfg-sandbox').value,
     logLevel: document.getElementById('cfg-loglevel').value,
+    temperature: parseFloat(document.getElementById('cfg-temperature').value),
+    maxTokens: parseInt(document.getElementById('cfg-maxtokens').value) || undefined,
+    systemPrompt: document.getElementById('cfg-systemprompt').value,
   };
   const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
   const data = await r.json();
-  if (data.ok) { toast('Settings saved — restart gateway to apply model change'); loadConfig(); fetchData(); }
+  if (data.ok) { toast('AI settings saved'); fetchData(); }
   else toast(data.error || 'Save failed', 'error');
+}
+
+async function saveProviderSettings() {
+  const body = {};
+  const antKey = document.getElementById('cfg-anthropic-key').value.trim();
+  const oaiKey = document.getElementById('cfg-openai-key').value.trim();
+  const gooKey = document.getElementById('cfg-google-key').value.trim();
+  const ollamaUrl = document.getElementById('cfg-ollama-url').value.trim();
+  if (antKey) body.anthropicKey = antKey;
+  if (oaiKey) body.openaiKey = oaiKey;
+  if (gooKey) body.googleKey = gooKey;
+  if (ollamaUrl) body.ollamaUrl = ollamaUrl;
+  const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+  const data = await r.json();
+  if (data.ok) { toast('Provider settings saved'); document.getElementById('cfg-anthropic-key').value=''; document.getElementById('cfg-openai-key').value=''; document.getElementById('cfg-google-key').value=''; loadConfig(); }
+  else toast(data.error || 'Save failed', 'error');
+}
+
+async function testOllamaConnection() {
+  const statusEl = document.getElementById('cfg-ollama-status');
+  statusEl.textContent = 'Testing...';
+  try {
+    const r = await fetch('/api/models', {headers:authHeaders()});
+    const data = await r.json();
+    if (data.ollama && data.ollama.length > 0) {
+      statusEl.textContent = '✅ Connected — ' + data.ollama.length + ' models found';
+      statusEl.style.color = 'var(--accent3)';
+    } else {
+      statusEl.textContent = '❌ Ollama reachable but no models found';
+      statusEl.style.color = 'var(--warn)';
+    }
+  } catch { statusEl.textContent = '❌ Ollama not reachable'; statusEl.style.color = 'var(--error)'; }
+}
+
+async function saveChannelSettings(ch) {
+  const enEl = document.getElementById('cfg-' + ch + '-enabled');
+  const tokEl = document.getElementById('cfg-' + ch + '-token');
+  const polEl = document.getElementById('cfg-' + ch + '-dmpolicy');
+  const val = { enabled: enEl ? enEl.checked : false, dmPolicy: polEl ? polEl.value : 'pairing' };
+  if (tokEl && tokEl.value.trim()) val.token = tokEl.value.trim();
+  const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify({channels:{[ch]:val}})});
+  const data = await r.json();
+  if (data.ok) { toast(ch + ' settings saved'); if (tokEl) tokEl.value = ''; }
+  else toast(data.error || 'Save failed', 'error');
+}
+
+async function saveSecuritySettings() {
+  const deniedRaw = document.getElementById('cfg-denied-tools').value.trim();
+  const allowRaw = document.getElementById('cfg-network-allowlist').value.trim();
+  const body = {
+    sandboxMode: document.getElementById('cfg-sandbox').value,
+    shieldEnabled: document.getElementById('cfg-shield-enabled').checked,
+    shieldMode: document.getElementById('cfg-shield-mode').value,
+    deniedTools: deniedRaw ? deniedRaw.split(',').map(s=>s.trim()).filter(Boolean) : [],
+    networkAllowlist: allowRaw ? allowRaw.split(',').map(s=>s.trim()).filter(Boolean) : [],
+  };
+  const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+  const data = await r.json();
+  if (data.ok) toast('Security settings saved');
+  else toast(data.error || 'Save failed', 'error');
+}
+
+function updateGatewayAuthFields() {
+  const mode = document.getElementById('cfg-gateway-auth').value;
+  document.getElementById('gateway-token-row').style.display = mode === 'token' ? 'block' : 'none';
+  document.getElementById('gateway-password-row').style.display = mode === 'password' ? 'block' : 'none';
+}
+
+async function saveGatewaySettings() {
+  const body = {
+    gatewayPort: parseInt(document.getElementById('cfg-gateway-port').value) || undefined,
+    gatewayAuthMode: document.getElementById('cfg-gateway-auth').value,
+  };
+  const tokenEl = document.getElementById('cfg-gateway-token');
+  const pwEl = document.getElementById('cfg-gateway-password');
+  if (tokenEl && tokenEl.value.trim()) body.gatewayToken = tokenEl.value.trim();
+  if (pwEl && pwEl.value.trim()) body.gatewayPassword = pwEl.value.trim();
+  const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+  const data = await r.json();
+  if (data.ok) toast('Gateway settings saved — restart required for port/auth changes', 'success');
+  else toast(data.error || 'Save failed', 'error');
+}
+
+async function loadProfileTab() {
+  try {
+    const r = await fetch('/api/profile', {headers:authHeaders()});
+    const profile = await r.json();
+    const nameEl = document.getElementById('cfg-profile-name');
+    if (nameEl) nameEl.value = profile.name || '';
+    const levelEl = document.getElementById('cfg-profile-level');
+    if (levelEl) levelEl.value = profile.technicalLevel || 'unknown';
+    const statsEl = document.getElementById('cfg-profile-stats');
+    if (statsEl) statsEl.textContent = 'Projects tracked: ' + (profile.projectCount || 0) + ' | Goals in progress: ' + (profile.goalCount || 0);
+  } catch(e) { console.error('loadProfileTab error:', e); }
+}
+
+async function saveProfileSettings() {
+  const body = {
+    name: document.getElementById('cfg-profile-name').value.trim(),
+    technicalLevel: document.getElementById('cfg-profile-level').value,
+  };
+  const r = await fetch('/api/profile', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+  const data = await r.json();
+  if (data.ok) toast('Profile saved');
+  else toast(data.error || 'Save failed', 'error');
+}
+
+// ── Model dropdown population ─────────────────────────────────────
+async function populateModels() {
+  try {
+    const data = await fetch('/api/models', {headers:authHeaders()}).then(r=>r.json());
+    const sel = document.getElementById('cfg-model');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const providerOrder = ['anthropic','openai','google','ollama'];
+    for (const provider of providerOrder) {
+      const models = data[provider];
+      if (!Array.isArray(models) || models.length === 0) continue;
+      const grp = document.createElement('optgroup');
+      grp.label = provider.toUpperCase();
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        if (m === data.current) opt.selected = true;
+        grp.appendChild(opt);
+      }
+      sel.appendChild(grp);
+    }
+    if (!sel.value && data.current) {
+      const fallback = document.createElement('option');
+      fallback.value = data.current; fallback.textContent = data.current; fallback.selected = true;
+      sel.insertBefore(fallback, sel.firstChild);
+    }
+  } catch(e) { console.error('populateModels error:', e); }
+}
+
+async function refreshOllamaModels() {
+  toast('Refreshing Ollama models...');
+  await populateModels();
+  toast('Ollama models refreshed');
 }
 
 // ── Data fetching ─────────────────────────────────────────────────
@@ -603,7 +984,6 @@ async function fetchData() {
 
 // ── Init ──────────────────────────────────────────────────────────
 fetchData();
-loadConfig();
 setInterval(fetchData, 15000);
 </script>
 </body>

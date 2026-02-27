@@ -754,6 +754,15 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   initMonitors();
 
   // Start server
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.warn(COMPONENT, `Port ${port} is already in use. Mission Control is likely already running in the background.`);
+      logger.info(COMPONENT, `You can access it at http://${host}:${port}`);
+    } else {
+      logger.error(COMPONENT, `Server error: ${err.message}`);
+    }
+  });
+
   server.listen(port, host, () => {
     logger.info(COMPONENT, `Gateway listening on http://${host}:${port}`);
     logger.info(COMPONENT, `Dashboard: http://${host}:${port}`);

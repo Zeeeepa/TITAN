@@ -25,6 +25,7 @@ import { listRecipes, getRecipe, deleteRecipe, seedBuiltinRecipes } from '../rec
 import { runRecipe } from '../recipes/runner.js';
 import { listMonitors, addMonitor, removeMonitor } from '../agent/monitor.js';
 import { searchSkills, installFromClaWHub, installFromUrl } from '../skills/marketplace.js';
+import { checkForUpdates } from '../utils/updater.js';
 
 const program = new Command();
 
@@ -479,4 +480,8 @@ program
     });
 
 // Parse and execute
-program.parse();
+(async () => {
+    // Check for updates (fast timeout, non-blocking if offline)
+    await checkForUpdates();
+    await program.parseAsync();
+})();

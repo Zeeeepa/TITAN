@@ -155,7 +155,7 @@ function estimateTokens(text: string): number {
 }
 
 export interface ChatMessageLike {
-    role: string;
+    role: 'user' | 'assistant' | 'system' | 'tool';
     content: string;
 }
 

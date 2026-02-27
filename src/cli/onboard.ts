@@ -103,9 +103,39 @@ export async function runOnboard(_installDaemon?: boolean): Promise<void> {
             config.agent.model = `ollama/${modelName}`;
         }
     } else {
-        // Cloud provider — get API key
+        // Cloud provider — guide user to get their API key
+        const keyGuides: Record<string, { url: string; hint: string; name: string }> = {
+            anthropic: {
+                url: 'https://console.anthropic.com/settings/keys',
+                hint: 'Looks like: sk-ant-api03-...',
+                name: 'Anthropic Console',
+            },
+            openai: {
+                url: 'https://platform.openai.com/api-keys',
+                hint: 'Looks like: sk-proj-... or sk-...',
+                name: 'OpenAI Platform',
+            },
+            google: {
+                url: 'https://aistudio.google.com/app/apikey',
+                hint: 'Looks like: AIza...',
+                name: 'Google AI Studio',
+            },
+        };
+
+        const guide = keyGuides[provider];
+        if (guide) {
+            console.log(chalk.cyan(`\n  📋 To get your ${chalk.white(provider)} API key:`));
+            console.log(chalk.white(`     → Go to: ${chalk.underline(guide.url)}`));
+            console.log(chalk.gray(`     → ${guide.hint}`));
+            console.log(chalk.green(`\n  🔒 Security guarantee:`));
+            console.log(chalk.gray(`     Your key is stored ONLY on YOUR computer at:`));
+            console.log(chalk.gray(`     ~/.titan/config.json`));
+            console.log(chalk.gray(`     It goes directly to ${provider.charAt(0).toUpperCase() + provider.slice(1)}'s servers.`));
+            console.log(chalk.gray(`     TITAN never sees it. No one else ever sees it.\n`));
+        }
+
         const apiKey = await password({
-            message: `Enter your ${provider} API key:`,
+            message: `Paste your ${provider} API key here (input is hidden):`,
             mask: '*',
         });
 

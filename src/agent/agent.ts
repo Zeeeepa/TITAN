@@ -11,6 +11,8 @@ import { executeTools, getToolDefinitions } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
 import { initLearning, recordToolResult, recordSuccessPattern, getLearningContext } from '../memory/learning.js';
 import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
+import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession } from './stallDetector.js';
+import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
@@ -125,21 +127,59 @@ export async function processMessage(
     let finalContent = '';
     let modelUsed = config.agent.model;
 
+    // ── Cost optimizer: smart model routing ─────────────────
+    const { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
+    if (activeModel !== config.agent.model) {
+        logger.info(COMPONENT, `Cost router: ${config.agent.model} → ${activeModel} (${routingReason})`);
+    }
+    modelUsed = activeModel;
+
+    // ── Stall detector: start heartbeat for this session ────────
+    heartbeat(session.id);
+
     // Agent loop with tool calling
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${tools.length} tools`);
 
+        // ── Cost optimizer: context compression to save tokens ───
+        const { messages: compressedMessages, didCompress, savedTokens } = maybeCompressContext(
+            messages.filter((m) => m.role !== 'tool' || round < 3) // keep recent tool results
+        );
+        if (didCompress) {
+            logger.info(COMPONENT, `Context compressed, saved ~${savedTokens} tokens`);
+        }
+
         const response: ChatResponse = await chat({
-            model: config.agent.model,
-            messages,
+            model: activeModel,
+            messages: compressedMessages,
             tools: tools.length > 0 ? tools : undefined,
             maxTokens: config.agent.maxTokens,
             temperature: config.agent.temperature,
         });
 
         modelUsed = response.model;
-        totalPromptTokens += response.usage?.promptTokens || 0;
-        totalCompletionTokens += response.usage?.completionTokens || 0;
+        const promptTokens = response.usage?.promptTokens || 0;
+        const completionTokens = response.usage?.completionTokens || 0;
+        totalPromptTokens += promptTokens;
+        totalCompletionTokens += completionTokens;
+
+        // ── Cost tracking + budget check ─────────────────────
+        const costCheck = recordTokenUsage(session.id, activeModel, promptTokens, completionTokens);
+        if (costCheck.budgetExceeded) {
+            finalContent = '⚠️ Daily spending limit reached. TITAN has paused to keep your API costs under control. You can increase the limit in settings or wait until tomorrow.';
+            break;
+        }
+
+        // ── Stall detector: heartbeat + response check ──────
+        heartbeat(session.id);
+        const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
+        if (stallEvent) {
+            const nudge = getNudgeMessage(stallEvent);
+            logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
+            messages.push({ role: 'user', content: nudge });
+            // Give the model one more chance to respond
+            continue;
+        }
 
         // If no tool calls, we have the final response
         if (!response.toolCalls || response.toolCalls.length === 0) {
@@ -168,6 +208,15 @@ export async function processMessage(
                 content: result.content,
                 toolCallId: result.toolCallId,
             });
+
+            // ── Stall detector: check for tool loops ──────────
+            const loopEvent = recordToolCall(session.id, result.name, { callId: result.toolCallId });
+            if (loopEvent) {
+                const nudge = getNudgeMessage(loopEvent);
+                logger.warn(COMPONENT, `Tool loop detected for ${result.name} — nudging`);
+                messages.push({ role: 'user', content: nudge });
+            }
+
             // Record tool result for continuous learning
             const success = !result.content.toLowerCase().includes('error:');
             recordToolResult(result.name, success, undefined, success ? undefined : result.content.slice(0, 200));
@@ -178,6 +227,9 @@ export async function processMessage(
             finalContent = response.content || 'I completed the tool operations. Let me know if you need anything else.';
         }
     }
+
+    // Clean up stall detector for this session
+    clearSession(session.id);
 
     // Save assistant response to session
     addMessage(session, 'assistant', finalContent, {

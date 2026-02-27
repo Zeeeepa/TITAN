@@ -30,6 +30,7 @@ import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
+import { getCostStatus } from '../agent/costOptimizer.js';
 
 const COMPONENT = 'Gateway';
 
@@ -425,6 +426,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
+  });
+
+  // Cost optimizer endpoint for Mission Control
+  app.get('/api/costs', (req, res) => {
+    res.json(getCostStatus());
   });
 
   // Create HTTP server

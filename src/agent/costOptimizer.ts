@@ -207,6 +207,22 @@ export function maybeCompressContext(
 }
 
 /** Get a human-readable cost summary for display */
+export function getCostStatus(): Record<string, SessionCost> {
+    const now = new Date().toISOString().split('T')[0];
+    // Assuming globalStore and sessionStores are defined elsewhere or need to be added.
+    // For now, I'll use the existing `todayTotalUsd` and convert `sessionCosts` Map to a Record.
+    // This part of the provided snippet is problematic as `globalStore` and `sessionStores` are not defined.
+    // I will make a best effort to integrate it by using existing variables.
+    // If `globalStore` is meant to be a persistent store, it needs proper initialization.
+    // For now, I'll return the current sessionCosts as a Record.
+    const sessionCostsRecord: Record<string, SessionCost> = {};
+    sessionCosts.forEach((value, key) => {
+        sessionCostsRecord[key] = value;
+    });
+    return sessionCostsRecord;
+}
+
+/** Get a human-readable cost summary for display */
 export function formatCostSummary(sessionId: string): string {
     const cost = getSessionCost(sessionId);
     if (!cost) return 'No usage recorded';

@@ -8,6 +8,7 @@ import { loadConfig, configExists } from '../config/config.js';
 import { TITAN_HOME, TITAN_CONFIG_PATH, TITAN_DB_PATH, TITAN_WORKSPACE, TITAN_VERSION } from '../utils/constants.js';
 import { healthCheckAll } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
+import { getStallStats } from '../agent/stallDetector.js';
 import logger from '../utils/logger.js';
 
 interface CheckResult {
@@ -145,6 +146,23 @@ export async function runDoctor(): Promise<void> {
         name: 'Memory usage',
         status: 'pass',
         message: `${rssGB} MB RSS`,
+    });
+
+    // 11. Stall Detector Status
+    const stallStatus = getStallStats();
+    let stallStatusLevel: 'pass' | 'warn' | 'fail' = 'pass';
+    let stallMessage = 'Healthy (0 active stalls)';
+
+    // getStallStats returns an array of session stats
+    const activeStalls = stallStatus.length;
+    if (activeStalls > 0) {
+        stallStatusLevel = activeStalls > 2 ? 'fail' : 'warn';
+        stallMessage = `Detected ${activeStalls} stuck sessions.`;
+    }
+    checks.push({
+        name: 'Agent Stall Status',
+        status: stallStatusLevel,
+        message: stallMessage,
     });
 
     // Print results

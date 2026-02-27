@@ -1,6 +1,6 @@
 {
   "name": "titan-agent",
-  "version": "2026.4.1",
+  "version": "2026.4.2",
   "description": "TITAN — The Intelligent Task Automation Network. A premium, autonomous AI agent framework with configurable autonomy, prompt injection shield, and Mission Control GUI.",
   "author": "Tony Elliott (https://github.com/Djtony707)",
   "repository": {
@@ -12,6 +12,7 @@
   "files": [
     "dist/",
     "assets/",
+    "scripts/",
     "README.md",
     "LICENSE",
     ".env.example"
@@ -21,6 +22,7 @@
     "titan": "dist/cli/index.js"
   },
   "scripts": {
+    "postinstall": "node scripts/postinstall.cjs",
     "build": "tsup",
     "dev": "tsx src/cli/index.ts",
     "dev:gateway": "tsx src/cli/index.ts gateway",

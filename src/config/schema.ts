@@ -61,6 +61,11 @@ export const AgentConfigSchema = z.object({
     systemPrompt: z.string().optional(),
     workspace: z.string().optional(),
     thinkingMode: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+    costOptimization: z.object({
+        smartRouting: z.boolean().default(true),
+        contextSummarization: z.boolean().default(true),
+        dailyBudgetUsd: z.number().optional(),
+    }).optional(),
 });
 
 export const TitanConfigSchema = z.object({

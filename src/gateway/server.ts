@@ -7,7 +7,8 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadConfig } from '../config/config.js';
+import { randomBytes } from 'crypto';
+import { loadConfig, updateConfig } from '../config/config.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory, getUsageStats } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
@@ -31,8 +32,73 @@ import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
+import { getLearningStats } from '../memory/learning.js';
 
 const COMPONENT = 'Gateway';
+
+/** Active session tokens (in-memory, cleared on restart) */
+const authTokens = new Set<string>();
+
+/** Check if a request token is valid */
+function isValidToken(token: string | undefined, config: ReturnType<typeof loadConfig>): boolean {
+  const auth = config.gateway.auth;
+  if (!auth || auth.mode === 'none') return true;
+  if (!token) return false;
+  if (auth.mode === 'token') return token === auth.token;
+  if (auth.mode === 'password') return authTokens.has(token);
+  return false;
+}
+
+/** Login page HTML */
+function getLoginHTML(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TITAN — Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{background:#111827;border:1px solid #2a3050;border-radius:16px;padding:40px;width:380px;box-shadow:0 0 40px rgba(6,182,212,.1)}
+h1{font-size:28px;font-weight:700;background:linear-gradient(135deg,#06b6d4,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;letter-spacing:3px;margin-bottom:4px}
+.sub{text-align:center;color:#94a3b8;font-size:13px;margin-bottom:32px}
+label{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px}
+input{width:100%;background:#1a1f36;border:1px solid #2a3050;border-radius:10px;padding:12px 16px;color:#e2e8f0;font-size:15px;outline:none;transition:border .2s}
+input:focus{border-color:#06b6d4}
+button{width:100%;margin-top:20px;background:linear-gradient(135deg,#06b6d4,#8b5cf6);border:none;border-radius:10px;padding:14px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s}
+button:hover{opacity:.9}
+.error{color:#ef4444;font-size:13px;margin-top:12px;text-align:center;display:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>⚡ TITAN</h1>
+  <div class="sub">Mission Control</div>
+  <label>Password</label>
+  <input type="password" id="pw" placeholder="Enter gateway password" onkeydown="if(event.key==='Enter')login()"/>
+  <button onclick="login()">Unlock</button>
+  <div class="error" id="err">Incorrect password. Try again.</div>
+</div>
+<script>
+async function login() {
+  const pw = document.getElementById('pw').value;
+  const res = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+  if (res.ok) {
+    const {token} = await res.json();
+    localStorage.setItem('titan_token', token);
+    location.href = '/';
+  } else {
+    document.getElementById('err').style.display = 'block';
+    document.getElementById('pw').value = '';
+    document.getElementById('pw').focus();
+  }
+}
+document.getElementById('pw').focus();
+</script>
+</body>
+</html>`;
+}
 
 /** All active channel adapters */
 const channels: Map<string, ChannelAdapter> = new Map();
@@ -345,6 +411,44 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   const app = express();
   app.use(express.json());
 
+  // ── Login routes (no auth required) ──────────────────────────
+  app.get('/login', (_req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.send(getLoginHTML());
+  });
+
+  app.post('/api/login', (req, res) => {
+    const cfg = loadConfig();
+    const auth = cfg.gateway.auth;
+    if (!auth || auth.mode === 'none') {
+      res.json({ token: 'noauth' });
+      return;
+    }
+    const { password } = req.body as { password?: string };
+    let valid = false;
+    if (auth.mode === 'password' && password === auth.password) valid = true;
+    if (auth.mode === 'token' && password === auth.token) valid = true;
+    if (!valid) { res.status(401).json({ error: 'Invalid password' }); return; }
+    const token = randomBytes(32).toString('hex');
+    authTokens.add(token);
+    res.json({ token });
+  });
+
+  // ── Auth middleware ───────────────────────────────────────────
+  app.use((req, res, next) => {
+    const cfg = loadConfig();
+    const auth = cfg.gateway.auth;
+    if (!auth || auth.mode === 'none') { next(); return; }
+    const header = req.headers.authorization;
+    const token = header?.startsWith('Bearer ') ? header.slice(7) : (req.query.token as string);
+    if (isValidToken(token, cfg)) { next(); return; }
+    if (req.path.startsWith('/api/')) {
+      res.status(401).json({ error: 'Unauthorized' });
+    } else {
+      res.redirect('/login');
+    }
+  });
+
   // Serve dashboard
   app.get('/', (_req, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -353,8 +457,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   // API routes
   app.get('/api/stats', (_req, res) => {
-    const stats = getUsageStats();
-    res.json(stats);
+    const usage = getUsageStats();
+    res.json({
+      ...usage,
+      version: TITAN_VERSION,
+      uptime: process.uptime(),
+      memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+    });
   });
 
   app.get('/api/sessions', (_req, res) => {
@@ -429,8 +538,44 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // Cost optimizer endpoint for Mission Control
-  app.get('/api/costs', (req, res) => {
+  app.get('/api/costs', (_req, res) => {
     res.json(getCostStatus());
+  });
+
+  // Config endpoints
+  app.get('/api/config', (_req, res) => {
+    const cfg = loadConfig();
+    // Return config with sensitive fields masked
+    res.json({
+      agent: cfg.agent,
+      autonomy: cfg.autonomy,
+      security: { sandboxMode: cfg.security.sandboxMode, shield: cfg.security.shield },
+      gateway: { port: cfg.gateway.port, host: cfg.gateway.host, auth: { mode: cfg.gateway.auth.mode } },
+      logging: cfg.logging,
+      channels: Object.fromEntries(
+        Object.entries(cfg.channels).map(([k, v]) => [k, { enabled: (v as { enabled: boolean }).enabled }])
+      ),
+    });
+  });
+
+  app.post('/api/config', (req, res) => {
+    try {
+      const { model, autonomyMode, sandboxMode, logLevel } = req.body as Record<string, string>;
+      const cfg = loadConfig();
+      if (model) cfg.agent.model = model;
+      if (autonomyMode) cfg.autonomy.mode = autonomyMode as 'supervised' | 'autonomous' | 'locked';
+      if (sandboxMode) cfg.security.sandboxMode = sandboxMode as 'host' | 'docker' | 'none';
+      if (logLevel) cfg.logging.level = logLevel as 'info' | 'debug' | 'warn' | 'silent';
+      updateConfig(cfg);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // Learning stats endpoint
+  app.get('/api/learning', (_req, res) => {
+    res.json(getLearningStats());
   });
 
   // Create HTTP server
@@ -439,14 +584,27 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Create WebSocket server
   const wss = new WebSocketServer({ server });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
+    // Auth check for WebSocket connections
+    const cfg = loadConfig();
+    const auth = cfg.gateway.auth;
+    if (auth && auth.mode !== 'none') {
+      const url = new URL(req.url || '/', `http://${req.headers.host}`);
+      const token = url.searchParams.get('token') || '';
+      if (!isValidToken(token, cfg)) {
+        ws.close(1008, 'Unauthorized');
+        return;
+      }
+    }
+
     wsClients.add(ws);
     logger.info(COMPONENT, `WebSocket client connected (${wsClients.size} total)`);
 
     ws.on('message', async (rawData) => {
       try {
         const data = JSON.parse(rawData.toString());
-        if (data.type === 'chat' && data.content) {
+        // Accept both 'chat' and 'message' types for compatibility
+        if ((data.type === 'chat' || data.type === 'message') && data.content) {
           // Process through WebChat channel
           if (webChatChannel) {
             webChatChannel.handleWebSocketMessage(data.userId || 'webchat-user', data.content);

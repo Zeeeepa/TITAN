@@ -44,7 +44,7 @@ export class DiscordChannel extends ChannelAdapter {
             });
 
             client.on(Events.MessageCreate, (message: any) => {
-                if (message.author.bot) return;
+                if (!message.author || message.author.bot) return;
 
                 const inbound: InboundMessage = {
                     id: message.id,

@@ -71,14 +71,18 @@ function debouncedSave(): void {
     saveTimeout = setTimeout(() => {
         if (!kb) return;
         ensureDir(TITAN_HOME);
-        writeFileSync(KNOWLEDGE_FILE, JSON.stringify(kb, null, 2), 'utf-8');
+        try {
+            writeFileSync(KNOWLEDGE_FILE, JSON.stringify(kb, null, 2), 'utf-8');
+        } catch (err) {
+            logger.error(COMPONENT, `Failed to save knowledge base: ${(err as Error).message}`);
+        }
     }, 2000);
 }
 
 /** Initialize the learning engine */
 export function initLearning(): void {
     loadKnowledgeBase();
-    logger.info(COMPONENT, `Learning engine initialized (${kb!.entries.length} knowledge entries)`);
+    logger.info(COMPONENT, `Learning engine initialized (${kb?.entries.length ?? 0} knowledge entries)`);
 }
 
 /** Record a tool execution result for learning */

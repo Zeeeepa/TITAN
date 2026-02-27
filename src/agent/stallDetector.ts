@@ -74,8 +74,9 @@ export function heartbeat(sessionId: string): void {
     clearTimeout(state.timer);
 
     // Start the silence watchdog
-    state.timer = setTimeout(async () => {
-        await triggerStall(sessionId, 'silence', `No agent activity for ${DEFAULT_STALL_THRESHOLD_MS / 1000}s`);
+    state.timer = setTimeout(() => {
+        triggerStall(sessionId, 'silence', `No agent activity for ${DEFAULT_STALL_THRESHOLD_MS / 1000}s`)
+            .catch((err) => logger.error(COMPONENT, `Stall trigger error: ${(err as Error).message}`));
     }, DEFAULT_STALL_THRESHOLD_MS);
 }
 

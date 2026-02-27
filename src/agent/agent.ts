@@ -198,7 +198,14 @@ export async function processMessage(
         });
 
         // Execute tools
-        const toolResults = await executeTools(response.toolCalls);
+        let toolResults;
+        try {
+            toolResults = await executeTools(response.toolCalls);
+        } catch (err) {
+            logger.error(COMPONENT, `Tool execution error: ${(err as Error).message}`);
+            finalContent = 'An error occurred while executing tools. Please try again.';
+            break;
+        }
 
         // Add tool results to messages and record for learning
         for (const result of toolResults) {

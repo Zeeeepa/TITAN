@@ -83,7 +83,7 @@ export function registerSessionsSkill(): void {
 
                 try {
                     const response = await processMessage(message, channel, userId);
-                    return `Message delivered to ${channel}/${userId}. Response: ${response.content.slice(0, 500)}`;
+                    return `Message delivered to ${channel}/${userId}. Response: ${response?.content?.slice(0, 500) ?? '(no response)'}`;
                 } catch (error) {
                     return `Error sending to ${channel}/${userId}: ${(error as Error).message}`;
                 }

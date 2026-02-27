@@ -289,7 +289,7 @@ export function searchMemories(category?: string, query?: string): Array<{ key: 
 export function recordUsage(sessionId: string, provider: string, model: string, promptTokens: number, completionTokens: number): void {
   const s = loadStore();
   s.usageStats.push({
-    id: s.usageStats.length + 1,
+    id: Date.now(),
     session_id: sessionId,
     provider,
     model,

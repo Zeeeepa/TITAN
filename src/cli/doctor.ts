@@ -129,11 +129,11 @@ export async function runDoctor(): Promise<void> {
         const dfOutput = execSync('df -h / | tail -1', { encoding: 'utf-8' });
         const parts = dfOutput.trim().split(/\s+/);
         const available = parts[3];
-        const usePercent = parseInt(parts[4], 10);
+        const usePercent = parts.length >= 5 ? parseInt(parts[4], 10) : NaN;
         checks.push({
             name: 'Disk space',
-            status: usePercent < 90 ? 'pass' : usePercent < 95 ? 'warn' : 'fail',
-            message: `${available} available (${parts[4]} used)`,
+            status: isNaN(usePercent) ? 'warn' : usePercent < 90 ? 'pass' : usePercent < 95 ? 'warn' : 'fail',
+            message: isNaN(usePercent) ? 'Could not parse disk usage' : `${available} available (${parts[4]} used)`,
         });
     } catch {
         checks.push({ name: 'Disk space', status: 'warn', message: 'Could not check' });

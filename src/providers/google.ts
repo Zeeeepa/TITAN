@@ -34,7 +34,7 @@ export class GoogleProvider extends LLMProvider {
         const contents = options.messages
             .filter((m) => m.role !== 'system')
             .map((m) => ({
-                role: m.role === 'assistant' ? 'model' : 'user',
+                role: m.role === 'assistant' ? 'model' : m.role === 'tool' ? 'user' : 'user',
                 parts: [{ text: m.content }],
             }));
 

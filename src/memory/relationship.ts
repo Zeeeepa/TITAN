@@ -82,7 +82,11 @@ export function saveProfile(profile: PersonalProfile): void {
     ensureDir();
     profile.lastSeenAt = new Date().toISOString();
     profile.interactionCount++;
-    writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2), 'utf-8');
+    try {
+        writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2), 'utf-8');
+    } catch (err) {
+        logger.error(COMPONENT, `Failed to save profile: ${(err as Error).message}`);
+    }
 }
 
 // ─── Profile Updates ──────────────────────────────────────────────

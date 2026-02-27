@@ -45,7 +45,7 @@ export function registerProcessSkill(): void {
             execute: async (args) => {
                 const command = args.command as string;
                 const background = args.background as boolean || false;
-                const timeout = Math.min((args.timeout as number) || 30, 1800) * 1000;
+                const timeout = Math.min((args.timeout as number) ?? 30, 1800) * 1000;
                 const cwd = args.cwd as string || process.cwd();
 
                 if (background) {
@@ -77,6 +77,7 @@ export function registerProcessSkill(): void {
                         managed.exitCode = code;
                         managed.endedAt = new Date().toISOString();
                     });
+                    child.on('error', () => processes.delete(id));
 
                     processes.set(id, managed);
                     logger.info(COMPONENT, `Background process started: ${id} (PID: ${managed.pid})`);

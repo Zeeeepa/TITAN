@@ -133,7 +133,7 @@ export async function installFromClaWHub(
 
     // Typecheck before activating
     try {
-        execSync(`npx tsc --noEmit --skipLibCheck ${filePath}`, { stdio: 'pipe' });
+        execSync(`npx tsc --noEmit --skipLibCheck "${filePath}"`, { stdio: 'pipe' });
     } catch (e: any) {
         // Non-fatal: skill may still work at runtime
         logger.warn(COMPONENT, `Type errors in ${skillName}: ${e.message?.slice(0, 200)}`);

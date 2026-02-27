@@ -111,7 +111,7 @@ export function scanSkillCode(code: string, filename = 'skill.ts'): ScanResult {
     check(LOW_PATTERNS, 'low');
 
     // Additional check: code length (minified/obfuscated code often has very long lines)
-    const maxLineLength = Math.max(...lines.map((l) => l.length));
+    const maxLineLength = lines.length > 0 ? Math.max(...lines.map((l) => l.length)) : 0;
     if (maxLineLength > 2000) {
         findings.push({
             severity: 'high',

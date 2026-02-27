@@ -25,6 +25,7 @@ let totalMisses = 0;
 
 /** Generate a cache key from the prompt + model */
 function makeCacheKey(messages: Array<{ role: string; content?: string }>, model: string): string {
+    if (!Array.isArray(messages)) return '';
     // Hash the last user message + model (most common cache scenario)
     const lastUser = messages.filter((m) => m.role === 'user').pop();
     if (!lastUser?.content) return '';

@@ -87,8 +87,9 @@ export function registerWebFetchSkill(): void {
                 const maxChars = Math.min((args.maxChars as number) || 50000, 100000);
 
                 return new Promise<string>((resolve) => {
+                    const escapedUrl = url.replace(/"/g, '\\"');
                     exec(
-                        `curl -sL --max-time 20 -A "Mozilla/5.0 (compatible; TITAN/1.0)" "${url}" | head -c 200000`,
+                        `curl -sL --max-time 20 -A "Mozilla/5.0 (compatible; TITAN/1.0)" "${escapedUrl}" | head -c 200000`,
                         { timeout: 25000, maxBuffer: 1024 * 1024 * 5 },
                         (err, stdout) => {
                             if (err) {

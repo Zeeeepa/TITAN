@@ -134,8 +134,10 @@ function startMonitor(monitor: TitanMonitor): void {
             return;
         }
         const watcher = watch(monitor.watchPath, { recursive: true }, (eventType, filename) => {
-            trigger(monitor, `File ${eventType}: ${filename}`);
+            trigger(monitor, `File ${eventType}: ${filename}`)
+                .catch((err) => logger.warn(COMPONENT, `Monitor trigger error: ${(err as Error).message}`));
         });
+        watcher.on('error', (err: Error) => logger.warn(COMPONENT, `File watcher error: ${err.message}`));
         activeWatchers.set(monitor.id, watcher);
         logger.info(COMPONENT, `Watching: ${monitor.watchPath}`);
     } else if (monitor.triggerType === 'schedule' && monitor.cronExpression) {
@@ -143,7 +145,8 @@ function startMonitor(monitor: TitanMonitor): void {
         const match = monitor.cronExpression.match(/^\*\/(\d+)$/);
         const minutes = match ? parseInt(match[1], 10) : 60;
         const interval = setInterval(() => {
-            trigger(monitor, `Scheduled trigger (every ${minutes} min)`);
+            trigger(monitor, `Scheduled trigger (every ${minutes} min)`)
+                .catch((err) => logger.warn(COMPONENT, `Monitor trigger error: ${(err as Error).message}`));
         }, minutes * 60 * 1000);
         activeIntervals.set(monitor.id, interval);
         logger.info(COMPONENT, `Scheduled monitor every ${minutes} minutes`);

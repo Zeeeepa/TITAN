@@ -484,4 +484,4 @@ program
     // Check for updates (fast timeout, non-blocking if offline)
     await checkForUpdates();
     await program.parseAsync();
-})();
+})().catch((err) => { console.error(err); process.exit(1); });

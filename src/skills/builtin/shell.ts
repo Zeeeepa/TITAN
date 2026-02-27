@@ -70,7 +70,7 @@ export function registerShellSkill(): void {
             execute: async (args) => {
                 const command = args.command as string;
                 const cwd = args.cwd as string | undefined;
-                const timeout = (args.timeout as number) || 30000;
+                const timeout = (args.timeout as number) ?? 30000;
 
                 logger.info(COMPONENT, `Executing: ${command}`);
                 return await executeCommand(command, cwd, timeout);

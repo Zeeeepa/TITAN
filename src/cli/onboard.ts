@@ -52,7 +52,7 @@ function printLogo(): void {
 }
 
 // ─── Main wizard ──────────────────────────────────────────────────
-export async function runOnboard(_installDaemon?: boolean): Promise<void> {
+export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
     printLogo();
     console.log(chalk.gray('  Welcome! This wizard will configure your personal AI assistant.'));
     console.log(chalk.gray('  Press Ctrl+C at any time to cancel.\n'));
@@ -355,6 +355,13 @@ export async function runOnboard(_installDaemon?: boolean): Promise<void> {
     console.log(chalk.cyan('    titan agent -m "Hello" ') + chalk.gray('→ Send a direct message'));
     console.log(chalk.cyan('    titan doctor           ') + chalk.gray('→ Diagnose configuration & connectivity'));
     console.log();
+
+    const launch = await confirm({
+        message: `Start Mission Control (web GUI) now at http://127.0.0.1:${config.gateway.port}?`,
+        default: true,
+    });
+
+    return launch;
 }
 
 async function installDaemonService(): Promise<void> {

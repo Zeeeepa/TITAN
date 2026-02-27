@@ -40,7 +40,11 @@ program
     .description('Run the interactive setup wizard')
     .option('--install-daemon', 'Install as a system daemon (systemd/launchd)')
     .action(async (options) => {
-        await runOnboard(options.installDaemon);
+        const launch = await runOnboard(options.installDaemon);
+        if (launch) {
+            console.log(chalk.cyan(TITAN_ASCII_LOGO));
+            await startGateway();
+        }
     });
 
 // ─── GATEWAY ─────────────────────────────────────────────────────

@@ -5,10 +5,17 @@
   "author": "Tony Elliott (https://github.com/Djtony707)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Djtony707/TITAN.git"
+    "url": "git+https://github.com/Djtony707/TITAN.git"
   },
   "license": "MIT",
   "type": "module",
+  "files": [
+    "dist/",
+    "assets/",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "main": "dist/cli/index.js",
   "bin": {
     "titan": "dist/cli/index.js"

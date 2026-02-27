@@ -21,13 +21,42 @@ async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
     }
 }
 
+import { TITAN_VERSION } from '../utils/constants.js';
+
+function printLogo(): void {
+    const c = chalk;
+    const border = c.cyan;
+    const row1 = c.yellowBright;
+    const row2 = c.yellow;
+    const row3 = c.greenBright;
+    const row4 = c.cyanBright;
+    const row5 = c.blueBright;
+    const tagline = c.white;
+    const credit = c.magentaBright;
+    const ver = c.gray;
+
+    console.log('');
+    console.log(border('  ╔══════════════════════════════════════════════════════════╗'));
+    console.log(border('  ║                                                          ║'));
+    console.log(border('  ║  ') + row1('████████╗██╗████████╗  █████╗  ███╗   ██╗') + border('          ║'));
+    console.log(border('  ║  ') + row2('   ██║   ██║   ██║   ██╔══██╗ ████╗  ██║') + border('          ║'));
+    console.log(border('  ║  ') + row3('   ██║   ██║   ██║   ███████║ ██╔██╗ ██║') + border('          ║'));
+    console.log(border('  ║  ') + row4('   ██║   ██║   ██║   ██╔══██║ ██║╚██╗██║') + border('          ║'));
+    console.log(border('  ║  ') + row5('   ██║   ██║   ██║   ██║  ██║ ██║ ╚████║') + border('          ║'));
+    console.log(border('  ║  ') + c.blue('   ╚═╝   ╚═╝   ╚═╝   ╚═╝  ╚═╝ ╚═╝  ╚═══╝') + border('          ║'));
+    console.log(border('  ║                                                          ║'));
+    console.log(border('  ║  ') + tagline('The Intelligent Task Automation Network') + border('           ║'));
+    console.log(border('  ║  ') + ver(`v${TITAN_VERSION}`) + c.gray('  •  ') + credit('by Tony Elliott') + border('                         ║'));
+    console.log(border('  ╚══════════════════════════════════════════════════════════╝'));
+    console.log('');
+}
+
 // ─── Main wizard ──────────────────────────────────────────────────
 export async function runOnboard(_installDaemon?: boolean): Promise<void> {
-    console.log(chalk.cyan('\n╔══════════════════════════════════════════╗'));
-    console.log(chalk.cyan('║   ⚡ Welcome to TITAN Setup Wizard!      ║'));
-    console.log(chalk.cyan('╚══════════════════════════════════════════╝\n'));
-    console.log(chalk.gray('This wizard will configure your personal AI assistant.\n'));
-    console.log(chalk.gray('Press Ctrl+C at any time to cancel.\n'));
+    printLogo();
+    console.log(chalk.gray('  Welcome! This wizard will configure your personal AI assistant.'));
+    console.log(chalk.gray('  Press Ctrl+C at any time to cancel.\n'));
+
 
     const config = getDefaultConfig();
 

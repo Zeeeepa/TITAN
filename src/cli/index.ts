@@ -40,7 +40,6 @@ program
     .description('Run the interactive setup wizard')
     .option('--install-daemon', 'Install as a system daemon (systemd/launchd)')
     .action(async (options) => {
-        console.log(chalk.cyan(TITAN_ASCII_LOGO));
         await runOnboard(options.installDaemon);
     });
 

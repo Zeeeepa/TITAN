@@ -1,6 +1,6 @@
 # TITAN — Full Debug Task Tracker
 
-## Status: IN PROGRESS
+## Status: COMPLETE — v2026.4.9
 
 ## CRITICAL BUGS (C1–C6) — Process Crashes
 
@@ -39,12 +39,12 @@
 | M3 | `src/skills/builtin/process.ts` | same `\|\|` vs `??` timeout issue | ✅ Fixed |
 | M4 | `src/agent/responseCache.ts` | no Array check on messages input | ✅ Fixed |
 
-## Verification
+## Verification Results
 
-```bash
-cd /home/dj/Desktop/NewTitan22626/titan
-npm run typecheck   # 0 errors
-npm test            # 25/25
-npm run build       # clean build
-node dist/cli/index.js doctor
-```
+| Check | Result |
+|-------|--------|
+| `npm run typecheck` | ✅ 0 errors |
+| `npm test` | ✅ 25/25 passed |
+| `npm run build` | ✅ Clean ESM build |
+
+Released as `titan-agent@2026.4.9` on npm and pushed to GitHub main.

@@ -196,7 +196,7 @@ TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard
 
 ## Roadmap
 
-### ✅ v2026.2.26 — Foundation Release (Current)
+### ✅ v2026.2.26 — Foundation Release
 - [x] Multi-agent system (up to 5)
 - [x] 17+ built-in tools (shell, filesystem, browser, process, web, cron, webhooks, sessions, memory, patch)
 - [x] Continuous learning engine
@@ -209,12 +209,18 @@ TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard
 - [x] DM pairing security
 - [x] Docker support
 
-### ✅ v2026.4 — Intelligence Update (Current)
+### ✅ v2026.4 — Intelligence Update
 - [x] **Skill auto-generation** — TITAN writes its own new skills when it encounters tasks it can't solve
 - [x] **Image analysis tool** — Vision capabilities for screenshots, diagrams, photos
 - [x] **Voice channel support** — Discord/Telegram voice with speech-to-text and text-to-speech
 - [x] **Plugin marketplace** — Community-contributed skills with one-click install
 - [x] **E2E encrypted sessions** — End-to-end encryption for sensitive conversations
+
+### ✅ v2026.4.9 — Stability & Bug-Fix Release (Current)
+- [x] **19 crash/runtime/silent-failure fixes** across 15 source files — full end-to-end audit
+- [x] **6 critical crash fixes** — unguarded `writeFileSync` calls, unhandled async rejections in `stallDetector`, `costOptimizer` undefined fallback, `Math.max` on empty array
+- [x] **12 high-priority runtime fixes** — `executeTools` error handling, Google provider tool role mapping, `monitor.ts` fire-and-forget async, Discord null guard, `doctor.ts` `parseInt` on undefined, top-level IIFE unhandled rejection, shell injection in `web_fetch` and `marketplace`
+- [x] **4 medium fixes** — usage stats ID collision, `|| 0` vs `?? 0` timeout bugs in `shell` and `process`, `responseCache` missing Array guard
 
 ### 🔮 v2026.6 — Autonomy Update
 - [ ] **Proactive agent mode** — TITAN monitors your system and takes action without being asked

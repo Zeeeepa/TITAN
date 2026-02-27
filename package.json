@@ -16,6 +16,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli/index.ts",
+    "dev:gateway": "tsx src/cli/index.ts gateway",
+    "dev:onboard": "tsx src/cli/index.ts onboard",
+    "dev:doctor": "tsx src/cli/index.ts doctor",
     "start": "node dist/cli/index.js",
     "lint": "eslint src/ --ext .ts",
     "lint:fix": "eslint src/ --ext .ts --fix",
@@ -23,9 +26,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "gateway": "tsx src/cli/index.ts gateway",
-    "gateway:watch": "tsx watch src/cli/index.ts gateway",
-    "doctor": "tsx src/cli/index.ts doctor",
-    "onboard": "tsx src/cli/index.ts onboard"
+    "onboard": "tsx src/cli/index.ts onboard",
+    "doctor": "tsx src/cli/index.ts doctor"
   },
   "keywords": [
     "ai",
@@ -74,7 +76,25 @@
   },
   "tsup": {
     "entry": [
-      "src/cli/index.ts"
+      "src/cli/index.ts",
+      "src/agent/agent.ts",
+      "src/agent/generator.ts",
+      "src/gateway/server.ts",
+      "src/skills/registry.ts",
+      "src/skills/builtin/shell.ts",
+      "src/skills/builtin/filesystem.ts",
+      "src/skills/builtin/browser.ts",
+      "src/skills/builtin/process.ts",
+      "src/skills/builtin/web_fetch.ts",
+      "src/skills/builtin/web_search.ts",
+      "src/skills/builtin/cron.ts",
+      "src/skills/builtin/webhook.ts",
+      "src/skills/builtin/memory_skill.ts",
+      "src/skills/builtin/sessions.ts",
+      "src/skills/builtin/apply_patch.ts",
+      "src/skills/builtin/auto_generate.ts",
+      "src/skills/builtin/vision.ts",
+      "src/skills/builtin/voice.ts"
     ],
     "format": [
       "esm"

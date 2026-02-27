@@ -1,33 +1,51 @@
 /**
  * TITAN — Onboarding Wizard
- * Interactive setup for first-time users.
+ * Interactive setup for first-time users. Covers all key settings.
  */
-import { select, input, confirm, password } from '@inquirer/prompts';
+import { select, input, confirm, password, checkbox } from '@inquirer/prompts';
 import chalk from 'chalk';
-import { saveConfig, getDefaultConfig, loadConfig } from '../config/config.js';
+import { saveConfig, getDefaultConfig } from '../config/config.js';
 import { TITAN_HOME, TITAN_WORKSPACE, TITAN_SKILLS_DIR, TITAN_CONFIG_PATH } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
 import { initMemory } from '../memory/memory.js';
-import logger from '../utils/logger.js';
 
-export async function runOnboard(installDaemon?: boolean): Promise<void> {
-    console.log(chalk.cyan('\n🚀 Welcome to TITAN Setup!\n'));
-    console.log(chalk.gray('This wizard will help you configure your personal AI assistant.\n'));
+// ─── Ollama helpers ───────────────────────────────────────────────
+async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
+    try {
+        const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) return [];
+        const json = await res.json() as { models?: { name: string }[] };
+        return (json.models || []).map((m) => m.name).filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+// ─── Main wizard ──────────────────────────────────────────────────
+export async function runOnboard(_installDaemon?: boolean): Promise<void> {
+    console.log(chalk.cyan('\n╔══════════════════════════════════════════╗'));
+    console.log(chalk.cyan('║   ⚡ Welcome to TITAN Setup Wizard!      ║'));
+    console.log(chalk.cyan('╚══════════════════════════════════════════╝\n'));
+    console.log(chalk.gray('This wizard will configure your personal AI assistant.\n'));
+    console.log(chalk.gray('Press Ctrl+C at any time to cancel.\n'));
 
     const config = getDefaultConfig();
 
-    // Step 1: Choose AI provider
-    console.log(chalk.yellow('─── Step 1: AI Provider ───\n'));
+    // ─── Step 1: Primary AI Provider ─────────────────────────────
+    console.log(chalk.yellow('─── Step 1 of 7: AI Provider ───\n'));
 
     const provider = await select({
-        message: 'Which AI provider would you like to use?',
+        message: 'Which AI provider would you like to use as your primary?',
         choices: [
-            { name: 'Anthropic (Claude) — Recommended', value: 'anthropic' },
-            { name: 'OpenAI (GPT-4)', value: 'openai' },
-            { name: 'Google (Gemini)', value: 'google' },
-            { name: 'Ollama (Local models)', value: 'ollama' },
+            { name: '🟣 Anthropic (Claude) — Best reasoning, recommended', value: 'anthropic' },
+            { name: '🟢 OpenAI (GPT-4o) — Great all-rounder', value: 'openai' },
+            { name: '🔵 Google (Gemini) — Fast & multimodal', value: 'google' },
+            { name: '🟠 Ollama (Local) — Free, private, runs on your machine', value: 'ollama' },
         ],
     });
+
+    // ─── Step 2: Model Selection ──────────────────────────────────
+    console.log(chalk.yellow('\n─── Step 2 of 7: Model ───\n'));
 
     if (provider === 'ollama') {
         const ollamaUrl = await input({
@@ -35,150 +53,249 @@ export async function runOnboard(installDaemon?: boolean): Promise<void> {
             default: 'http://localhost:11434',
         });
         config.providers.ollama.baseUrl = ollamaUrl;
-        config.agent.model = 'ollama/llama3.1';
+
+        console.log(chalk.gray(`\n  🔍 Detecting models at ${ollamaUrl}...`));
+        const installedModels = await fetchOllamaModels(ollamaUrl);
+
+        if (installedModels.length > 0) {
+            console.log(chalk.green(`  ✅ Found ${installedModels.length} installed model(s)\n`));
+            const chosen = await select({
+                message: 'Select a model to use:',
+                choices: installedModels.map((m) => ({ name: m, value: `ollama/${m}` })),
+            });
+            config.agent.model = chosen;
+        } else {
+            console.log(chalk.yellow('  ⚠️  No models detected (Ollama may not be running, or no models pulled yet).'));
+            console.log(chalk.gray('  Run: ollama pull llama3.1   to install a model\n'));
+            const modelName = await input({
+                message: 'Enter the Ollama model name to use:',
+                default: 'llama3.1',
+            });
+            config.agent.model = `ollama/${modelName}`;
+        }
     } else {
+        // Cloud provider — get API key
         const apiKey = await password({
             message: `Enter your ${provider} API key:`,
+            mask: '*',
         });
+
+        const modelChoices: Record<string, { name: string; value: string }[]> = {
+            anthropic: [
+                { name: 'claude-sonnet-4-20250514 (Latest, recommended)', value: 'anthropic/claude-sonnet-4-20250514' },
+                { name: 'claude-opus-4-0 (Most capable, slower)', value: 'anthropic/claude-opus-4-0' },
+                { name: 'claude-3-5-haiku-20241022 (Fastest, cheapest)', value: 'anthropic/claude-3-5-haiku-20241022' },
+            ],
+            openai: [
+                { name: 'gpt-4o (Recommended)', value: 'openai/gpt-4o' },
+                { name: 'gpt-4o-mini (Fast & cheap)', value: 'openai/gpt-4o-mini' },
+                { name: 'o3 (Best reasoning)', value: 'openai/o3' },
+                { name: 'o4-mini (Fast reasoning)', value: 'openai/o4-mini' },
+            ],
+            google: [
+                { name: 'gemini-2.5-flash (Recommended)', value: 'google/gemini-2.5-flash' },
+                { name: 'gemini-2.5-pro (Most capable)', value: 'google/gemini-2.5-pro' },
+                { name: 'gemini-2.0-flash (Fast)', value: 'google/gemini-2.0-flash' },
+            ],
+        };
+
+        const models = modelChoices[provider] || [];
+        const selectedModel = await select({
+            message: 'Which model would you like to use?',
+            choices: [...models, { name: '✏️  Enter manually', value: '__manual__' }],
+        });
+
+        if (selectedModel === '__manual__') {
+            config.agent.model = await input({ message: 'Enter model identifier:' });
+        } else {
+            config.agent.model = selectedModel;
+        }
+
         if (provider === 'anthropic') {
             config.providers.anthropic.apiKey = apiKey;
-            config.agent.model = 'anthropic/claude-sonnet-4-20250514';
         } else if (provider === 'openai') {
             config.providers.openai.apiKey = apiKey;
-            config.agent.model = 'openai/gpt-4o';
         } else if (provider === 'google') {
             config.providers.google.apiKey = apiKey;
-            config.agent.model = 'google/gemini-2.5-flash';
+        }
+
+        // Offer to add additional providers as fallback
+        const addFallback = await confirm({
+            message: 'Add a second provider as fallback (for failover if the primary is unavailable)?',
+            default: false,
+        });
+
+        if (addFallback) {
+            const fallbackProviders = ['anthropic', 'openai', 'google', 'ollama'].filter((p) => p !== provider);
+            const fallback = await select({
+                message: 'Select fallback provider:',
+                choices: fallbackProviders.map((p) => ({ name: p.charAt(0).toUpperCase() + p.slice(1), value: p })),
+            });
+            if (fallback === 'ollama') {
+                const ollamaUrl = await input({ message: 'Ollama base URL:', default: 'http://localhost:11434' });
+                config.providers.ollama.baseUrl = ollamaUrl;
+            } else {
+                const fallbackKey = await password({ message: `Enter your ${fallback} API key:`, mask: '*' });
+                if (fallback === 'anthropic') config.providers.anthropic.apiKey = fallbackKey;
+                else if (fallback === 'openai') config.providers.openai.apiKey = fallbackKey;
+                else if (fallback === 'google') config.providers.google.apiKey = fallbackKey;
+            }
         }
     }
 
-    // Step 2: Model selection
-    console.log(chalk.yellow('\n─── Step 2: Model ───\n'));
+    // ─── Step 3: Autonomy Mode ────────────────────────────────────
+    console.log(chalk.yellow('\n─── Step 3 of 7: Autonomy ───\n'));
+    console.log(chalk.gray('  Controls how independently TITAN acts.\n'));
 
-    const useDefault = await confirm({
-        message: `Use default model (${config.agent.model})?`,
+    const autonomyMode = await select({
+        message: 'How much autonomy should TITAN have?',
+        choices: [
+            {
+                name: '🟡 Supervised (Recommended) — safe ops run freely, dangerous ops ask first',
+                value: 'supervised',
+            },
+            {
+                name: '🟢 Autonomous — full auto, acts without asking. Best for power users.',
+                value: 'autonomous',
+            },
+            {
+                name: '🔴 Locked — every single action requires your approval.',
+                value: 'locked',
+            },
+        ],
+    });
+    config.autonomy.mode = autonomyMode as 'supervised' | 'autonomous' | 'locked';
+
+    // ─── Step 4: Security / Sandbox ──────────────────────────────
+    console.log(chalk.yellow('\n─── Step 4 of 7: Security ───\n'));
+
+    const sandboxMode = await select({
+        message: 'Sandbox mode for shell commands:',
+        choices: [
+            { name: '🖥️  Host (Full access — single user machines)', value: 'host' },
+            { name: '🐳 Docker (Isolated containers — recommended for shared machines)', value: 'docker' },
+            { name: '🚫 None (No restrictions — not recommended)', value: 'none' },
+        ],
+    });
+    config.security.sandboxMode = sandboxMode as 'host' | 'docker' | 'none';
+
+    const enableShield = await confirm({
+        message: 'Enable Prompt Injection Shield? (blocks attempts to hijack TITAN via chat messages)',
         default: true,
     });
-
-    if (!useDefault) {
-        const model = await input({
-            message: 'Enter model identifier (e.g., anthropic/claude-opus-4-0):',
-            default: config.agent.model,
-        });
-        config.agent.model = model;
-    }
-
-    // Step 3: Channels
-    console.log(chalk.yellow('\n─── Step 3: Channels ───\n'));
-
-    const enableChannels = await confirm({
-        message: 'Would you like to set up messaging channels (Discord, Telegram, Slack)?',
-        default: false,
-    });
-
-    if (enableChannels) {
-        const selectedChannels = await select({
-            message: 'Which channel to configure?',
+    config.security.shield.enabled = enableShield;
+    if (enableShield) {
+        const shieldMode = await select({
+            message: 'Shield strictness:',
             choices: [
-                { name: 'Discord', value: 'discord' },
-                { name: 'Telegram', value: 'telegram' },
-                { name: 'Slack', value: 'slack' },
-                { name: 'Skip for now', value: 'skip' },
+                { name: 'Strict (recommended) — blocks suspicious payloads aggressively', value: 'strict' },
+                { name: 'Standard — blocks only obvious injection attempts', value: 'standard' },
             ],
         });
+        config.security.shield.mode = shieldMode as 'strict' | 'standard';
+    }
 
-        if (selectedChannels !== 'skip') {
-            const token = await password({
-                message: `Enter your ${selectedChannels} bot token:`,
-            });
-            if (selectedChannels === 'discord') {
+    // ─── Step 5: Channels ─────────────────────────────────────────
+    console.log(chalk.yellow('\n─── Step 5 of 7: Messaging Channels ───\n'));
+    console.log(chalk.gray('  Connect TITAN to Discord, Telegram, Slack, etc. (all optional)\n'));
+
+    const channelChoices = await checkbox({
+        message: 'Which channels would you like to configure? (space to select, enter to continue)',
+        choices: [
+            { name: '🎮 Discord', value: 'discord' },
+            { name: '✈️  Telegram', value: 'telegram' },
+            { name: '💼 Slack', value: 'slack' },
+            { name: '⏭️  Skip — configure later with `titan config`', value: 'skip' },
+        ],
+    });
+
+    if (!channelChoices.includes('skip')) {
+        for (const channel of channelChoices) {
+            const token = await password({ message: `  ${channel} bot token:`, mask: '*' });
+            if (channel === 'discord') {
                 config.channels.discord.enabled = true;
                 config.channels.discord.token = token;
-            } else if (selectedChannels === 'telegram') {
+            } else if (channel === 'telegram') {
                 config.channels.telegram.enabled = true;
                 config.channels.telegram.token = token;
-            } else if (selectedChannels === 'slack') {
+            } else if (channel === 'slack') {
                 config.channels.slack.enabled = true;
                 config.channels.slack.token = token;
             }
         }
     }
 
-    // Step 4: Security
-    console.log(chalk.yellow('\n─── Step 4: Security ───\n'));
+    // ─── Step 6: Gateway ─────────────────────────────────────────
+    console.log(chalk.yellow('\n─── Step 6 of 7: Gateway ───\n'));
+    console.log(chalk.gray('  Mission Control is served at http://127.0.0.1:<port>\n'));
 
-    const sandboxMode = await select({
-        message: 'Sandbox mode for non-main sessions:',
+    const useDefaultPort = await confirm({
+        message: 'Use default gateway port (18789)?',
+        default: true,
+    });
+    if (!useDefaultPort) {
+        const port = await input({ message: 'Enter gateway port:', default: '18789' });
+        config.gateway.port = parseInt(port, 10);
+    }
+
+    const enableGatewayAuth = await confirm({
+        message: 'Enable gateway authentication? (recommended if accessible from other devices)',
+        default: false,
+    });
+    if (enableGatewayAuth) {
+        const authMode = await select({
+            message: 'Authentication mode:',
+            choices: [
+                { name: 'Token (API key in request header)', value: 'token' },
+                { name: 'Password (browser prompt)', value: 'password' },
+            ],
+        });
+        config.gateway.auth.mode = authMode as 'token' | 'password';
+        if (authMode === 'token') {
+            config.gateway.auth.token = await password({ message: 'Set a gateway token:', mask: '*' });
+        } else {
+            config.gateway.auth.password = await password({ message: 'Set a gateway password:', mask: '*' });
+        }
+    }
+
+    // ─── Step 7: Logging ─────────────────────────────────────────
+    console.log(chalk.yellow('\n─── Step 7 of 7: Logging ───\n'));
+
+    const logLevel = await select({
+        message: 'Log level:',
         choices: [
-            { name: 'Host (full access, single-user)', value: 'host' },
-            { name: 'Docker (isolated containers)', value: 'docker' },
-            { name: 'None (no restrictions)', value: 'none' },
+            { name: 'info (recommended)', value: 'info' },
+            { name: 'debug (verbose — for troubleshooting)', value: 'debug' },
+            { name: 'warn (quiet — warnings and errors only)', value: 'warn' },
+            { name: 'silent (no logs)', value: 'silent' },
         ],
     });
-    config.security.sandboxMode = sandboxMode as 'host' | 'docker' | 'none';
+    config.logging.level = logLevel as 'info' | 'debug' | 'warn' | 'silent';
 
-    // Step 5: Autonomy Mode
-    console.log(chalk.yellow('\n─── Step 5: Autonomy ───\n'));
-    console.log(chalk.gray('  This controls how much freedom TITAN has to act on its own.\n'));
-
-    const autonomyMode = await select({
-        message: 'How much autonomy should TITAN have?',
-        choices: [
-            {
-                name: '🟡 Supervised (Recommended) — Safe ops run freely, dangerous ops ask you first',
-                value: 'supervised',
-            },
-            {
-                name: '🟢 Autonomous — Full auto, TITAN acts without asking. Best for power users.',
-                value: 'autonomous',
-            },
-            {
-                name: '🔴 Locked — Every action requires your approval. Maximum control.',
-                value: 'locked',
-            },
-        ],
-    });
-    (config as any).autonomy = { mode: autonomyMode };
-
-    // Step 6: Gateway
-    console.log(chalk.yellow('\n─── Step 6: Gateway ───\n'));
-
-    const gatewayPort = await input({
-        message: 'Gateway port:',
-        default: '18789',
-    });
-    config.gateway.port = parseInt(gatewayPort, 10);
-
-    // Create directories
+    // ─── Finalise ─────────────────────────────────────────────────
     console.log(chalk.yellow('\n─── Setting up workspace ───\n'));
     ensureDir(TITAN_HOME);
     ensureDir(TITAN_WORKSPACE);
     ensureDir(TITAN_SKILLS_DIR);
-
-    // Initialize database
     initMemory();
-
-    // Save configuration
     saveConfig(config);
 
-    // Install daemon
-    if (installDaemon) {
-        console.log(chalk.yellow('\n─── Installing daemon ───\n'));
-        await installDaemonService();
-    }
-
     const modeEmoji = autonomyMode === 'autonomous' ? '🟢' : autonomyMode === 'locked' ? '🔴' : '🟡';
-    console.log(chalk.green('\n✅ TITAN setup complete!\n'));
-    console.log(chalk.white('  Configuration:'));
-    console.log(chalk.gray(`  Model:    ${config.agent.model}`));
-    console.log(chalk.gray(`  Autonomy: ${modeEmoji} ${autonomyMode}`));
-    console.log(chalk.gray(`  Sandbox:  ${config.security.sandboxMode}`));
-    console.log(chalk.white('\n  Quick start:'));
-    console.log(chalk.gray('  $ titan gateway          # Start Mission Control'));
-    console.log(chalk.gray('  $ titan agent -m "Hello" # Send a message'));
-    console.log(chalk.gray('  $ titan doctor           # Check everything is OK'));
-    console.log(chalk.gray(`\n  Config:    ${TITAN_CONFIG_PATH}`));
-    console.log(chalk.gray(`  Dashboard: http://127.0.0.1:${config.gateway.port}\n`));
+
+    console.log(chalk.green('\n╔══════════════════════════════════════════╗'));
+    console.log(chalk.green('║   ✅  TITAN is ready!                    ║'));
+    console.log(chalk.green('╚══════════════════════════════════════════╝\n'));
+    console.log(chalk.white('  Your configuration:'));
+    console.log(chalk.gray(`    Model:    ${config.agent.model}`));
+    console.log(chalk.gray(`    Autonomy: ${modeEmoji} ${autonomyMode}`));
+    console.log(chalk.gray(`    Sandbox:  ${config.security.sandboxMode}`));
+    console.log(chalk.gray(`    Logs:     ${config.logging.level}`));
+    console.log(chalk.gray(`    Config:   ${TITAN_CONFIG_PATH}`));
+    console.log(chalk.white('\n  Next steps:'));
+    console.log(chalk.cyan('    titan gateway          ') + chalk.gray(`→ Open Mission Control at http://127.0.0.1:${config.gateway.port}`));
+    console.log(chalk.cyan('    titan agent -m "Hello" ') + chalk.gray('→ Send a direct message'));
+    console.log(chalk.cyan('    titan doctor           ') + chalk.gray('→ Diagnose configuration & connectivity'));
+    console.log();
 }
 
 async function installDaemonService(): Promise<void> {
@@ -209,9 +326,8 @@ WantedBy=default.target
         console.log(chalk.gray('  $ systemctl --user enable titan'));
         console.log(chalk.gray('  $ systemctl --user start titan'));
     } else if (platform === 'darwin') {
-        console.log(chalk.gray('Creating launchd plist...'));
-        console.log(chalk.yellow('  macOS daemon installation - create a LaunchAgent plist manually.'));
+        console.log(chalk.yellow('  macOS: create a LaunchAgent plist manually to run as a daemon.'));
     } else {
-        console.log(chalk.yellow('  Daemon installation not supported on this platform.'));
+        console.log(chalk.yellow('  Daemon installation not supported on this platform yet.'));
     }
 }

@@ -26,7 +26,7 @@
 ```bash
 npm install -g titan-agent
 titan onboard          # Interactive setup wizard (choose your AI provider + API key)
-titan gateway          # Start Mission Control at http://localhost:18789
+titan gateway          # Start Mission Control at http://localhost:48420
 titan agent -m "Hello" # Send a direct message
 ```
 
@@ -131,7 +131,7 @@ Anthropic (Claude) · OpenAI (GPT) · Google (Gemini) · Ollama (local) — with
 
 ## Mission Control
 
-TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard served from the gateway at `http://localhost:18789`.
+TITAN ships with a premium **Mission Control** web GUI — a dark-mode dashboard served from the gateway at `http://localhost:48420`.
 
 ### 11 Panels:
 | Panel | Description |
@@ -257,7 +257,7 @@ Every feature request is reviewed. The best ideas make it into the roadmap. Let'
 | Command | Description |
 |---------|-------------|
 | `titan onboard` | Interactive setup wizard |
-| `titan gateway` | Start Mission Control (port 18789) |
+| `titan gateway` | Start Mission Control (port 48420) |
 | `titan agent -m "..."` | Direct message |
 | `titan send --to ch:id -m "..."` | Send to channel |
 | `titan pairing` | DM access control |

@@ -4,7 +4,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 
-export const TITAN_VERSION = '2026.4.0';
+export const TITAN_VERSION = '2026.4.8';
 export const TITAN_NAME = 'TITAN';
 export const TITAN_FULL_NAME = 'The Intelligent Task Automation Network';
 export const TITAN_ASCII_LOGO = `
@@ -37,8 +37,8 @@ export const TOOLS_MD = join(TITAN_WORKSPACE, 'TOOLS.md');
 
 // Gateway defaults
 export const DEFAULT_GATEWAY_HOST = '127.0.0.1';
-export const DEFAULT_GATEWAY_PORT = 18789;
-export const DEFAULT_WEB_PORT = 18790;
+export const DEFAULT_GATEWAY_PORT = 48420;
+export const DEFAULT_WEB_PORT = 48421;
 
 // Agent defaults
 export const DEFAULT_MODEL = 'anthropic/claude-sonnet-4-20250514';

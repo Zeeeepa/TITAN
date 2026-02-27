@@ -57,7 +57,7 @@ export const GatewayConfigSchema = z.object({
 export const AgentConfigSchema = z.object({
     model: z.string().default(DEFAULT_MODEL),
     maxTokens: z.number().default(DEFAULT_MAX_TOKENS),
-    temperature: z.number().default(DEFAULT_TEMPERATURE),
+    temperature: z.number().min(0).max(2).default(DEFAULT_TEMPERATURE),
     systemPrompt: z.string().optional(),
     workspace: z.string().optional(),
     thinkingMode: z.enum(['off', 'low', 'medium', 'high']).default('medium'),

@@ -48,7 +48,7 @@ program
 program
     .command('gateway')
     .description('Start the TITAN gateway server')
-    .option('-p, --port <port>', 'Gateway port', '18789')
+    .option('-p, --port <port>', 'Gateway port', '48420')
     .option('-H, --host <host>', 'Gateway host', '127.0.0.1')
     .option('-v, --verbose', 'Enable verbose logging')
     .action(async (options) => {
@@ -383,7 +383,7 @@ program
         if (options.set) {
             updateConfig({ agent: { ...config.agent, model: options.set } });
             console.log(chalk.green(`\n✅ Model switched to: ${options.set}`));
-            console.log(chalk.gray('  Active from next message.\''));
+            console.log(chalk.gray('  Active from next message.'));
         } else if (options.list) {
             console.log(chalk.cyan('\n🧠 Available Models\n'));
             const models = [

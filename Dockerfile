@@ -27,10 +27,10 @@ RUN mkdir -p /home/titan/.titan
 ENV NODE_ENV=production
 ENV TITAN_HOME=/home/titan/.titan
 
-EXPOSE 18789
+EXPOSE 48420
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:18789/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:48420/api/health || exit 1
 
 ENTRYPOINT ["node", "dist/cli/index.js"]
 CMD ["gateway"]

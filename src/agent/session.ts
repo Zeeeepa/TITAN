@@ -6,6 +6,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb, getHistory, saveMessage, type ConversationMessage } from '../memory/memory.js';
 import type { ChatMessage } from '../providers/base.js';
 import { MAX_CONTEXT_MESSAGES, SESSION_TIMEOUT_MS } from '../utils/constants.js';
+import { generateKey } from '../security/encryption.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Session';
@@ -82,12 +83,12 @@ export function getOrCreateSession(channel: string, userId: string, agentId: str
     };
 
     if (isEncrypted) {
-        import('../security/encryption.js').then(({ generateKey }) => {
+        try {
             session.e2eKey = generateKey().toString('base64');
             logger.info(COMPONENT, `Generated E2E key for session ${session.id}`);
-        }).catch(err => {
-            logger.error(COMPONENT, `Failed to load encryption module: ${err}`);
-        });
+        } catch (err) {
+            logger.error(COMPONENT, `Failed to generate E2E key: ${err}`);
+        }
     }
 
     store.sessions.push({

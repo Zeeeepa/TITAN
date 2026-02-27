@@ -289,11 +289,11 @@ export async function runOnboard(_installDaemon?: boolean): Promise<void> {
     console.log(chalk.gray('  Mission Control is served at http://127.0.0.1:<port>\n'));
 
     const useDefaultPort = await confirm({
-        message: 'Use default gateway port (18789)?',
+        message: 'Use default gateway port (48420)?',
         default: true,
     });
     if (!useDefaultPort) {
-        const port = await input({ message: 'Enter gateway port:', default: '18789' });
+        const port = await input({ message: 'Enter gateway port:', default: '48420' });
         config.gateway.port = parseInt(port, 10);
     }
 

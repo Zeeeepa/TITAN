@@ -62,7 +62,12 @@ async function connectStdio(server: McpServer): Promise<McpConnection> {
             return;
         }
 
-        const [cmd, ...args] = server.command.split(' ');
+        const parts = server.command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+        const [cmd, ...args] = parts;
+        if (!cmd) {
+            resolve({ server, tools: [], status: 'error', error: 'Empty command string' });
+            return;
+        }
         const allArgs = [...args, ...(server.args || [])];
 
         const proc = spawn(cmd, allArgs, {

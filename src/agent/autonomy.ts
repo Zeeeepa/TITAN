@@ -163,19 +163,27 @@ async function requestApproval(
 
     // If we have a HITL callback (from gateway/WebChat), use it
     if (hitlCallback) {
-        const action: PendingAction = {
-            id,
-            toolName,
-            args,
-            risk,
-            timestamp: Date.now(),
-            resolve: () => { }, // Placeholder
-        };
-        try {
-            return await hitlCallback(action);
-        } catch {
-            return false;
-        }
+        const cb = hitlCallback; // capture so TypeScript narrows correctly inside async callback
+        let resolved = false;
+        return new Promise<boolean>((res) => {
+            const resolve = (approved: boolean) => {
+                if (!resolved) {
+                    resolved = true;
+                    pendingActions.delete(id);
+                    res(approved);
+                }
+            };
+            const action: PendingAction = {
+                id,
+                toolName,
+                args,
+                risk,
+                timestamp: Date.now(),
+                resolve,
+            };
+            pendingActions.set(id, action);
+            cb(action).then(resolve).catch(() => resolve(false));
+        });
     }
 
     // CLI mode — auto-approve with warning for supervised mode (since user is present)

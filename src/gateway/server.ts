@@ -73,7 +73,7 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
   if (slash) {
     const { command, args } = slash;
     const params: Record<string, string> = {};
-    if (args) params['file'] = args; params['topic'] = args; params['error'] = args;
+    if (args) { params['file'] = args; params['topic'] = args; params['error'] = args; }
     try {
       let fullResponse = '';
       for await (const step of runRecipe(command, params)) {

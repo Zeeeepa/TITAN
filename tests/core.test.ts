@@ -14,7 +14,7 @@ import { LLMProvider } from '../src/providers/base.js';
 // ─── Constants ──────────────────────────────────────────────────
 describe('Constants', () => {
     it('should have correct version', () => {
-        expect(TITAN_VERSION).toBe('1.0.0');
+        expect(TITAN_VERSION).toBe('2026.4.8');
     });
 
     it('should have correct name', () => {
@@ -23,7 +23,7 @@ describe('Constants', () => {
     });
 
     it('should have valid default port', () => {
-        expect(DEFAULT_GATEWAY_PORT).toBe(19789);
+        expect(DEFAULT_GATEWAY_PORT).toBe(48420);
     });
 
     it('should have valid default model', () => {
@@ -107,7 +107,7 @@ describe('Config Schema', () => {
         expect(result.agent.model).toContain('anthropic/');
         expect(result.agent.maxTokens).toBe(8192);
         expect(result.agent.temperature).toBe(0.7);
-        expect(result.gateway.port).toBe(19789);
+        expect(result.gateway.port).toBe(48420);
         expect(result.security.sandboxMode).toBe('host');
     });
 
@@ -156,7 +156,7 @@ describe('Config Manager', () => {
     it('should return a valid default config', () => {
         const config = getDefaultConfig();
         expect(config.agent.model).toBeDefined();
-        expect(config.gateway.port).toBe(19789);
+        expect(config.gateway.port).toBe(48420);
         expect(config.security.allowedTools).toBeInstanceOf(Array);
     });
 });

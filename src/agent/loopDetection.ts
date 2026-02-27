@@ -182,7 +182,6 @@ function detectPingPong(history: ToolCallRecord[]): string | null {
 /** Reset loop detection for a session */
 export function resetLoopDetection(sessionId: string): void {
     sessionHistory.delete(sessionId);
-    globalCallCount = 0;
 }
 
 /** Get loop detection stats */

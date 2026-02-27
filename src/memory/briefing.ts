@@ -98,7 +98,7 @@ export async function checkAndSendBriefing(
 
     // Only send in the morning window (6am–11am) or if first boot of the day
     const hour = new Date().getHours();
-    if (hour < 6 || hour > 23) return;
+    if (hour < 6 || hour >= 12) return;
 
     const briefing = buildDailyBriefing();
     if (!briefing) return;

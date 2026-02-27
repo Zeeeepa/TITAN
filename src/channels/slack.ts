@@ -20,7 +20,8 @@ export class SlackChannel extends ChannelAdapter {
 
         try {
             // Dynamic import to only load Bolt when used
-            const { App } = await import('@slack/bolt' as string);
+            // @ts-ignore optional peer dependency — install with: npm install @slack/bolt
+            const { App } = await import('@slack/bolt');
             const app = new App({
                 token: channelConfig.token,
                 signingSecret: channelConfig.apiKey || '',

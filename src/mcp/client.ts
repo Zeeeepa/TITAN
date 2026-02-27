@@ -133,11 +133,12 @@ async function connectStdio(server: McpServer): Promise<McpConnection> {
         });
         proc.stdin?.write(initRequest);
 
-        // Timeout after server.timeoutMs
+        // Timeout after server.timeoutMs — also kill the lingering process
         setTimeout(() => {
             if (!initialized) {
                 connection.error = `Connection timed out after ${server.timeoutMs}ms`;
                 connection.status = 'error';
+                proc.kill();
                 resolve(connection);
             }
         }, server.timeoutMs);

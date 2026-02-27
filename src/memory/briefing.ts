@@ -105,9 +105,10 @@ export async function checkAndSendBriefing(
 
     try {
         await sender(briefing);
-        markRunToday();
         logger.info(COMPONENT, 'Daily briefing sent');
     } catch (e) {
         logger.warn(COMPONENT, `Could not send daily briefing: ${(e as Error).message}`);
+    } finally {
+        markRunToday();
     }
 }

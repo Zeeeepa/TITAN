@@ -87,7 +87,8 @@ export function getOrCreateSession(channel: string, userId: string, agentId: str
             session.e2eKey = generateKey().toString('base64');
             logger.info(COMPONENT, `Generated E2E key for session ${session.id}`);
         } catch (err) {
-            logger.error(COMPONENT, `Failed to generate E2E key: ${err}`);
+            logger.error(COMPONENT, `Failed to generate E2E key: ${err} — session will proceed without encryption`);
+            // e2eKey remains undefined; addMessage/getContextMessages handle undefined gracefully
         }
     }
 

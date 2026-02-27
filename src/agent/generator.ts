@@ -134,7 +134,7 @@ export async function generateAndInstallSkill(
         try {
             // Use tsx or tsc to compile it to JS so Node can load it dynamically
             // We'll write a tiny compiler script or use tsc directly if available globally
-            execSync(`npx tsc ${tsFilePath} --module NodeNext --moduleResolution NodeNext --target ES2022`, { stdio: 'pipe' });
+            execSync(`npx tsc "${tsFilePath}" --module NodeNext --moduleResolution NodeNext --target ES2022`, { stdio: 'pipe' });
             logger.info(COMPONENT, `Compiled ${finalName}.ts successfully.`);
         } catch (compileError: any) {
             logger.error(COMPONENT, `Compilation failed for ${finalName}`);

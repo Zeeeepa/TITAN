@@ -3,7 +3,7 @@
  * CDP-based browser automation: navigate, snapshot, click, type, evaluate.
  */
 import { registerSkill } from '../registry.js';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import logger from '../../utils/logger.js';
 
 const COMPONENT = 'Browser';
@@ -48,15 +48,16 @@ export function registerBrowserSkill(): void {
                         const url = args.url as string;
                         if (!url) return 'Error: url is required';
                         logger.info(COMPONENT, `Navigating to: ${url}`);
-                        // Use curl to fetch page content as a baseline approach
+                        // Use execFile to avoid shell injection via URL
                         return new Promise<string>((resolve) => {
-                            exec(`curl -sL --max-time 15 "${url}" | head -c 50000`, { timeout: 20000 }, (err, stdout) => {
+                            execFile('curl', ['-sL', '--max-time', '15', url], { timeout: 20000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
                                 if (err) {
                                     resolve(`Error fetching ${url}: ${err.message}`);
                                     return;
                                 }
+                                const raw = stdout.slice(0, 50000);
                                 // Strip HTML tags for text content
-                                const text = stdout
+                                const text = raw
                                     .replace(/<script[\s\S]*?<\/script>/gi, '')
                                     .replace(/<style[\s\S]*?<\/style>/gi, '')
                                     .replace(/<[^>]*>/g, ' ')
@@ -71,18 +72,19 @@ export function registerBrowserSkill(): void {
                         const url = args.url as string;
                         if (!url) return 'Error: url is required for snapshot/extract';
                         return new Promise<string>((resolve) => {
-                            exec(`curl -sL --max-time 15 "${url}" | head -c 50000`, { timeout: 20000 }, (err, stdout) => {
+                            execFile('curl', ['-sL', '--max-time', '15', url], { timeout: 20000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout) => {
                                 if (err) {
                                     resolve(`Error: ${err.message}`);
                                     return;
                                 }
+                                const raw = stdout.slice(0, 50000);
                                 // Extract title + meta description + links
-                                const title = stdout.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'No title';
-                                const desc = stdout.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"[^>]*>/i)?.[1] || '';
+                                const title = raw.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'No title';
+                                const desc = raw.match(/<meta[^>]*name="description"[^>]*content="([^"]*)"[^>]*>/i)?.[1] || '';
                                 const links: string[] = [];
                                 const linkRegex = /<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi;
                                 let m;
-                                while ((m = linkRegex.exec(stdout)) !== null && links.length < 20) {
+                                while ((m = linkRegex.exec(raw)) !== null && links.length < 20) {
                                     const text = m[2].replace(/<[^>]*>/g, '').trim();
                                     if (text && m[1] && !m[1].startsWith('#')) links.push(`  ${text}: ${m[1]}`);
                                 }

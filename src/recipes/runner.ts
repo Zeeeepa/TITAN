@@ -11,7 +11,12 @@ const COMPONENT = 'RecipeRunner';
 
 /** Interpolate {{parameter}} placeholders in a prompt */
 function interpolate(template: string, params: Record<string, string>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => params[key] ?? `<${key}>`);
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+        if (params[key] === undefined) {
+            logger.warn(COMPONENT, `Missing recipe parameter: {{${key}}}`);
+        }
+        return params[key] ?? `<${key}>`;
+    });
 }
 
 /** Run a recipe and yield each step's prompt as a string */

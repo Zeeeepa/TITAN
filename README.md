@@ -23,39 +23,22 @@
 
 **Requirements:** Node.js ≥ 20, npm ≥ 9
 
-### Option 1 — Run from Source (Recommended)
 ```bash
-# Clone the repo
+npm install -g titan-agent
+titan onboard          # Interactive setup wizard (choose your AI provider + API key)
+titan gateway          # Start Mission Control at http://localhost:18789
+titan agent -m "Hello" # Send a direct message
+```
+
+### Run from Source (for developers)
+```bash
 git clone https://github.com/Djtony707/TITAN.git
 cd TITAN/titan
-
-# Install dependencies
 npm install
-
-# (Optional) Copy environment template and add your API keys
-cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY / OPENAI_API_KEY etc.
-
-# Run the interactive setup wizard
+cp .env.example .env   # Add your API keys
 npm run onboard
-
-# Start the Mission Control dashboard (http://localhost:18789)
 npm run gateway
-
-# Or send a direct message
-npm run dev -- agent -m "Hello TITAN!"
 ```
-
-### Option 2 — Link as Global CLI (dev mode)
-```bash
-# From the titan/ directory, after npm install:
-npm link
-titan onboard
-titan gateway
-titan agent -m "Hello!"
-```
-
-> **npm publish coming soon.** Once published, you will be able to install with `npm install -g titan-agent`.
 
 
 ## Why TITAN?

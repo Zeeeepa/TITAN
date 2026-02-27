@@ -7,18 +7,24 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { TITAN_VERSION, TITAN_ASCII_LOGO, TITAN_FULL_NAME, TITAN_CONFIG_PATH } from '../utils/constants.js';
 import { setLogLevel, LogLevel } from '../utils/logger.js';
-import { loadConfig } from '../config/config.js';
+import { loadConfig, updateConfig } from '../config/config.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory } from '../memory/memory.js';
-import { initBuiltinSkills, getSkills, loadAutoSkills } from '../skills/registry.js';
+import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
+import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { existsSync, writeFileSync, unlinkSync } from 'fs';
 import { TITAN_HOME } from '../utils/constants.js';
 import { runDoctor } from './doctor.js';
 import { runOnboard } from './onboard.js';
 import { approvePairing, denyPairing, listPendingPairings, listApprovedUsers } from '../security/pairing.js';
 import { spawnAgent, stopAgent, listAgents, getAgentCapacity } from '../agent/multiAgent.js';
+import { listMcpServers, addMcpServer, removeMcpServer, getMcpStatus } from '../mcp/registry.js';
+import { testMcpServer } from '../mcp/client.js';
+import { listRecipes, getRecipe, deleteRecipe, seedBuiltinRecipes } from '../recipes/store.js';
+import { runRecipe } from '../recipes/runner.js';
+import { listMonitors, addMonitor, removeMonitor } from '../agent/monitor.js';
+import { searchSkills, installFromClaWHub, installFromUrl } from '../skills/marketplace.js';
 
 const program = new Command();
 
@@ -205,94 +211,245 @@ program
 // ─── SKILLS ──────────────────────────────────────────────────────
 program
     .command('skills')
-    .description('Manage TITAN skills')
+    .description('Manage TITAN skills & marketplace')
     .option('--list', 'List all installed skills')
-    .option('--install <name>', 'Install a skill from the marketplace')
+    .option('--search <query>', 'Search ClaWHub marketplace')
+    .option('--install <name>', 'Install a skill (from ClaWHub or URL) — security scanned automatically')
     .option('--remove <name>', 'Remove an installed skill')
+    .option('--force', 'Force install even if high-severity scan warnings exist')
     .action(async (options) => {
         initMemory();
         await initBuiltinSkills();
 
-        if (options.install) {
-            const skillName = options.install as string;
-            console.log(chalk.cyan(`\n🔍 Searching marketplace for '${skillName}'...`));
-
-            try {
-                // In a real scenario, this would point to a central repo like https://raw.githubusercontent.com/.../manifest.json
-                // For demonstration, we'll use a mocked public gist URL or a structure placeholder.
-                const MANIFEST_URL = 'https://raw.githubusercontent.com/Djtony707/TITAN/main/marketplace/manifest.json';
-
-                // Fallback direct URL if the manifest isn't deployed yet, mimicking what the manifest would provide
-                const skillUrl = `https://raw.githubusercontent.com/Djtony707/TITAN/main/marketplace/skills/${skillName}.ts`;
-
-                let fetchUrl = skillUrl;
-                try {
-                    const manifestRes = await fetch(MANIFEST_URL);
-                    if (manifestRes.ok) {
-                        const manifest = await manifestRes.json() as Record<string, { url: string }>;
-                        if (manifest[skillName]) {
-                            fetchUrl = manifest[skillName].url;
-                        }
-                    }
-                } catch {
-                    // Ignore manifest fetch error and try direct URL
+        if (options.search) {
+            console.log(chalk.cyan(`\n🔍 Searching ClaWHub for "${options.search}"...\n`));
+            const results = await searchSkills(options.search);
+            if (results.skills.length === 0) {
+                console.log(chalk.gray('  No skills found. Try a different search term.'));
+            } else {
+                for (const skill of results.skills) {
+                    const verified = skill.verified ? chalk.green('✓ Verified') : chalk.gray('Unverified');
+                    console.log(`  ${chalk.white(skill.name)} ${chalk.gray(`v${skill.version}`)} — ${verified}`);
+                    console.log(`     ${chalk.gray(skill.description)}`);
+                    console.log(`     ${chalk.gray(`by ${skill.author} · ⭐ ${skill.rating.toFixed(1)} · ${skill.downloads} downloads`)}\n`);
                 }
-
-                console.log(chalk.gray(`📥 Downloading from ${fetchUrl}...`));
-                const res = await fetch(fetchUrl);
-
-                if (!res.ok) {
-                    throw new Error(`Skill '${skillName}' not found in marketplace (HTTP ${res.status}).`);
-                }
-
-                const code = await res.text();
-                const autoDir = join(TITAN_HOME, 'skills', 'auto');
-                const tsPath = join(autoDir, `${skillName}.ts`);
-
-                writeFileSync(tsPath, code, 'utf-8');
-                console.log(chalk.green(`✅ Successfully downloaded source to ${tsPath}`));
-
-                // Compile it
-                const { execSync } = await import('child_process');
-                console.log(chalk.gray(`⚙️ Compiling ${skillName}...`));
-                execSync(`npx tsc ${tsPath} --module NodeNext --moduleResolution NodeNext --target ES2022`, { stdio: 'pipe' });
-
-                console.log(chalk.green(`✨ Skill '${skillName}' installed successfully! It will be available on next boot.`));
-            } catch (e: any) {
-                console.log(chalk.red(`❌ Installation failed: ${e.message}`));
+            }
+        } else if (options.install) {
+            const name = options.install as string;
+            const isUrl = name.startsWith('http');
+            console.log(chalk.cyan(`\n🛡️  Installing "${name}" with security scan...`));
+            const result = isUrl
+                ? await installFromUrl(name, { force: options.force })
+                : await installFromClaWHub(name, { force: options.force });
+            if (result.success) {
+                console.log(chalk.green(`\n✅ Installed: ${result.skillName}`));
+                console.log(chalk.gray(`   Path: ${result.installedPath}`));
+                console.log(chalk.gray('   Restart TITAN or run `titan gateway` to activate.'));
+            } else {
+                console.log(chalk.red(`\n❌ Installation failed: ${result.error}`));
             }
         } else if (options.remove) {
-            const skillName = options.remove as string;
+            const name = options.remove as string;
             const autoDir = join(TITAN_HOME, 'skills', 'auto');
-            const tsPath = join(autoDir, `${skillName}.ts`);
-            const jsPath = join(autoDir, `${skillName}.js`);
-
+            const tsPath = join(autoDir, `${name}.ts`);
+            const jsPath = join(autoDir, `${name}.js`);
             let removed = false;
-            if (existsSync(tsPath)) {
-                unlinkSync(tsPath);
-                removed = true;
-            }
-            if (existsSync(jsPath)) {
-                unlinkSync(jsPath);
-                removed = true;
-            }
-
-            if (removed) {
-                console.log(chalk.green(`🗑️ Successfully removed '${skillName}'.`));
-            } else {
-                console.log(chalk.yellow(`⚠️ Skill '${skillName}' not found in auto-generated directory.`));
-                console.log(chalk.gray('Note: Built-in skills cannot be removed via CLI.'));
-            }
-        } else if (options.list || (!options.install && !options.remove)) {
+            if (existsSync(tsPath)) { unlinkSync(tsPath); removed = true; }
+            if (existsSync(jsPath)) { unlinkSync(jsPath); removed = true; }
+            console.log(removed ? chalk.green(`🗑️  Removed "${name}"`) : chalk.yellow(`⚠️  Skill "${name}" not found.`));
+        } else {
             const skills = getSkills();
             console.log(chalk.cyan(`\n📦 TITAN Skills (${skills.length} installed)\n`));
             for (const skill of skills) {
                 const status = skill.enabled ? chalk.green('✅') : chalk.red('❌');
-                console.log(`  ${status} ${chalk.white(skill.name)} ${chalk.gray(`v${skill.version}`)} ${chalk.gray(`(${skill.source})`)}`);
+                console.log(`  ${status} ${chalk.white(skill.name)} ${chalk.gray(`v${skill.version} (${skill.source})`)}`);
                 console.log(`     ${chalk.gray(skill.description)}`);
+            }
+            console.log(chalk.gray('\n  Search marketplace: titan skills --search <query>'));
+            console.log(chalk.gray('  Install from ClaWHub: titan skills --install <name>'));
+        }
+    });
+
+// ─── MCP ─────────────────────────────────────────────────────────
+program
+    .command('mcp')
+    .description('Manage MCP (Model Context Protocol) server connections')
+    .option('--list', 'List configured MCP servers')
+    .option('--add <name>', 'Add a new MCP server')
+    .option('--command <cmd>', 'Command to run the MCP server (for stdio type)')
+    .option('--url <url>', 'URL for HTTP MCP servers')
+    .option('--remove <id>', 'Remove an MCP server')
+    .option('--test <id>', 'Test connection to an MCP server')
+    .action(async (options) => {
+        if (options.add && (options.command || options.url)) {
+            const id = options.add.toLowerCase().replace(/\s+/g, '-');
+            const server = addMcpServer({
+                id,
+                name: options.add,
+                description: '',
+                type: options.url ? 'http' : 'stdio',
+                command: options.command,
+                url: options.url,
+            });
+            console.log(chalk.green(`\n✅ Added MCP server: ${server.name}`));
+            console.log(chalk.gray('  Start the gateway to activate it.'));
+        } else if (options.remove) {
+            removeMcpServer(options.remove);
+            console.log(chalk.green(`🗑️  Removed MCP server: ${options.remove}`));
+        } else if (options.test) {
+            const servers = listMcpServers();
+            const server = servers.find((s) => s.id === options.test);
+            if (!server) { console.log(chalk.red(`MCP server "${options.test}" not found`)); return; }
+            console.log(chalk.cyan(`\n🔌 Testing MCP server: ${server.name}...`));
+            const result = await testMcpServer(server);
+            if (result.ok) {
+                console.log(chalk.green(`  ✅ Connected — ${result.tools} tool(s) available`));
+            } else {
+                console.log(chalk.red(`  ❌ Failed: ${result.error}`));
+            }
+        } else {
+            const servers = listMcpServers();
+            const status = getMcpStatus();
+            console.log(chalk.cyan(`\n🔌 MCP Servers (${servers.length})\n`));
+            if (servers.length === 0) {
+                console.log(chalk.gray('  No MCP servers configured.'));
+                console.log(chalk.gray('  Add one: titan mcp --add "GitHub" --command "npx -y @modelcontextprotocol/server-github"'));
+            }
+            for (const server of servers) {
+                const live = status.find((s) => s.server.id === server.id);
+                const statusIcon = live?.status === 'connected' ? chalk.green('🟢') : chalk.gray('⚪');
+                console.log(`  ${statusIcon} ${chalk.white(server.name)} ${chalk.gray(`(${server.id})`)}`);
+                console.log(`     Type: ${server.type} | Tools: ${live?.toolCount ?? '–'} | Enabled: ${server.enabled}`);
             }
         }
     });
+
+// ─── RECIPE ──────────────────────────────────────────────────────
+program
+    .command('recipe')
+    .description('Manage and run TITAN recipes (reusable workflows)')
+    .option('--list', 'List all recipes')
+    .option('--run <id>', 'Run a recipe by ID or slash command')
+    .option('--param <key=value>', 'Parameter for the recipe (can be used multiple times)', (v, a: string[]) => [...a, v], [] as string[])
+    .option('--delete <id>', 'Delete a recipe')
+    .action(async (options) => {
+        seedBuiltinRecipes();
+        if (options.run) {
+            const params: Record<string, string> = {};
+            for (const p of options.param as string[]) {
+                const [k, ...rest] = p.split('=');
+                params[k] = rest.join('=');
+            }
+            const recipe = getRecipe(options.run);
+            if (!recipe) { console.log(chalk.red(`Recipe "${options.run}" not found`)); return; }
+            console.log(chalk.cyan(`\n▶  Running recipe: ${recipe.name}\n`));
+            initMemory();
+            await initBuiltinSkills();
+            const config = loadConfig();
+            for await (const step of runRecipe(options.run, params)) {
+                console.log(chalk.gray(`\nStep ${step.stepIndex + 1}/${step.total}:`));
+                console.log(chalk.white(step.prompt));
+                const response = await processMessage(step.prompt, 'cli-recipe', 'user');
+                console.log(chalk.cyan('\nTITAN: ') + response.content);
+            }
+        } else if (options.delete) {
+            deleteRecipe(options.delete);
+            console.log(chalk.green(`🗑️  Deleted recipe: ${options.delete}`));
+        } else {
+            const recipes = listRecipes();
+            seedBuiltinRecipes();
+            const all = listRecipes();
+            console.log(chalk.cyan(`\n📋 TITAN Recipes (${all.length})\n`));
+            for (const r of all) {
+                const slash = r.slashCommand ? chalk.yellow(` /${r.slashCommand}`) : '';
+                console.log(`  ${chalk.white(r.name)}${slash} ${chalk.gray(`(${r.id})`)}`);
+                console.log(`     ${chalk.gray(r.description)}`);
+            }
+            console.log(chalk.gray('\n  Run a recipe: titan recipe --run <id>'));
+            console.log(chalk.gray('  Or use slash commands in WebChat: /code-review, /standup, /debug'));
+        }
+    });
+
+// ─── MODEL ───────────────────────────────────────────────────────
+program
+    .command('model')
+    .description('View or switch the active AI model')
+    .option('--list', 'List available models')
+    .option('--set <model>', 'Switch to a different model')
+    .option('--current', 'Show the currently active model')
+    .action((options) => {
+        const config = loadConfig();
+        if (options.set) {
+            updateConfig({ agent: { ...config.agent, model: options.set } });
+            console.log(chalk.green(`\n✅ Model switched to: ${options.set}`));
+            console.log(chalk.gray('  Active from next message.\''));
+        } else if (options.list) {
+            console.log(chalk.cyan('\n🧠 Available Models\n'));
+            const models = [
+                { provider: 'Anthropic', models: ['anthropic/claude-sonnet-4-20250514', 'anthropic/claude-opus-4-0', 'anthropic/claude-3-5-haiku-20241022'] },
+                { provider: 'OpenAI', models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'] },
+                { provider: 'Google', models: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'google/gemini-2.0-flash'] },
+                { provider: 'Ollama (local)', models: ['ollama/llama3.1', 'ollama/mistral', 'ollama/codellama', 'ollama/<any-installed>'] },
+            ];
+            for (const group of models) {
+                console.log(chalk.white(`  ${group.provider}:`));
+                for (const m of group.models) {
+                    const active = m === config.agent.model ? chalk.green(' ← active') : '';
+                    console.log(`    ${chalk.gray(m)}${active}`);
+                }
+                console.log();
+            }
+        } else {
+            console.log(chalk.cyan(`\n🧠 Current model: ${chalk.white(config.agent.model)}`));
+            console.log(chalk.gray('  Switch: titan model --set openai/gpt-4o'));
+        }
+    });
+
+// ─── MONITOR ─────────────────────────────────────────────────────
+program
+    .command('monitor')
+    .description('Manage TITAN proactive monitors (always-on JARVIS mode)')
+    .option('--list', 'List all monitors')
+    .option('--add <name>', 'Add a new monitor')
+    .option('--watch <path>', 'File/directory to watch (for file_change type)')
+    .option('--prompt <prompt>', 'What TITAN should do when triggered')
+    .option('--schedule <cron>', 'Cron-style schedule e.g. */30 = every 30 minutes')
+    .option('--remove <id>', 'Remove a monitor')
+    .action((options) => {
+        if (options.add && options.prompt) {
+            const id = options.add.toLowerCase().replace(/\s+/g, '-');
+            const type = options.schedule ? 'schedule' : 'file_change';
+            const monitor = addMonitor({
+                id,
+                name: options.add,
+                description: '',
+                triggerType: type,
+                watchPath: options.watch,
+                cronExpression: options.schedule,
+                prompt: options.prompt,
+                enabled: true,
+            });
+            console.log(chalk.green(`\n👁️  Monitor "${monitor.name}" created`));
+            console.log(chalk.gray(`  Type: ${type} | Start the gateway to activate.`));
+        } else if (options.remove) {
+            removeMonitor(options.remove);
+            console.log(chalk.green(`🗑️  Removed monitor: ${options.remove}`));
+        } else {
+            const monitors = listMonitors();
+            console.log(chalk.cyan(`\n👁️  TITAN Monitors (${monitors.length})\n`));
+            if (monitors.length === 0) {
+                console.log(chalk.gray('  No monitors configured. TITAN is reactive only.'));
+                console.log(chalk.gray('  Add one: titan monitor --add "Watch Code" --watch /path/to/project --prompt "Summarise changes"'));
+            }
+            for (const m of monitors) {
+                const icon = m.enabled ? chalk.green('🟢') : chalk.gray('⚪');
+                console.log(`  ${icon} ${chalk.white(m.name)} ${chalk.gray(`(${m.id})`)}`);
+                console.log(`     Type: ${m.triggerType} | Triggers: ${m.triggerCount} | Last: ${m.lastTriggeredAt ?? 'never'}`);
+                console.log(`     Prompt: ${chalk.gray(m.prompt.slice(0, 60))}...`);
+            }
+        }
+    });
+
 
 // ─── CONFIG ──────────────────────────────────────────────────────
 program

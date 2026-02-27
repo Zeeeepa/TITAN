@@ -25,6 +25,11 @@ import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION, TITAN_NAME } from '../utils/constants.js';
 import { getMissionControlHTML } from './dashboard.js';
+import { initMcpServers } from '../mcp/registry.js';
+import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
+import { seedBuiltinRecipes } from '../recipes/store.js';
+import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
+import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 
 const COMPONENT = 'Gateway';
 
@@ -61,6 +66,27 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
     content: msg.content,
     timestamp: msg.timestamp.toISOString(),
   });
+
+  // ── Slash command / recipe interception ──────────────────────
+  const slash = parseSlashCommand(msg.content);
+  if (slash) {
+    const { command, args } = slash;
+    const params: Record<string, string> = {};
+    if (args) params['file'] = args; params['topic'] = args; params['error'] = args;
+    try {
+      let fullResponse = '';
+      for await (const step of runRecipe(command, params)) {
+        const r = await processMessage(step.prompt, msg.channel, msg.userId);
+        fullResponse += (fullResponse ? '\n\n' : '') + r.content;
+      }
+      const channel = channels.get(msg.channel);
+      if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: fullResponse, replyTo: msg.id });
+      broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: fullResponse, timestamp: new Date().toISOString() });
+      return;
+    } catch {
+      // Recipe not found — fall through to normal processing
+    }
+  }
 
   try {
     // Route through multi-agent system
@@ -454,6 +480,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       logger.debug(COMPONENT, `Channel ${name} not available: ${(error as Error).message}`);
     }
   }
+
+  // ── Phase 3: Boot MCP servers, monitors, recipes, model switch ──
+  initModelSwitchTool();
+  seedBuiltinRecipes();
+  initMcpServers().catch((e) => logger.warn(COMPONENT, `MCP init error: ${e.message}`));
+
+  // Wire monitor triggers to agent
+  setMonitorTriggerHandler(async (monitor, event) => {
+    const prompt = `[AUTO-TRIGGER: ${monitor.name}] ${event.detail}\n\nYour task: ${monitor.prompt}`;
+    const response = await processMessage(prompt, 'monitor', 'system');
+    broadcast({ type: 'monitor_trigger', monitor: monitor.name, response: response.content, event });
+    logger.info(COMPONENT, `Monitor "${monitor.name}" responded: ${response.content.slice(0, 100)}`);
+  });
+  initMonitors();
 
   // Start server
   server.listen(port, host, () => {

@@ -10,6 +10,7 @@ import { getOrCreateSession, addMessage, getContextMessages, type Session } from
 import { executeTools, getToolDefinitions } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
 import { initLearning, recordToolResult, recordSuccessPattern, getLearningContext } from '../memory/learning.js';
+import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
@@ -57,7 +58,10 @@ function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
     // Continuous learning context
     const learningContext = getLearningContext();
 
-    return `You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful personal AI assistant.
+    // Personal context from Relationship Memory
+    const personalContext = buildPersonalContext();
+
+    return `You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful personal AI assistant. You are like JARVIS from Iron Man: proactive, knowledgeable, and deeply personalized to this specific user.
 
 ## Core Capabilities
 - Execute shell commands and scripts on the user's system
@@ -87,7 +91,7 @@ function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
 ## Continuous Learning
 You get smarter with every interaction. Below is your accumulated knowledge:
 ${learningContext}
-${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}`;
+${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}${personalContext}`;
 }
 
 /** Process a user message through the agent loop */

@@ -20,6 +20,17 @@ if (isGlobalInstall) {
         process.exit(0);
     }
 
+    // Only launch the interactive wizard if we have a real TTY.
+    // npm install -g runs postinstall without a TTY, which causes the
+    // interactive prompt to crash immediately and fail the install.
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        console.log('\n' + '═'.repeat(55));
+        console.log('  ⚡ TITAN installed!');
+        console.log('  Run "titan onboard" to set up your AI assistant.');
+        console.log('═'.repeat(55) + '\n');
+        process.exit(0);
+    }
+
     console.log('\n' + '═'.repeat(55));
     console.log('  ⚡ TITAN installed! Launching setup wizard...');
     console.log('═'.repeat(55) + '\n');
@@ -29,5 +40,7 @@ if (isGlobalInstall) {
         shell: false,
     });
 
-    process.exit(result.status || 0);
+    // Exit 0 even if the wizard was cancelled — a cancelled wizard is not
+    // a failed install. The user can always run "titan onboard" later.
+    process.exit(0);
 }

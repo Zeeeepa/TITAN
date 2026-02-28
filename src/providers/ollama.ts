@@ -29,10 +29,20 @@ export class OllamaProvider extends LLMProvider {
 
         const body: Record<string, unknown> = {
             model,
-            messages: options.messages.map((m) => ({
-                role: m.role,
-                content: m.content,
-            })),
+            messages: options.messages.map((m) => {
+                const msg: Record<string, unknown> = { role: m.role, content: m.content };
+                if (m.toolCalls && m.toolCalls.length > 0) {
+                    msg.tool_calls = m.toolCalls.map(tc => ({
+                        function: {
+                            name: tc.function.name,
+                            arguments: JSON.parse(tc.function.arguments || '{}')
+                        }
+                    }));
+                }
+                if (m.toolCallId) msg.tool_call_id = m.toolCallId;
+                if (m.name) msg.name = m.name;
+                return msg;
+            }),
             stream: false,
             options: {
                 num_predict: options.maxTokens || 8192,

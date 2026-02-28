@@ -156,6 +156,41 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
     }
   }
 
+  // ── Native OpenClaw-style Chat Commands ──────────────────────
+  const contentTrimmed = msg.content.trim();
+  if (contentTrimmed === '/reset' || contentTrimmed === '/new') {
+    const { getOrCreateSession, closeSession } = await import('../agent/session.js');
+    const session = getOrCreateSession(msg.channel, msg.userId, 'default');
+    closeSession(session.id);
+    const output = `🔄 Session **${session.id.slice(0, 8)}** has been reset. Context cleared.`;
+    const channel = channels.get(msg.channel);
+    if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: output, replyTo: msg.id });
+    broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: output, timestamp: new Date().toISOString() });
+    return;
+  }
+
+  if (contentTrimmed === '/status') {
+    const { getOrCreateSession } = await import('../agent/session.js');
+    const { formatCostSummary } = await import('../agent/costOptimizer.js');
+    const { loadConfig } = await import('../config/config.js');
+    const cfg = loadConfig();
+    const session = getOrCreateSession(msg.channel, msg.userId, 'default');
+    const costStr = formatCostSummary(session.id);
+    const output = `📊 **TITAN Status**\n• **Session ID**: \`${session.id.slice(0, 8)}\`\n• **Messages**: ${session.messageCount}\n• **Model**: ${cfg.agent?.model || 'default'}\n• **Thinking Mode**: ${cfg.agent?.thinkingMode || 'off'}\n• **Usage**: ${costStr}`;
+    const channel = channels.get(msg.channel);
+    if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: output, replyTo: msg.id });
+    broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: output, timestamp: new Date().toISOString() });
+    return;
+  }
+
+  if (contentTrimmed === '/compact') {
+    const output = `📦 **Context Compaction**\nSession context will be automatically compacted by the Cost Optimizer on the next turn.`;
+    const channel = channels.get(msg.channel);
+    if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: output, replyTo: msg.id });
+    broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: output, timestamp: new Date().toISOString() });
+    return;
+  }
+
   try {
     // Route through multi-agent system
     const response = await routeMessage(msg.content, msg.channel, msg.userId);

@@ -4,7 +4,7 @@
  */
 
 export function getMissionControlHTML(): string {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
@@ -135,6 +135,23 @@ tr:hover{background:rgba(6,182,212,.03)}
 #toast.show{opacity:1}
 #toast.success{border-color:var(--accent3);color:var(--accent3)}
 #toast.error{border-color:var(--error);color:var(--error)}
+
+/* Onboarding Modal */
+#onboarding-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,14,26,0.8);backdrop-filter:blur(4px);z-index:9999;display:none;align-items:center;justify-content:center}
+#onboarding-modal.show{display:flex}
+.ob-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:500px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);overflow:hidden;display:flex;flex-direction:column}
+.ob-header{padding:24px;border-bottom:1px solid var(--border);text-align:center}
+.ob-header h2{font-size:20px;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.ob-header p{color:var(--text-dim);font-size:14px}
+.ob-body{padding:24px;flex:1}
+.ob-step{display:none;animation:fadeIn 0.3s}
+.ob-step.active{display:block}
+.ob-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;background:var(--bg3)}
+.provider-box{border:1px solid var(--border);padding:16px;border-radius:var(--radius-sm);margin-bottom:12px;cursor:pointer;transition:all 0.2s}
+.provider-box:hover{border-color:var(--accent);background:var(--bg3)}
+.provider-box.selected{border-color:var(--accent);background:rgba(6,182,212,0.1)}
+.provider-box strong{display:block;margin-bottom:4px;font-size:15px}
+.provider-box p{font-size:12px;color:var(--text-dim)}
 </style>
 </head>
 <body>
@@ -162,6 +179,79 @@ tr:hover{background:rgba(6,182,212,.03)}
     <button class="logout-btn" onclick="logout()">🔓 Logout</button>
   </div>
 </aside>
+
+<!-- Onboarding Modal -->
+<div id="onboarding-modal">
+  <div class="ob-card">
+    <div class="ob-header">
+      <h2>Welcome to TITAN</h2>
+      <p id="ob-subtitle">Let's get your local AI agent configured.</p>
+    </div>
+    <div class="ob-body">
+      <!-- Step 1: Profile -->
+      <div class="ob-step active" id="ob-step-1">
+        <h3 style="margin-bottom:16px;font-size:15px">1. Personalize Your Experience</h3>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">TITAN adapts to your technical level and preferences.</p>
+        <div class="form-group">
+          <label>What should I call you?</label>
+          <input type="text" id="ob-name" placeholder="e.g. Tony" />
+        </div>
+        <div class="form-group">
+          <label>Technical Level</label>
+          <select id="ob-level">
+            <option value="intermediate">Intermediate — I know the basics</option>
+            <option value="beginner">Beginner — Explain everything cleanly</option>
+            <option value="expert">Expert — Maximize density, no hand-holding</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Step 2: Provider -->
+      <div class="ob-step" id="ob-step-2">
+        <h3 style="margin-bottom:16px;font-size:15px">2. Choose Your Primary Engine</h3>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Where should TITAN run its core reasoning loop?</p>
+        
+        <div class="provider-box selected" onclick="document.getElementById('ob-prov-local').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
+            <input type="radio" name="ob_provider" id="ob-prov-local" value="local" checked style="width:16px;height:16px;accent-color:var(--accent)" />
+            <div>
+              <strong>Local (Ollama)</strong>
+              <p>Free, private, runs on your own hardware. Best with Kimi or Llama 3.</p>
+            </div>
+          </label>
+        </div>
+
+        <div class="provider-box" onclick="document.getElementById('ob-prov-cloud').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
+            <input type="radio" name="ob_provider" id="ob-prov-cloud" value="cloud" style="width:16px;height:16px;accent-color:var(--accent)" />
+            <div>
+              <strong>Cloud (Anthropic / OpenAI / Google)</strong>
+              <p>Requires an API key. Lightning fast complex multi-tool reasoning.</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Step 3: Autonomy -->
+      <div class="ob-step" id="ob-step-3">
+        <h3 style="margin-bottom:16px;font-size:15px">3. Set Guardrails</h3>
+        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">How much freedom should TITAN have on your machine?</p>
+        <div class="form-group">
+          <label>Autonomy Mode</label>
+          <select id="ob-autonomy">
+            <option value="supervised">🟡 Supervised (Default) — TITAN asks before running risky commands</option>
+            <option value="autonomous">🟢 Autonomous — Full auto execution</option>
+            <option value="locked">🔴 Locked — User must approve every tool call</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="ob-footer">
+      <button class="btn" id="ob-btn-back" onclick="obPrevStep()" style="visibility:hidden">Back</button>
+      <button class="btn primary" id="ob-btn-next" onclick="obNextStep()">Next ⚡</button>
+    </div>
+  </div>
+</div>
 
 <main class="main">
   <header class="topbar">
@@ -207,6 +297,11 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div class="chat-input-area">
           <input type="text" id="chat-input" placeholder="Type a message and press Enter…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendChat()"/>
           <button id="send-btn" onclick="sendChat()">Send ⚡</button>
+        </div>
+        <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg2);display:flex;gap:8px;flex-shrink:0">
+          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="document.getElementById('chat-input').value='/status';sendChat()">📊 Status</button>
+          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="if(confirm('Reset the current chat session?')) {document.getElementById('chat-input').value='/reset';sendChat()}">🔄 Reset Session</button>
+          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="document.getElementById('chat-input').value='/compact';sendChat()">📦 Compact Context</button>
         </div>
       </div>
     </div>
@@ -276,6 +371,17 @@ tr:hover{background:rgba(6,182,212,.03)}
               <input type="number" id="cfg-maxtokens" placeholder="8192" min="256" max="200000"/>
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Reasoning Effort (Supported models only)</label>
+              <select id="cfg-reasoning">
+                <option value="none">Disabled</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+          </div>
           <div class="form-group">
             <label>Custom System Prompt (appended after TITAN's core identity)</label>
             <textarea id="cfg-systemprompt" rows="5" placeholder="Add extra instructions for TITAN (e.g. 'Always respond in Spanish')" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:inherit"></textarea>
@@ -326,7 +432,7 @@ tr:hover{background:rgba(6,182,212,.03)}
         <!-- Tab 3: Channels -->
         <div id="stab-channels-cfg" class="stab-content" style="padding:20px;display:none">
           <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Enable and configure messaging channels. Tokens are stored in <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">~/.titan/titan.json</code>.</p>
-          ${['discord','telegram','slack','googlechat','whatsapp','signal','matrix','msteams'].map(ch => `
+          ${['discord', 'telegram', 'slack', 'googlechat', 'whatsapp', 'signal', 'matrix', 'msteams'].map(ch => `
           <div class="card" style="margin-bottom:12px;padding:16px">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:${ch === 'whatsapp' || ch === 'signal' ? '8' : '12'}px">
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
@@ -403,6 +509,16 @@ tr:hover{background:rgba(6,182,212,.03)}
                 <option value="none">None (open — local only)</option>
                 <option value="token">Token (API key in header)</option>
                 <option value="password">Password (browser login)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Tailscale Remote Access</label>
+              <select id="cfg-tailscale-mode">
+                <option value="off">Off (Local Only)</option>
+                <option value="serve">Serve (Tailnet Only - HTTPS)</option>
+                <option value="funnel">Funnel (Public Internet - HTTPS)</option>
               </select>
             </div>
           </div>
@@ -690,6 +806,8 @@ async function loadConfig() {
     if (temp) { temp.value = cfg.agent?.temperature ?? 0.7; document.getElementById('cfg-temp-val').textContent = parseFloat(temp.value).toFixed(1); }
     const maxTok = document.getElementById('cfg-maxtokens');
     if (maxTok) maxTok.value = cfg.agent?.maxTokens || 8192;
+    const reasoning = document.getElementById('cfg-reasoning');
+    if (reasoning) reasoning.value = cfg.agent?.thinkingMode || 'none';
     const sysprompt = document.getElementById('cfg-systemprompt');
     if (sysprompt) sysprompt.value = cfg.agent?.systemPrompt || '';
     // Tab 2: Providers
@@ -729,6 +847,8 @@ async function loadConfig() {
     if (port) port.value = cfg.gateway?.port || 48420;
     const authMode = document.getElementById('cfg-gateway-auth');
     if (authMode) { authMode.value = cfg.gateway?.auth?.mode || 'none'; updateGatewayAuthFields(); }
+    const tailscale = document.getElementById('cfg-tailscale-mode');
+    if (tailscale) tailscale.value = cfg.gateway?.tailscale?.mode || 'off';
   } catch(e) { console.error('loadConfig error:', e); }
 }
 
@@ -742,6 +862,7 @@ async function saveAIConfig() {
     logLevel: document.getElementById('cfg-loglevel').value,
     temperature: parseFloat(document.getElementById('cfg-temperature').value),
     maxTokens: parseInt(document.getElementById('cfg-maxtokens').value) || undefined,
+    thinkingMode: document.getElementById('cfg-reasoning').value !== 'none' ? document.getElementById('cfg-reasoning').value : undefined,
     systemPrompt: document.getElementById('cfg-systemprompt').value,
   };
   const r = await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
@@ -820,6 +941,7 @@ async function saveGatewaySettings() {
   const body = {
     gatewayPort: parseInt(document.getElementById('cfg-gateway-port').value) || undefined,
     gatewayAuthMode: document.getElementById('cfg-gateway-auth').value,
+    tailscaleMode: document.getElementById('cfg-tailscale-mode')?.value || 'off'
   };
   const tokenEl = document.getElementById('cfg-gateway-token');
   const pwEl = document.getElementById('cfg-gateway-password');
@@ -867,7 +989,7 @@ async function populateModels() {
       const models = data[provider];
       if (!Array.isArray(models) || models.length === 0) continue;
       const grp = document.createElement('optgroup');
-      grp.label = provider.toUpperCase();
+      grp.label = provider === 'ollama' ? 'LOCAL (Ollama)' : 'CLOUD (' + provider.toUpperCase() + ')';
       for (const m of models) {
         const opt = document.createElement('option');
         opt.value = m; opt.textContent = m;
@@ -925,6 +1047,8 @@ async function fetchData() {
       document.getElementById('agents-list').innerHTML =
         '<table><tr><th>Name</th><th>ID</th><th>Model</th><th>Messages</th><th>Status</th><th>Action</th></tr>' +
         agents.agents.map(a=>'<tr><td><strong>'+a.name+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+a.id.slice(0,8)+'</td><td style="font-size:12px">'+a.model+'</td><td>'+a.messageCount+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+a.status+'</span></td><td><button class="btn danger" onclick="stopAgent(\\''+a.id+'\\')">Stop</button></td></tr>').join('')+'</table>';
+    } else {
+      document.getElementById('agents-list').innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>No agents running. Spawn one above.</p></div>';
     }
 
     // Config overview health row
@@ -985,6 +1109,97 @@ async function fetchData() {
 // ── Init ──────────────────────────────────────────────────────────
 fetchData();
 setInterval(fetchData, 15000);
+
+// ── Onboarding Logic ──────────────────────────────────────────────
+let obCurrentStep = 1;
+const obTotalSteps = 3;
+
+function obNextStep() {
+  if (obCurrentStep === 1) {
+    const name = document.getElementById('ob-name').value.trim();
+    if (!name) { toast('Please enter a name', 'error'); return; }
+  }
+  
+  if (obCurrentStep < obTotalSteps) {
+    document.getElementById('ob-step-' + obCurrentStep).classList.remove('active');
+    obCurrentStep++;
+    document.getElementById('ob-step-' + obCurrentStep).classList.add('active');
+    document.getElementById('ob-btn-back').style.visibility = 'visible';
+    
+    if (obCurrentStep === obTotalSteps) {
+      document.getElementById('ob-btn-next').textContent = 'Finish Setup ⚡';
+    }
+  } else {
+    submitOnboarding();
+  }
+}
+
+function obPrevStep() {
+  if (obCurrentStep > 1) {
+    document.getElementById('ob-step-' + obCurrentStep).classList.remove('active');
+    obCurrentStep--;
+    document.getElementById('ob-step-' + obCurrentStep).classList.add('active');
+    document.getElementById('ob-btn-next').textContent = 'Next ⚡';
+    if (obCurrentStep === 1) {
+      document.getElementById('ob-btn-back').style.visibility = 'hidden';
+    }
+  }
+}
+
+async function submitOnboarding() {
+  const btn = document.getElementById('ob-btn-next');
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+
+  try {
+    // 1. Save Profile
+    await fetch('/api/profile', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        name: document.getElementById('ob-name').value.trim(),
+        technicalLevel: document.getElementById('ob-level').value
+      })
+    });
+
+    // 2. Save Config (Provider + Autonomy)
+    const providerStr = document.getElementById('ob-prov-local').checked ? 'ollama/kimi-k2.5:cloud' : 'anthropic/claude-sonnet-4-20250514';
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        model: providerStr,
+        autonomyMode: document.getElementById('ob-autonomy').value
+      })
+    });
+
+    // Close Modal and Refresh
+    document.getElementById('onboarding-modal').classList.remove('show');
+    toast('TITAN setup complete! Welcome.', 'success');
+    loadConfig();
+    fetchData();
+    loadProfileTab();
+  } catch (e) {
+    console.error('Onboarding failed', e);
+    toast('Failed to save setup', 'error');
+    btn.textContent = 'Try Again';
+    btn.disabled = false;
+  }
+}
+
+// Check if we need to show onboarding
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const r = await fetch('/api/profile', {headers:authHeaders()});
+    if (r.ok) {
+      const profile = await r.json();
+      if (!profile.name) {
+        // Name is missing, likely first run
+        document.getElementById('onboarding-modal').classList.add('show');
+      }
+    }
+  } catch(e) {}
+});
 </script>
 </body>
 </html>`;

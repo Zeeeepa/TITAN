@@ -13,6 +13,7 @@ import { initLearning, recordToolResult, recordSuccessPattern, getLearningContex
 import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
 import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession } from './stallDetector.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
+import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
@@ -143,12 +144,21 @@ export async function processMessage(
     }
     modelUsed = activeModel;
 
+    // ── Swarm Interceptor: ──────────────────────────────────────
+    // If using kimi-k2.5, proxy the tools through Swarm Routers
+    // to prevent context collapse from the massive generic 23-tool schema.
+    const isKimiSwarm = activeModel.includes('kimi-k2.5');
+    const activeTools = isKimiSwarm ? getSwarmRouterTools() : tools;
+    if (isKimiSwarm) {
+        logger.info(COMPONENT, `[Swarm] Intercepted kimi-k2.5 payload. Downgrading context from ${tools.length} to ${activeTools.length} router agents.`);
+    }
+
     // ── Stall detector: start heartbeat for this session ────────
     heartbeat(session.id);
 
     // Agent loop with tool calling
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${tools.length} tools`);
+        logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools`);
 
         // ── Cost optimizer: context compression to save tokens ───
         const { messages: compressedMessages, didCompress, savedTokens } = maybeCompressContext(
@@ -161,7 +171,7 @@ export async function processMessage(
         const response: ChatResponse = await chat({
             model: activeModel,
             messages: compressedMessages,
-            tools: tools.length > 0 ? tools : undefined,
+            tools: activeTools.length > 0 ? activeTools : undefined,
             maxTokens: config.agent.maxTokens,
             temperature: config.agent.temperature,
         });
@@ -207,9 +217,32 @@ export async function processMessage(
         });
 
         // Execute tools
-        let toolResults;
+        let toolResults: any[] = [];
         try {
-            toolResults = await executeTools(response.toolCalls);
+            if (isKimiSwarm) {
+                // Intercept execution and route to Swarm Sub-Agents
+                for (const tc of response.toolCalls) {
+                    if (tc.function.name.startsWith('delegate_to_')) {
+                        const domainMatch = tc.function.name.match(/delegate_to_(.*)_agent/);
+                        const domain = (domainMatch ? domainMatch[1] : 'file') as Domain;
+                        let args;
+                        try { args = JSON.parse(tc.function.arguments); } catch { args = { instruction: '' }; }
+
+                        const startTime = Date.now();
+                        const resultString = await runSubAgent(domain, args.instruction, activeModel);
+
+                        toolResults.push({
+                            toolCallId: tc.id,
+                            name: tc.function.name,
+                            content: resultString,
+                            success: !resultString.includes('Error'),
+                            durationMs: Date.now() - startTime
+                        });
+                    }
+                }
+            } else {
+                toolResults = await executeTools(response.toolCalls);
+            }
         } catch (err) {
             logger.error(COMPONENT, `Tool execution error: ${(err as Error).message}`);
             finalContent = 'An error occurred while executing tools. Please try again.';

@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
-import { TITAN_HOME } from '../utils/constants.js';
+import { TITAN_HOME, TITAN_VERSION } from '../utils/constants.js';
 import { scanSkillCode, formatScanResult, type ScanResult } from './scanner.js';
 import logger from '../utils/logger.js';
 
@@ -44,7 +44,7 @@ export interface InstallResult {
 // ─── API helpers ──────────────────────────────────────────────────
 async function clawhubFetch<T>(path: string): Promise<T> {
     const res = await fetch(`${CLAWHUB_BASE}${path}`, {
-        headers: { 'User-Agent': 'TITAN-Agent/2026.4.4', Accept: 'application/json' },
+        headers: { 'User-Agent': `TITAN-Agent/${TITAN_VERSION}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) throw new Error(`ClaWHub API error ${res.status}: ${res.statusText}`);

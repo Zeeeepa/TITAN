@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { registerTool, unregisterTool } from '../agent/toolRunner.js';
 import logger from '../utils/logger.js';
+import { TITAN_VERSION } from '../utils/constants.js';
 
 const COMPONENT = 'MCP';
 
@@ -129,7 +130,7 @@ async function connectStdio(server: McpServer): Promise<McpConnection> {
         const initRequest = makeRequest('initialize', {
             protocolVersion: '2024-11-05',
             capabilities: { tools: {} },
-            clientInfo: { name: 'TITAN', version: '2026.4.4' },
+            clientInfo: { name: 'TITAN', version: TITAN_VERSION },
         });
         proc.stdin?.write(initRequest);
 

@@ -26,6 +26,7 @@
 import { registerTool } from '../../agent/toolRunner.js';
 import { z } from 'zod';
 import logger from '../../utils/logger.js';
+import { TITAN_VERSION } from '../../utils/constants.js';
 
 const COMPONENT = 'WebBrowser';
 
@@ -93,7 +94,7 @@ function extractText(html: string, maxChars = 8000): string {
 async function fetchSimple(url: string): Promise<BrowseResult | null> {
     try {
         const res = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 TITAN-Agent/2026.4.5' },
+            headers: { 'User-Agent': `Mozilla/5.0 TITAN-Agent/${TITAN_VERSION}` },
             signal: AbortSignal.timeout(8000),
         });
         if (!res.ok) return null;

@@ -1166,7 +1166,7 @@ async function fetchData() {
     if (agents.agents && agents.agents.length > 0) {
       document.getElementById('agents-list').innerHTML =
         '<table><tr><th>Name</th><th>ID</th><th>Model</th><th>Messages</th><th>Status</th><th>Action</th></tr>' +
-        agents.agents.map(a=>'<tr><td><strong>'+a.name+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+a.id.slice(0,8)+'</td><td style="font-size:12px">'+a.model+'</td><td>'+a.messageCount+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+a.status+'</span></td><td><button class="btn danger" onclick="stopAgent(\\''+a.id+'\\')">Stop</button></td></tr>').join('')+'</table>';
+        agents.agents.map(a=>'<tr><td><strong>'+a.name+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+a.id.slice(0,8)+'</td><td style="font-size:12px">'+a.model+'</td><td>'+a.messageCount+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+a.status+'</span></td><td><button class="btn danger" data-id="'+a.id+'" onclick="stopAgent(this.dataset.id)">Stop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('agents-list').innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>No agents running. Spawn one above.</p></div>';
     }
@@ -1186,7 +1186,7 @@ async function fetchData() {
     if (Array.isArray(sessions) && sessions.length > 0) {
       document.getElementById('sessions-list').innerHTML =
         '<table><tr><th>ID</th><th>Channel</th><th>User</th><th>Messages</th><th>Last Active</th><th>Action</th></tr>' +
-        sessions.map(s=>'<tr><td><a href="#" onclick="showSessionModal(\\''+s.id+'\\')" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+s.id.slice(0,8)+'</a></td><td>'+s.channel+'</td><td>'+(s.userId||s.user_id||'—')+'</td><td>'+(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+(s.lastActive||'—')+'</td><td><button class="btn danger" onclick="stopSession(\\''+s.id+'\\')">Drop</button></td></tr>').join('')+'</table>';
+        sessions.map(s=>'<tr><td><a href="#" data-id="'+s.id+'" onclick="showSessionModal(this.dataset.id)" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+s.id.slice(0,8)+'</a></td><td>'+s.channel+'</td><td>'+(s.userId||s.user_id||'—')+'</td><td>'+(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+(s.lastActive||'—')+'</td><td><button class="btn danger" data-id="'+s.id+'" onclick="stopSession(this.dataset.id)">Drop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('sessions-list').innerHTML = '<div class="empty-state"><div class="icon">🔗</div><p>No active sessions yet. Start a conversation in WebChat.</p></div>';
     }
@@ -1410,7 +1410,7 @@ async function loadGraphiti() {
     nodeList.innerHTML = '<table><thead><tr><th>Label</th><th>Type</th><th>ID</th></tr></thead><tbody>' +
       data.nodes.map((n) => {
         const c = typeColors[n.type] || '#64748b';
-        return \`<tr><td>\${escHtml(n.label)}</td><td><span style="color:\${c};font-weight:600">\${escHtml(n.type)}</span></td><td style="color:var(--text-dim);font-size:11px;font-family:monospace">\${escHtml(String(n.id).slice(0,12))}…</td></tr>\`;
+        return '<tr><td>'+escHtml(n.label)+'</td><td><span style="color:'+c+';font-weight:600">'+escHtml(n.type)+'</span></td><td style="color:var(--text-dim);font-size:11px;font-family:monospace">'+escHtml(String(n.id).slice(0,12))+'…</td></tr>';
       }).join('') + '</tbody></table>';
 
     // Attach click handler for entity detail card
@@ -1571,8 +1571,8 @@ function renderLogs() {
     if (line.includes('ERROR')) color = 'var(--error)';
     else if (line.includes('WARN')) color = 'var(--warn)';
     else if (line.includes('DEBUG')) color = 'var(--text-dim)';
-    return '<span style="color:' + color + '">' + escHtml(line) + '</span>';
-  }).join('\n');
+    return '<span style="color:' + color + ';display:block">' + escHtml(line) + '</span>';
+  }).join('');
   container.scrollTop = container.scrollHeight;
 }
 

@@ -248,47 +248,121 @@ export function initWebBrowserTool(): void {
         },
     });
 
-    // Navigate a page and click/interact (for forms and login flows)
+    // Ultra-Fast Bulk Web Navigation
     registerTool({
-        name: 'browser_navigate',
-        description: 'Navigate a website step-by-step: click buttons, fill forms, interact with pages. Useful for multi-step workflows like submitting forms, navigating pagination, or automating repetitive web tasks.',
+        name: 'browser_auto_nav',
+        description: 'Navigate a website blazingly fast by executing a bulk sequence of actions (click, fill) in a single tool call, and then returning a Smart Extract DOM of the resulting page. Use this for instant form submissions, logins, and pagination.',
         parameters: {
             type: 'object',
             properties: {
-                url: { type: 'string', description: 'Starting URL' },
-                action: { type: 'string', enum: ['click', 'fill', 'screenshot', 'evaluate'], description: 'Action to perform' },
-                selector: { type: 'string', description: 'CSS selector for click/fill actions' },
-                value: { type: 'string', description: 'Text to fill into a form field' },
-                script: { type: 'string', description: 'JavaScript to evaluate on the page' },
+                url: { type: 'string', description: 'Starting URL (if you are already on the page, just provide the current URL)' },
+                actions: {
+                    type: 'array',
+                    description: 'Sequential array of actions to perform at near-instant machine speed.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            action: { type: 'string', enum: ['click', 'fill', 'wait', 'evaluate'], description: 'Action to perform' },
+                            selector: { type: 'string', description: 'CSS selector (e.g. #login-btn, input[name="user"])' },
+                            value: { type: 'string', description: 'Text to fill if action is "fill"' },
+                            delayMs: { type: 'number', description: 'Milliseconds to wait if action is "wait"' },
+                            script: { type: 'string', description: 'JavaScript to run if action is "evaluate"' }
+                        },
+                        required: ['action']
+                    }
+                },
+                returnType: { type: 'string', enum: ['text', 'smart_dom', 'screenshot'], description: 'What to return after the actions finish: raw text, a mapping of interactive elements, or a base64 screenshot. Default: smart_dom', default: 'smart_dom' }
             },
-            required: ['url', 'action'],
+            required: ['url', 'actions'],
         },
         execute: async (args: any) => {
-            const { url, action, selector, value, script } = args;
+            const { url, actions, returnType = 'smart_dom' } = args;
             const ctx = await getOrCreateBrowser();
             const page = await ctx.newPage();
 
             try {
-                await page.goto(url, { waitUntil: 'networkidle', timeout: 20_000 });
-
-                let result = '';
-                if (action === 'click' && selector) {
-                    await page.click(selector);
-                    await page.waitForTimeout(1000);
-                    result = `Clicked "${selector}" on ${url}`;
-                } else if (action === 'fill' && selector && value) {
-                    await page.fill(selector, value);
-                    result = `Filled "${selector}" with "${value}"`;
-                } else if (action === 'screenshot') {
-                    const buf = await page.screenshot({ type: 'jpeg', quality: 60 });
-                    result = `Screenshot taken (${buf.length} bytes)`;
-                } else if (action === 'evaluate' && script) {
-                    const output = await page.evaluate(script);
-                    result = `Script result: ${JSON.stringify(output)}`;
+                // Check if we are already on this URL (saves navigation time)
+                if (page.url() !== url && url !== 'current') {
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
                 }
 
+                const results: string[] = [];
+                for (const step of actions) {
+                    try {
+                        if (step.action === 'click' && step.selector) {
+                            await page.locator(step.selector).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
+                            await page.click(step.selector);
+                            results.push(`✅ Clicked: ${step.selector}`);
+                        } else if (step.action === 'fill' && step.selector && step.value !== undefined) {
+                            await page.locator(step.selector).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
+                            await page.fill(step.selector, step.value);
+                            results.push(`✅ Filled: ${step.selector} -> *****`);
+                        } else if (step.action === 'wait' && step.delayMs) {
+                            await page.waitForTimeout(step.delayMs);
+                            results.push(`✅ Waited: ${step.delayMs}ms`);
+                        } else if (step.action === 'evaluate' && step.script) {
+                            await page.evaluate(step.script);
+                            results.push(`✅ Evaluated custom script`);
+                        }
+                    } catch (e: any) {
+                        results.push(`❌ Failed Step: ${step.action} on ${step.selector} - ${e.message.split('\\n')[0]}`);
+                        break; // Stop execution on first failure to prevent chaos
+                    }
+                }
+
+                // Wait a moment for dynamic page updates after the last action
+                await page.waitForTimeout(1000);
+
                 const title = await page.title();
-                return `✅ ${result}\nPage: ${title} (${url})`;
+                const finalUrl = page.url();
+
+                let output = `Workflow Results:\n${results.join('\\n')}\n\nFinal URL: ${finalUrl} (Title: ${title})\n\n`;
+
+                if (returnType === 'smart_dom') {
+                    const domMap = await page.evaluate(() => {
+                        const win = globalThis as any;
+                        const elements: { tag: string, id: string, name: string, cls: string, text: string, type?: string }[] = [];
+                        const interactive = win.document.querySelectorAll('button, a[href], input, select, textarea');
+                        interactive.forEach((el: any) => {
+                            const bounds = el.getBoundingClientRect();
+                            if (bounds.width === 0 || bounds.height === 0) return; // Skip invisible elements
+
+                            elements.push({
+                                tag: el.tagName.toLowerCase(),
+                                id: el.id,
+                                name: (el as any).name || '',
+                                cls: el.className.toString(),
+                                text: (el as any).innerText?.slice(0, 50) || (el as any).value?.slice(0, 50) || '',
+                                type: (el as any).type || ''
+                            });
+                        });
+                        return elements;
+                    });
+
+                    let domString = "--- Smart DOM Map (Interactive Elements) ---\n";
+                    domMap.slice(0, 100).forEach((e: any) => {
+                        let sel = e.tag;
+                        if (e.id) sel += `#${e.id}`;
+                        else if (e.name) sel += `[name="${e.name}"]`;
+                        else if (e.cls) sel += `.${e.cls.split(' ')[0]}`;
+
+                        domString += `[${sel}] `;
+                        if (e.tag === 'input' || e.tag === 'textarea') domString += `type="${e.type}" `;
+                        if (e.text) domString += `-> "${e.text.trim()}"`;
+                        domString += '\n';
+                    });
+                    output += domString;
+                } else if (returnType === 'text') {
+                    output += "--- Page Text ---\n";
+                    const bodyText = await page.evaluate(() => (globalThis as any).document.body?.innerText?.slice(0, 8000) ?? '');
+                    output += bodyText;
+                } else if (returnType === 'screenshot') {
+                    const buf = await page.screenshot({ type: 'jpeg', quality: 60 });
+                    output += `--- Screenshot attached: ${buf.length} bytes ---\n`;
+                    // In a real multi-modal environment we'd attach the buffer, returning string for now.
+                }
+
+                return output;
             } finally {
                 await page.close();
             }

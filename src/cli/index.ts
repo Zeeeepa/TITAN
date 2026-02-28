@@ -5,8 +5,8 @@
  */
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { TITAN_VERSION, TITAN_ASCII_LOGO, TITAN_FULL_NAME, TITAN_CONFIG_PATH } from '../utils/constants.js';
-import { setLogLevel, LogLevel } from '../utils/logger.js';
+import { TITAN_VERSION, TITAN_ASCII_LOGO, TITAN_FULL_NAME, TITAN_CONFIG_PATH, TITAN_LOGS_DIR } from '../utils/constants.js';
+import { setLogLevel, LogLevel, initFileLogger } from '../utils/logger.js';
 import { loadConfig, updateConfig } from '../config/config.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory } from '../memory/memory.js';
@@ -538,6 +538,7 @@ program
 
 // Parse and execute
 (async () => {
+    initFileLogger(TITAN_LOGS_DIR);
     // Check for updates (fast timeout, non-blocking if offline)
     await checkForUpdates();
     await program.parseAsync();

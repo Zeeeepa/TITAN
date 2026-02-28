@@ -26,11 +26,11 @@ import { SlackChannel } from '../channels/slack.js';
 import { GoogleChatChannel } from '../channels/googlechat.js';
 import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity } from '../agent/multiAgent.js';
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
-import logger from '../utils/logger.js';
-import { TITAN_VERSION, TITAN_NAME } from '../utils/constants.js';
+import logger, { initFileLogger } from '../utils/logger.js';
+import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR } from '../utils/constants.js';
 import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
-import { initMcpServers } from '../mcp/registry.js';
+import { initMcpServers, getMcpStatus } from '../mcp/registry.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
@@ -39,6 +39,19 @@ import { getCostStatus } from '../agent/costOptimizer.js';
 import { getLearningStats } from '../memory/learning.js';
 
 const COMPONENT = 'Gateway';
+
+/** Module-level HTTP server reference (allows stopGateway to close it) */
+let httpServer: ReturnType<typeof createServer> | null = null;
+
+export function stopGateway(): Promise<void> {
+    return new Promise((resolve) => {
+        if (httpServer) {
+            httpServer.close(() => { httpServer = null; resolve(); });
+        } else {
+            resolve();
+        }
+    });
+}
 
 /** Active session tokens (in-memory, cleared on restart) */
 const authTokens = new Set<string>();
@@ -436,6 +449,7 @@ function getDashboardHtml(): string {
 /** Start the Gateway server */
 export async function startGateway(options?: { port?: number; host?: string; verbose?: boolean }): Promise<void> {
   const config = loadConfig();
+  initFileLogger(TITAN_LOGS_DIR);
   const port = options?.port || config.gateway.port;
   const host = options?.host || config.gateway.host;
 
@@ -749,11 +763,84 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(getLearningStats());
   });
 
+  // Graphiti / Neo4j status + graph data endpoint
+  app.get('/api/graphiti', async (_req, res) => {
+    try {
+      // Check if graphiti MCP is registered
+      const mcpStatus = getMcpStatus();
+      const graphitiMcp = mcpStatus.find((c: ReturnType<typeof getMcpStatus>[number]) => c.server.id === 'graphiti');
+      const mcpConnected = !!graphitiMcp && graphitiMcp.status === 'connected';
+
+      // Attempt to fetch node data from Neo4j HTTP API (port 7474)
+      let nodes: { id: string; label: string; type: string }[] = [];
+      let edges: { from: string; to: string; label: string }[] = [];
+      let neo4jOnline = false;
+
+      try {
+        const neo4jRes = await fetch('http://127.0.0.1:7474/db/neo4j/tx/commit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + Buffer.from('neo4j:password').toString('base64'),
+          },
+          body: JSON.stringify({
+            statements: [
+              {
+                statement: 'MATCH (n) RETURN n.name AS name, n.uuid AS uuid, labels(n)[0] AS type LIMIT 50',
+                resultDataContents: ['row'],
+              },
+              {
+                statement: 'MATCH (a)-[r]->(b) RETURN a.uuid AS from, b.uuid AS to, type(r) AS rel LIMIT 80',
+                resultDataContents: ['row'],
+              },
+            ],
+          }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (neo4jRes.ok) {
+          neo4jOnline = true;
+          const body = await neo4jRes.json() as any;
+          const [nodeResult, edgeResult] = body.results ?? [];
+
+          if (nodeResult) {
+            nodes = (nodeResult.data ?? []).map((row: any) => ({
+              id: row.row[1] ?? row.row[0] ?? String(Math.random()),
+              label: row.row[0] ?? 'Node',
+              type: row.row[2] ?? 'Entity',
+            }));
+          }
+          if (edgeResult) {
+            edges = (edgeResult.data ?? []).map((row: any) => ({
+              from: row.row[0] ?? '',
+              to: row.row[1] ?? '',
+              label: row.row[2] ?? '',
+            }));
+          }
+        }
+      } catch {
+        // Neo4j not running — not an error, just offline
+      }
+
+      res.json({
+        mcpConnected,
+        mcpToolCount: graphitiMcp?.toolCount ?? 0,
+        neo4jOnline,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        nodes,
+        edges,
+      });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   // Create HTTP server
-  const server = createServer(app);
+  httpServer = createServer(app);
 
   // Create WebSocket server
-  const wss = new WebSocketServer({ server });
+  const wss = new WebSocketServer({ server: httpServer });
 
   wss.on('connection', (ws, req) => {
     // Auth check for WebSocket connections
@@ -831,7 +918,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   initMonitors();
 
   // Start server
-  server.on('error', (err: any) => {
+  httpServer.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
       logger.warn(COMPONENT, `Port ${port} is already in use. Mission Control is likely already running in the background.`);
       logger.info(COMPONENT, `You can access it at http://${host}:${port}`);
@@ -840,7 +927,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
-  server.listen(port, host, () => {
+  httpServer.listen(port, host, () => {
     logger.info(COMPONENT, `Gateway listening on http://${host}:${port}`);
     logger.info(COMPONENT, `Dashboard: http://${host}:${port}`);
     logger.info(COMPONENT, `WebSocket: ws://${host}:${port}`);

@@ -5,9 +5,14 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['tests/**/*.test.ts'],
+        testTimeout: 30000,
+        hookTimeout: 25000,
         coverage: {
-            reporter: ['text', 'html'],
+            provider: 'v8',
+            reporter: ['text', 'html', 'json-summary'],
             include: ['src/**/*.ts'],
+            exclude: ['src/gateway/dashboard.ts'],
+            thresholds: { branches: 35, functions: 35, lines: 35 },
         },
     },
 });

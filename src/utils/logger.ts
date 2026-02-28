@@ -2,6 +2,11 @@
  * TITAN Logger — Structured logging with levels and colors
  */
 import chalk from 'chalk';
+import { createWriteStream, mkdirSync } from 'fs';
+import type { WriteStream } from 'fs';
+
+let fileStream: WriteStream | null = null;
+let logFilePath: string | null = null;
 
 export enum LogLevel {
     DEBUG = 0,
@@ -18,6 +23,15 @@ const LEVEL_LABELS: Record<LogLevel, string> = {
     [LogLevel.ERROR]: chalk.red('ERROR'),
     [LogLevel.SILENT]: '',
 };
+
+const LEVEL_NAMES: Record<LogLevel, string> = {
+    [LogLevel.DEBUG]: 'DEBUG',
+    [LogLevel.INFO]: 'INFO ',
+    [LogLevel.WARN]: 'WARN ',
+    [LogLevel.ERROR]: 'ERROR',
+    [LogLevel.SILENT]: '     ',
+};
+const ansiStrip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 let currentLevel: LogLevel = LogLevel.INFO;
 
@@ -37,6 +51,13 @@ function log(level: LogLevel, component: string, message: string, ...args: unkno
     if (level < currentLevel) return;
     const prefix = `${formatTimestamp()} ${LEVEL_LABELS[level]} ${chalk.blue(`[${component}]`)}`;
     console.log(`${prefix} ${message}`, ...args);
+    if (fileStream) {
+        const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+        const extra = args.length
+            ? ' ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')
+            : '';
+        fileStream.write(`${ts} ${LEVEL_NAMES[level]} [${component}] ${ansiStrip(message)}${extra}\n`);
+    }
 }
 
 export const logger = {
@@ -45,5 +66,20 @@ export const logger = {
     warn: (component: string, msg: string, ...args: unknown[]) => log(LogLevel.WARN, component, msg, ...args),
     error: (component: string, msg: string, ...args: unknown[]) => log(LogLevel.ERROR, component, msg, ...args),
 };
+
+export function initFileLogger(logDir: string): void {
+    if (fileStream) return; // idempotent
+    mkdirSync(logDir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    logFilePath = `${logDir}/titan-${date}.log`;
+    fileStream = createWriteStream(logFilePath, { flags: 'a', encoding: 'utf-8' });
+    fileStream.on('error', (err) => {
+        console.error(`[Logger] File write error: ${err.message}`);
+    });
+}
+
+export function getLogFilePath(): string | null {
+    return logFilePath;
+}
 
 export default logger;

@@ -203,6 +203,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" onclick="showPanel('learning',this)"><span class="icon">🧠</span>Learning</div>
     <div class="nav-section">System</div>
     <div class="nav-item" onclick="showPanel('security',this)"><span class="icon">🔒</span>Security</div>
+    <div class="nav-item" onclick="showPanel('graphiti',this);loadGraphiti()"><span class="icon">🕸️</span>Graphiti</div>
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" onclick="logout()">🔓 Logout</button>
@@ -669,6 +670,30 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div id="security-audit">Loading...</div>
       </div>
     </div>
+
+    <!-- Graphiti Panel -->
+    <div id="panel-graphiti" class="panel">
+      <div class="card-grid">
+        <div class="stat-card cyan"><div class="stat-label">Neo4j</div><div class="stat-value" id="g-neo4j">—</div></div>
+        <div class="stat-card purple"><div class="stat-label">MCP Status</div><div class="stat-value" id="g-mcp">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Nodes</div><div class="stat-value" id="g-nodes">—</div></div>
+        <div class="stat-card amber"><div class="stat-label">Edges</div><div class="stat-value" id="g-edges">—</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">Knowledge Graph</h3>
+          <button class="btn" onclick="loadGraphiti()" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+        </div>
+        <div id="graphiti-status" style="color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
+          Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan graphiti --init</code> to start the Graphiti + Neo4j stack, then refresh this panel.
+        </div>
+        <canvas id="graphiti-canvas" width="800" height="420" style="width:100%;background:var(--bg3);border-radius:var(--radius-sm);display:none"></canvas>
+        <div id="graphiti-empty" style="display:none;text-align:center;color:var(--text-dim);padding:60px 20px;font-size:13px">
+          No nodes found in the knowledge graph yet. Start chatting — TITAN will build memories automatically.
+        </div>
+        <div id="graphiti-node-list" style="display:none;margin-top:16px"></div>
+      </div>
+    </div>
   </div>
 </main>
 
@@ -699,7 +724,8 @@ function toast(msg, type = 'success') {
 const panelTitles = {
   overview:'📊 Overview', chat:'💬 WebChat', agents:'🤖 Agents',
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
-  sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security'
+  sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
+  graphiti:'🕸️ Graphiti Temporal Memory'
 };
 
 function showPanel(name, el) {
@@ -1311,6 +1337,128 @@ async function submitOnboarding() {
     btn.textContent = 'Try Again';
     btn.disabled = false;
   }
+}
+
+// ── Graphiti ──────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function loadGraphiti() {
+  try {
+    const data = await fetch('/api/graphiti', {headers:authHeaders()}).then(r=>r.json()).catch(()=>null);
+    if (!data) return;
+
+    document.getElementById('g-neo4j').textContent = data.neo4jOnline ? '🟢 Online' : '🔴 Offline';
+    document.getElementById('g-mcp').textContent = data.mcpConnected ? '🟢 Connected' : '🔴 Not connected';
+    document.getElementById('g-nodes').textContent = data.nodeCount ?? '—';
+    document.getElementById('g-edges').textContent = data.edgeCount ?? '—';
+
+    const canvas = document.getElementById('graphiti-canvas') as HTMLCanvasElement;
+    const empty = document.getElementById('graphiti-empty');
+    const status = document.getElementById('graphiti-status');
+    const nodeList = document.getElementById('graphiti-node-list');
+
+    if (!data.neo4jOnline) {
+      canvas.style.display = 'none';
+      empty.style.display = 'none';
+      status.style.display = 'block';
+      nodeList.style.display = 'none';
+      return;
+    }
+
+    status.style.display = 'none';
+
+    if (!data.nodes || data.nodes.length === 0) {
+      canvas.style.display = 'none';
+      empty.style.display = 'block';
+      nodeList.style.display = 'none';
+      return;
+    }
+
+    empty.style.display = 'none';
+    canvas.style.display = 'block';
+    nodeList.style.display = 'block';
+
+    // Draw graph on canvas
+    drawGraphitiGraph(canvas, data.nodes, data.edges);
+
+    // Render node list below canvas
+    const typeColors: Record<string,string> = {
+      Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
+    };
+    nodeList.innerHTML = '<table><thead><tr><th>Label</th><th>Type</th><th>ID</th></tr></thead><tbody>' +
+      data.nodes.map((n: any) => {
+        const c = typeColors[n.type] || '#64748b';
+        return \`<tr><td>\${escHtml(n.label)}</td><td><span style="color:\${c};font-weight:600">\${escHtml(n.type)}</span></td><td style="color:var(--text-dim);font-size:11px;font-family:monospace">\${escHtml(String(n.id).slice(0,12))}…</td></tr>\`;
+      }).join('') + '</tbody></table>';
+  } catch(e) { console.error('Graphiti load error', e); }
+}
+
+function drawGraphitiGraph(canvas: HTMLCanvasElement, nodes: any[], edges: any[]) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Place nodes in a circle layout
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.38;
+  const positions: Record<string, {x:number,y:number}> = {};
+
+  const typeColors: Record<string,string> = {
+    Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
+  };
+
+  nodes.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+    positions[n.id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  });
+
+  // Draw edges
+  ctx.strokeStyle = 'rgba(100,116,139,0.4)';
+  ctx.lineWidth = 1;
+  edges.forEach(e => {
+    const a = positions[e.from], b = positions[e.to];
+    if (!a || !b) return;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // Edge label
+    if (e.label) {
+      ctx.save();
+      ctx.font = '9px sans-serif';
+      ctx.fillStyle = 'rgba(148,163,184,0.8)';
+      ctx.fillText(e.label, (a.x+b.x)/2, (a.y+b.y)/2);
+      ctx.restore();
+    }
+  });
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const pos = positions[n.id];
+    if (!pos) return;
+    const color = typeColors[n.type] || '#64748b';
+    // Circle
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 18, 0, Math.PI * 2);
+    ctx.fillStyle = color + '33';
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Label
+    ctx.save();
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillStyle = '#f1f5f9';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const label = n.label.length > 10 ? n.label.slice(0,9)+'…' : n.label;
+    ctx.fillText(label, pos.x, pos.y);
+    ctx.restore();
+  });
 }
 
 // Check if we need to show onboarding

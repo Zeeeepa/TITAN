@@ -136,23 +136,52 @@ tr:hover{background:rgba(6,182,212,.03)}
 #toast.success{border-color:var(--accent3);color:var(--accent3)}
 #toast.error{border-color:var(--error);color:var(--error)}
 
-/* Onboarding Modal */
-#onboarding-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,14,26,0.8);backdrop-filter:blur(4px);z-index:9999;display:none;align-items:center;justify-content:center}
-#onboarding-modal.show{display:flex}
-.ob-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:500px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.5);overflow:hidden;display:flex;flex-direction:column}
-.ob-header{padding:24px;border-bottom:1px solid var(--border);text-align:center}
-.ob-header h2{font-size:20px;margin-bottom:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.ob-header p{color:var(--text-dim);font-size:14px}
-.ob-body{padding:24px;flex:1}
-.ob-step{display:none;animation:fadeIn 0.3s}
+/* Session Viewer Modal */
+#session-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,14,26,0.85);backdrop-filter:blur(8px);z-index:9900;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s}
+#session-modal.show{display:flex;opacity:1}
+.sm-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;width:700px;max-width:92%;height:80vh;display:flex;flex-direction:column;box-shadow:0 25px 80px rgba(0,0,0,0.6);transform:scale(0.95);transition:transform 0.3s}
+#session-modal.show .sm-card{transform:scale(1)}
+.sm-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg3);border-radius:16px 16px 0 0}
+.sm-header h3{font-size:16px;font-weight:600;color:var(--text-bright);display:flex;align-items:center;gap:10px}
+.sm-close{background:none;border:none;color:var(--text-dim);font-size:20px;cursor:pointer;transition:color 0.2s}
+.sm-close:hover{color:var(--text)}
+.sm-body{flex:1;overflow-y:auto;padding:24px;background:var(--bg)}
+.sm-history{font-family:'JetBrains Mono',monospace;font-size:12px;white-space:pre-wrap;color:var(--text-dim);line-height:1.5}
+
+/* Onboarding Modal - Premium OpenClaw Aesthetic */
+#onboarding-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,14,26,0.85);backdrop-filter:blur(8px);z-index:9999;display:none;align-items:center;justify-content:center;opacity:0;transition:opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1)}
+#onboarding-modal.show{display:flex;opacity:1}
+.ob-card{background:var(--bg2);border:1px solid rgba(6,182,212,0.3);border-radius:24px;width:540px;max-width:92%;box-shadow:0 25px 80px rgba(0,0,0,0.6), 0 0 40px rgba(6,182,212,0.1);overflow:hidden;display:flex;flex-direction:column;transform:scale(0.95);transition:transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)}
+#onboarding-modal.show .ob-card{transform:scale(1)}
+.ob-header{padding:32px 32px 24px;text-align:center;position:relative;overflow:hidden}
+.ob-header::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 60%);z-index:0;pointer-events:none}
+.ob-header-content{position:relative;z-index:1}
+.ob-icon{width:64px;height:64px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 16px;box-shadow:0 10px 20px rgba(6,182,212,0.3)}
+.ob-header h2{font-size:24px;font-weight:700;margin-bottom:8px;background:linear-gradient(135deg,#fff,var(--text-dim));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:0.5px}
+.ob-header p{color:var(--text-dim);font-size:14px;line-height:1.5}
+.ob-progress{display:flex;justify-content:center;gap:8px;margin-top:20px}
+.ob-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all 0.3s}
+.ob-dot.active{background:var(--accent);transform:scale(1.2);box-shadow:0 0 10px var(--accent)}
+.ob-dot.done{background:var(--accent2)}
+.ob-body{padding:0 32px 32px;flex:1;position:relative}
+.ob-step{display:none;animation:slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;opacity:0}
+@keyframes slideIn{0%{opacity:0;transform:translateX(20px)}100%{opacity:1;transform:translateX(0)}}
 .ob-step.active{display:block}
-.ob-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;background:var(--bg3)}
-.provider-box{border:1px solid var(--border);padding:16px;border-radius:var(--radius-sm);margin-bottom:12px;cursor:pointer;transition:all 0.2s}
-.provider-box:hover{border-color:var(--accent);background:var(--bg3)}
-.provider-box.selected{border-color:var(--accent);background:rgba(6,182,212,0.1)}
-.provider-box strong{display:block;margin-bottom:4px;font-size:15px}
-.provider-box p{font-size:12px;color:var(--text-dim)}
-</style>
+.ob-step-title{font-size:18px;font-weight:600;margin-bottom:8px;color:var(--text-bright)}
+.ob-step-desc{color:var(--text-dim);font-size:13px;margin-bottom:24px;line-height:1.5}
+.ob-footer{padding:20px 32px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;background:rgba(0,0,0,0.2)}
+.provider-box{border:1px solid var(--border);padding:18px;border-radius:12px;margin-bottom:12px;cursor:pointer;transition:all 0.2s;background:var(--bg3);display:flex;align-items:flex-start;gap:16px}
+.provider-box:hover{border-color:rgba(6,182,212,0.5);transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.2)}
+.provider-box.selected{border-color:var(--accent);background:linear-gradient(145deg,rgba(6,182,212,0.1),rgba(139,92,246,0.05));box-shadow:0 0 0 1px var(--accent) inset}
+.provider-icon{font-size:24px;background:rgba(255,255,255,0.05);width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.provider-box strong{display:block;margin-bottom:6px;font-size:15px;color:var(--text-bright)}
+.provider-box p{font-size:13px;color:var(--text-dim);line-height:1.4}
+.ob-btn{padding:12px 24px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer;transition:all 0.2s;border:none}
+.ob-btn-secondary{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
+.ob-btn-secondary:hover{background:var(--bg3);color:var(--text)}
+.ob-btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 15px rgba(6,182,212,0.3)}
+.ob-btn-primary:hover{opacity:0.9;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,182,212,0.4)}
+.ob-btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none}</style>
 </head>
 <body>
 <aside class="sidebar">
@@ -180,25 +209,47 @@ tr:hover{background:rgba(6,182,212,.03)}
   </div>
 </aside>
 
+<!-- Session Viewer Modal -->
+<div id="session-modal">
+  <div class="sm-card">
+    <div class="sm-header">
+      <h3><span style="font-size:20px">📜</span> Session History <span id="sm-id" style="font-family:monospace;font-size:12px;color:var(--text-dim);font-weight:normal"></span></h3>
+      <button class="sm-close" onclick="closeSessionModal()">✕</button>
+    </div>
+    <div class="sm-body">
+      <div id="sm-loading" style="text-align:center;padding:40px;color:var(--text-dim)">Fetching history...</div>
+      <div id="sm-content" class="sm-history" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Onboarding Modal -->
 <div id="onboarding-modal">
   <div class="ob-card">
     <div class="ob-header">
-      <h2>Welcome to TITAN</h2>
-      <p id="ob-subtitle">Let's get your local AI agent configured.</p>
+      <div class="ob-header-content">
+        <div class="ob-icon">⚡</div>
+        <h2>Welcome to TITAN</h2>
+        <p id="ob-subtitle">Let's get your local AI agent configured.</p>
+        <div class="ob-progress">
+          <div class="ob-dot active" id="dot-1"></div>
+          <div class="ob-dot" id="dot-2"></div>
+          <div class="ob-dot" id="dot-3"></div>
+        </div>
+      </div>
     </div>
     <div class="ob-body">
       <!-- Step 1: Profile -->
       <div class="ob-step active" id="ob-step-1">
-        <h3 style="margin-bottom:16px;font-size:15px">1. Personalize Your Experience</h3>
-        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">TITAN adapts to your technical level and preferences.</p>
-        <div class="form-group">
+        <div class="ob-step-title">1. Personalize Your Experience</div>
+        <div class="ob-step-desc">TITAN adapts to your technical level and communication style.</div>
+        <div class="form-group" style="margin-bottom:20px">
           <label>What should I call you?</label>
-          <input type="text" id="ob-name" placeholder="e.g. Tony" />
+          <input type="text" id="ob-name" placeholder="e.g. Commander" style="padding:14px;font-size:15px"/>
         </div>
         <div class="form-group">
           <label>Technical Level</label>
-          <select id="ob-level">
+          <select id="ob-level" style="padding:14px;font-size:14px">
             <option value="intermediate">Intermediate — I know the basics</option>
             <option value="beginner">Beginner — Explain everything cleanly</option>
             <option value="expert">Expert — Maximize density, no hand-holding</option>
@@ -208,38 +259,36 @@ tr:hover{background:rgba(6,182,212,.03)}
 
       <!-- Step 2: Provider -->
       <div class="ob-step" id="ob-step-2">
-        <h3 style="margin-bottom:16px;font-size:15px">2. Choose Your Primary Engine</h3>
-        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Where should TITAN run its core reasoning loop?</p>
+        <div class="ob-step-title">2. Choose Your Engine</div>
+        <div class="ob-step-desc">Select where TITAN should run its core reasoning loop.</div>
         
         <div class="provider-box selected" onclick="document.getElementById('ob-prov-local').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
-            <input type="radio" name="ob_provider" id="ob-prov-local" value="local" checked style="width:16px;height:16px;accent-color:var(--accent)" />
-            <div>
-              <strong>Local (Ollama)</strong>
-              <p>Free, private, runs on your own hardware. Best with Kimi or Llama 3.</p>
-            </div>
-          </label>
+          <div class="provider-icon">🦙</div>
+          <div style="flex:1">
+            <strong>Local (Ollama)</strong>
+            <p>Free, private, runs entirely on your own hardware. Best with Kimi or Llama 3.</p>
+          </div>
+          <input type="radio" name="ob_provider" id="ob-prov-local" value="local" checked style="display:none" />
         </div>
 
         <div class="provider-box" onclick="document.getElementById('ob-prov-cloud').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0">
-            <input type="radio" name="ob_provider" id="ob-prov-cloud" value="cloud" style="width:16px;height:16px;accent-color:var(--accent)" />
-            <div>
-              <strong>Cloud (Anthropic / OpenAI / Google)</strong>
-              <p>Requires an API key. Lightning fast complex multi-tool reasoning.</p>
-            </div>
-          </label>
+          <div class="provider-icon">☁️</div>
+          <div style="flex:1">
+            <strong>Cloud (Anthropic / OpenAI)</strong>
+            <p>Requires an API key. Lightning fast complex multi-tool reasoning.</p>
+          </div>
+          <input type="radio" name="ob_provider" id="ob-prov-cloud" value="cloud" style="display:none" />
         </div>
       </div>
 
       <!-- Step 3: Autonomy -->
       <div class="ob-step" id="ob-step-3">
-        <h3 style="margin-bottom:16px;font-size:15px">3. Set Guardrails</h3>
-        <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">How much freedom should TITAN have on your machine?</p>
+        <div class="ob-step-title">3. Set Guardrails</div>
+        <div class="ob-step-desc">Establish how much freedom TITAN has on your machine.</div>
         <div class="form-group">
           <label>Autonomy Mode</label>
-          <select id="ob-autonomy">
-            <option value="supervised">🟡 Supervised (Default) — TITAN asks before running risky commands</option>
+          <select id="ob-autonomy" style="padding:14px;font-size:14px">
+            <option value="supervised">🟡 Supervised (Default) — Asks before running risky commands</option>
             <option value="autonomous">🟢 Autonomous — Full auto execution</option>
             <option value="locked">🔴 Locked — User must approve every tool call</option>
           </select>
@@ -247,8 +296,8 @@ tr:hover{background:rgba(6,182,212,.03)}
       </div>
     </div>
     <div class="ob-footer">
-      <button class="btn" id="ob-btn-back" onclick="obPrevStep()" style="visibility:hidden">Back</button>
-      <button class="btn primary" id="ob-btn-next" onclick="obNextStep()">Next ⚡</button>
+      <button class="ob-btn ob-btn-secondary" id="ob-btn-back" onclick="obPrevStep()" style="visibility:hidden">Back</button>
+      <button class="ob-btn ob-btn-primary" id="ob-btn-next" onclick="obNextStep()">Continue ⚡</button>
     </div>
   </div>
 </div>
@@ -282,6 +331,13 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div><span style="color:var(--text-dim);font-size:12px">Autonomy</span><div style="font-weight:600;margin-top:4px" id="h-autonomy">—</div></div>
           <div><span style="color:var(--text-dim);font-size:12px">Tokens Used</span><div style="font-weight:600;margin-top:4px" id="h-tokens">—</div></div>
         </div>
+      </div>
+      <div class="card" id="update-card" style="display:none;background:rgba(6,182,212,0.1);border:1px solid var(--accent);margin-top:20px;justify-content:space-between;align-items:center">
+        <div>
+          <h3 style="color:var(--accent);margin:0"><span style="font-size:18px">🚀</span> Update Available</h3>
+          <p style="color:var(--text);font-size:13px;margin:4px 0 0 0">TITAN <span id="update-latest-version" style="font-weight:bold"></span> is available! Currently running <span id="update-current-version" style="font-weight:bold"></span>.</p>
+        </div>
+        <button class="btn" style="background:var(--accent);color:#fff" onclick="triggerUpdate()">Update Now</button>
       </div>
     </div>
 
@@ -1013,9 +1069,20 @@ async function refreshOllamaModels() {
 }
 
 // ── Data fetching ─────────────────────────────────────────────────
+async function triggerUpdate() {
+  if (!confirm('Are you sure you want to update TITAN? This will pull the latest version and build in the background.')) return;
+  toast('Triggering update...');
+  try {
+    const r = await fetch('/api/update', {method:'POST', headers:authHeaders()});
+    const data = await r.json();
+    if (data.ok) toast('Update started in background. Monitor CLI for logs.', 'success');
+    else toast('Update failed to start', 'error');
+  } catch(e) { toast('Error starting update', 'error'); }
+}
+
 async function fetchData() {
   try {
-    const [stats, sessions, skills, channelStatus, security, agents, learning] = await Promise.all([
+    const [stats, sessions, skills, channelStatus, security, agents, learning, updateInfo] = await Promise.all([
       fetch('/api/stats', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
       fetch('/api/sessions', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
       fetch('/api/skills', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
@@ -1023,6 +1090,7 @@ async function fetchData() {
       fetch('/api/security', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
       fetch('/api/agents', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({agents:[],capacity:{current:0,max:5}})),
       fetch('/api/learning', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/update', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
     ]);
 
     // Overview stats
@@ -1065,8 +1133,8 @@ async function fetchData() {
     // Sessions
     if (Array.isArray(sessions) && sessions.length > 0) {
       document.getElementById('sessions-list').innerHTML =
-        '<table><tr><th>ID</th><th>Channel</th><th>User</th><th>Messages</th><th>Last Active</th></tr>' +
-        sessions.map(s=>'<tr><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+s.id.slice(0,8)+'</td><td>'+s.channel+'</td><td>'+(s.userId||s.user_id||'—')+'</td><td>'+(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+(s.lastActive||'—')+'</td></tr>').join('')+'</table>';
+        '<table><tr><th>ID</th><th>Channel</th><th>User</th><th>Messages</th><th>Last Active</th><th>Action</th></tr>' +
+        sessions.map(s=>'<tr><td><a href="#" onclick="showSessionModal(\\''+s.id+'\\')" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+s.id.slice(0,8)+'</a></td><td>'+s.channel+'</td><td>'+(s.userId||s.user_id||'—')+'</td><td>'+(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+(s.lastActive||'—')+'</td><td><button class="btn danger" onclick="stopSession(\\''+s.id+'\\')">Drop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('sessions-list').innerHTML = '<div class="empty-state"><div class="icon">🔗</div><p>No active sessions yet. Start a conversation in WebChat.</p></div>';
     }
@@ -1103,6 +1171,18 @@ async function fetchData() {
       document.getElementById('l-corrections').textContent = learning.corrections ?? '—';
     }
 
+    // Update Checker
+    const updateCard = document.getElementById('update-card');
+    if (updateInfo && updateInfo.isNewer && updateInfo.latest) {
+      const elLatest = document.getElementById('update-latest-version');
+      const elCurrent = document.getElementById('update-current-version');
+      if (elLatest) elLatest.textContent = 'v' + updateInfo.latest;
+      if (elCurrent) elCurrent.textContent = 'v' + updateInfo.current;
+      if (updateCard) updateCard.style.display = 'flex';
+    } else if (updateCard) {
+      updateCard.style.display = 'none';
+    }
+
   } catch(e) { console.error('Fetch error:', e); }
 }
 
@@ -1110,9 +1190,52 @@ async function fetchData() {
 fetchData();
 setInterval(fetchData, 15000);
 
+// ── Session Viewer Logic ──────────────────────────────────────────
+async function showSessionModal(id) {
+  const modal = document.getElementById('session-modal');
+  const idSpan = document.getElementById('sm-id');
+  const content = document.getElementById('sm-content');
+  const loading = document.getElementById('sm-loading');
+
+  idSpan.textContent = id;
+  content.style.display = 'none';
+  loading.style.display = 'block';
+  modal.classList.add('show');
+
+  try {
+    const r = await fetch('/api/sessions/' + id, {headers:authHeaders()});
+    if (!r.ok) throw new Error('Failed to fetch format');
+    const history = await r.json();
+    
+    // Format JSON with 2-space indentation
+    content.textContent = JSON.stringify(history, null, 2);
+    loading.style.display = 'none';
+    content.style.display = 'block';
+  } catch(e) {
+    loading.textContent = 'Error loading session history: ' + e.message;
+  }
+}
+
+function closeSessionModal() {
+  document.getElementById('session-modal').classList.remove('show');
+}
+
 // ── Onboarding Logic ──────────────────────────────────────────────
 let obCurrentStep = 1;
 const obTotalSteps = 3;
+
+function updateObDots() {
+  for (let i = 1; i <= obTotalSteps; i++) {
+    const dot = document.getElementById('dot-' + i);
+    if (i < obCurrentStep) {
+      dot.className = 'ob-dot done';
+    } else if (i === obCurrentStep) {
+      dot.className = 'ob-dot active';
+    } else {
+      dot.className = 'ob-dot';
+    }
+  }
+}
 
 function obNextStep() {
   if (obCurrentStep === 1) {
@@ -1125,6 +1248,7 @@ function obNextStep() {
     obCurrentStep++;
     document.getElementById('ob-step-' + obCurrentStep).classList.add('active');
     document.getElementById('ob-btn-back').style.visibility = 'visible';
+    updateObDots();
     
     if (obCurrentStep === obTotalSteps) {
       document.getElementById('ob-btn-next').textContent = 'Finish Setup ⚡';
@@ -1139,7 +1263,9 @@ function obPrevStep() {
     document.getElementById('ob-step-' + obCurrentStep).classList.remove('active');
     obCurrentStep--;
     document.getElementById('ob-step-' + obCurrentStep).classList.add('active');
-    document.getElementById('ob-btn-next').textContent = 'Next ⚡';
+    document.getElementById('ob-btn-next').textContent = 'Continue ⚡';
+    updateObDots();
+    
     if (obCurrentStep === 1) {
       document.getElementById('ob-btn-back').style.visibility = 'hidden';
     }

@@ -8,10 +8,12 @@ import { createServer } from 'http';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
+import { exec } from 'child_process';
+import fs from 'fs';
 import { loadConfig, updateConfig } from '../config/config.js';
 import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relationship.js';
 import { processMessage } from '../agent/agent.js';
-import { initMemory, getUsageStats } from '../memory/memory.js';
+import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
@@ -26,6 +28,7 @@ import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCa
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION, TITAN_NAME } from '../utils/constants.js';
+import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
 import { initMcpServers } from '../mcp/registry.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
@@ -508,6 +511,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(sessions);
   });
 
+  app.get('/api/sessions/:id', (req, res) => {
+    const sessionId = req.params.id;
+    try {
+      // getHistory looks up messages for a given session ID
+      const history = getHistory(sessionId);
+      res.json(history);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   app.get('/api/skills', (_req, res) => {
     const skills = getSkills();
     res.json(skills);
@@ -577,6 +591,34 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Cost optimizer endpoint for Mission Control
   app.get('/api/costs', (_req, res) => {
     res.json(getCostStatus());
+  });
+
+  // Update System endpoints
+  app.get('/api/update', async (_req, res) => {
+    const info = await getUpdateInfo();
+    res.json(info);
+  });
+
+  app.post('/api/update', (req, res) => {
+    // Check if we are in a git repository locally
+    const isLocalDev = fs.existsSync(join(process.cwd(), '.git'));
+
+    let command = 'npm update -g titan-agent';
+    if (isLocalDev) {
+      command = 'git pull && npm run build';
+    }
+
+    logger.info(COMPONENT, `Triggering update: ${command}`);
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        logger.error(COMPONENT, `Update failed: ${error.message}`);
+      } else {
+        logger.info(COMPONENT, `Update completed successfully.\\n${stdout}`);
+      }
+    });
+
+    res.json({ ok: true, message: 'Update triggered in background' });
   });
 
   // Config endpoints

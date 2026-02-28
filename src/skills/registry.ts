@@ -109,6 +109,7 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerAutoGenerateSkill } = await import('./builtin/auto_generate.js');
     const { registerVisionSkill } = await import('./builtin/vision.js');
     const { registerVoiceSkills } = await import('./builtin/voice.js');
+    const { registerMemoryGraphSkill } = await import('./builtin/memory_graph.js');
 
     registerShellSkill();
     registerFilesystemSkill();
@@ -124,6 +125,7 @@ export async function initBuiltinSkills(): Promise<void> {
     registerAutoGenerateSkill();
     registerVisionSkill();
     registerVoiceSkills();
+    registerMemoryGraphSkill();
 
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
 }

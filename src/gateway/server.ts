@@ -37,6 +37,9 @@ import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
 import { getLearningStats } from '../memory/learning.js';
+import { initGraph, getGraphData, getGraphStats } from '../memory/graph.js';
+import { getLogFilePath } from '../utils/logger.js';
+import { closeSession } from '../agent/session.js';
 
 const COMPONENT = 'Gateway';
 
@@ -457,6 +460,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   // Initialize subsystems
   initMemory();
+  initGraph();
   await initBuiltinSkills();
   initAgents();
 
@@ -531,6 +535,15 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       // getHistory looks up messages for a given session ID
       const history = getHistory(sessionId);
       res.json(history);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/sessions/:id/close', (req, res) => {
+    try {
+      closeSession(req.params.id);
+      res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
@@ -763,69 +776,32 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(getLearningStats());
   });
 
-  // Graphiti / Neo4j status + graph data endpoint
-  app.get('/api/graphiti', async (_req, res) => {
+  // Live log tail endpoint
+  app.get('/api/logs', (req, res) => {
     try {
-      // Check if graphiti MCP is registered
-      const mcpStatus = getMcpStatus();
-      const graphitiMcp = mcpStatus.find((c: ReturnType<typeof getMcpStatus>[number]) => c.server.id === 'graphiti');
-      const mcpConnected = !!graphitiMcp && graphitiMcp.status === 'connected';
-
-      // Attempt to fetch node data from Neo4j HTTP API (port 7474)
-      let nodes: { id: string; label: string; type: string }[] = [];
-      let edges: { from: string; to: string; label: string }[] = [];
-      let neo4jOnline = false;
-
-      try {
-        const neo4jRes = await fetch('http://127.0.0.1:7474/db/neo4j/tx/commit', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Basic ' + Buffer.from('neo4j:password').toString('base64'),
-          },
-          body: JSON.stringify({
-            statements: [
-              {
-                statement: 'MATCH (n) RETURN n.name AS name, n.uuid AS uuid, labels(n)[0] AS type LIMIT 50',
-                resultDataContents: ['row'],
-              },
-              {
-                statement: 'MATCH (a)-[r]->(b) RETURN a.uuid AS from, b.uuid AS to, type(r) AS rel LIMIT 80',
-                resultDataContents: ['row'],
-              },
-            ],
-          }),
-          signal: AbortSignal.timeout(3000),
-        });
-
-        if (neo4jRes.ok) {
-          neo4jOnline = true;
-          const body = await neo4jRes.json() as any;
-          const [nodeResult, edgeResult] = body.results ?? [];
-
-          if (nodeResult) {
-            nodes = (nodeResult.data ?? []).map((row: any) => ({
-              id: row.row[1] ?? row.row[0] ?? String(Math.random()),
-              label: row.row[0] ?? 'Node',
-              type: row.row[2] ?? 'Entity',
-            }));
-          }
-          if (edgeResult) {
-            edges = (edgeResult.data ?? []).map((row: any) => ({
-              from: row.row[0] ?? '',
-              to: row.row[1] ?? '',
-              label: row.row[2] ?? '',
-            }));
-          }
-        }
-      } catch {
-        // Neo4j not running — not an error, just offline
+      const logPath = getLogFilePath();
+      if (!logPath || !fs.existsSync(logPath)) {
+        res.json({ lines: [] });
+        return;
       }
+      const lineCount = req.query.lines ? parseInt(req.query.lines as string, 10) : 200;
+      const content = fs.readFileSync(logPath, 'utf-8');
+      const all = content.split('\n').filter(Boolean);
+      const tail = all.slice(-Math.max(1, lineCount));
+      res.json({ lines: tail });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
 
+  // Native Memory Graph endpoint (replaces Neo4j/Graphiti)
+  app.get('/api/graphiti', (_req, res) => {
+    try {
+      const { nodes, edges } = getGraphData();
+      const { episodeCount, entityCount, edgeCount } = getGraphStats();
       res.json({
-        mcpConnected,
-        mcpToolCount: graphitiMcp?.toolCount ?? 0,
-        neo4jOnline,
+        graphReady: true,
+        episodeCount,
         nodeCount: nodes.length,
         edgeCount: edges.length,
         nodes,

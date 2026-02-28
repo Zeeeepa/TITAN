@@ -203,7 +203,8 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" onclick="showPanel('learning',this)"><span class="icon">🧠</span>Learning</div>
     <div class="nav-section">System</div>
     <div class="nav-item" onclick="showPanel('security',this)"><span class="icon">🔒</span>Security</div>
-    <div class="nav-item" onclick="showPanel('graphiti',this);loadGraphiti()"><span class="icon">🕸️</span>Graphiti</div>
+    <div class="nav-item" onclick="showPanel('logs',this);startLogs()"><span class="icon">📜</span>Logs</div>
+    <div class="nav-item" onclick="showPanel('graphiti',this);loadGraphiti()"><span class="icon">🕸️</span>Memory Graph</div>
   </nav>
   <div class="sidebar-footer">
     <button class="logout-btn" onclick="logout()">🔓 Logout</button>
@@ -671,25 +672,48 @@ tr:hover{background:rgba(6,182,212,.03)}
       </div>
     </div>
 
-    <!-- Graphiti Panel -->
+    <!-- Logs Panel -->
+    <div id="panel-logs" class="panel">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px">
+          <h3 style="margin:0">📜 Live Logs</h3>
+          <div style="display:flex;gap:8px;align-items:center;flex:1;max-width:400px">
+            <input id="log-filter" type="text" placeholder="Filter logs…" oninput="filterLogs()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;color:var(--text);font-size:13px;outline:none"/>
+            <button class="btn" onclick="loadLogs()" style="padding:6px 14px;font-size:12px">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="logs-container" style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:calc(100vh - 280px);overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Memory Graph Panel -->
     <div id="panel-graphiti" class="panel">
       <div class="card-grid">
-        <div class="stat-card cyan"><div class="stat-label">Neo4j</div><div class="stat-value" id="g-neo4j">—</div></div>
-        <div class="stat-card purple"><div class="stat-label">MCP Status</div><div class="stat-value" id="g-mcp">—</div></div>
-        <div class="stat-card green"><div class="stat-label">Nodes</div><div class="stat-value" id="g-nodes">—</div></div>
+        <div class="stat-card cyan"><div class="stat-label">Graph Status</div><div class="stat-value" id="g-neo4j" style="font-size:18px">—</div></div>
+        <div class="stat-card purple"><div class="stat-label">Episodes</div><div class="stat-value" id="g-mcp">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Entities</div><div class="stat-value" id="g-nodes">—</div></div>
         <div class="stat-card amber"><div class="stat-label">Edges</div><div class="stat-value" id="g-edges">—</div></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-          <h3 style="margin:0">Knowledge Graph</h3>
+          <h3 style="margin:0">🕸️ Memory Graph</h3>
           <button class="btn" onclick="loadGraphiti()" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
         </div>
-        <div id="graphiti-status" style="color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
-          Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan graphiti --init</code> to start the Graphiti + Neo4j stack, then refresh this panel.
+        <div id="graphiti-status" style="display:none;color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
+          Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan graphiti --init</code> to initialize the native graph memory.
         </div>
-        <canvas id="graphiti-canvas" width="800" height="420" style="width:100%;background:var(--bg3);border-radius:var(--radius-sm);display:none"></canvas>
+        <canvas id="graphiti-canvas" width="800" height="420" style="width:100%;background:var(--bg3);border-radius:var(--radius-sm);cursor:pointer;display:none"></canvas>
         <div id="graphiti-empty" style="display:none;text-align:center;color:var(--text-dim);padding:60px 20px;font-size:13px">
-          No nodes found in the knowledge graph yet. Start chatting — TITAN will build memories automatically.
+          No entities in graph memory yet. Start chatting — TITAN will build memories automatically via entity extraction.
+        </div>
+        <div id="graph-entity-detail" style="display:none;margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <h4 id="ged-name" style="margin:0;font-size:15px"></h4>
+            <span id="ged-type" class="badge info"></span>
+          </div>
+          <div id="ged-aliases" style="font-size:12px;color:var(--text-dim);margin-top:6px"></div>
+          <ul id="ged-facts" style="font-size:13px;margin:10px 0 0;padding-left:18px"></ul>
+          <div id="ged-seen" style="font-size:11px;color:var(--text-dim);margin-top:8px"></div>
         </div>
         <div id="graphiti-node-list" style="display:none;margin-top:16px"></div>
       </div>
@@ -725,7 +749,7 @@ const panelTitles = {
   overview:'📊 Overview', chat:'💬 WebChat', agents:'🤖 Agents',
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
   sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
-  graphiti:'🕸️ Graphiti Temporal Memory'
+  logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph'
 };
 
 function showPanel(name, el) {
@@ -735,6 +759,7 @@ function showPanel(name, el) {
   if (panel) panel.classList.add('active');
   if (el) el.closest('.nav-item').classList.add('active');
   document.getElementById('panel-title').textContent = panelTitles[name] || name;
+  if (name !== 'logs') stopLogs();
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────
@@ -753,6 +778,7 @@ function connectWS() {
   };
   ws.onerror = () => {};
   ws.onmessage = (e) => {
+    removeTyping();
     try {
       const data = JSON.parse(e.data);
       // Assistant response from the agent
@@ -829,18 +855,10 @@ function sendChat() {
   }
 }
 
-// Remove typing indicator when response arrives (monkey-patch ws.onmessage)
+// Remove typing indicator
 function removeTyping() {
   const t = document.getElementById('typing-indicator');
   if (t) t.remove();
-}
-// Patch into WS handler (guard in case ws failed to construct)
-if (ws) {
-  const origOnMsg = ws.onmessage;
-  ws.onmessage = (e) => {
-    removeTyping();
-    if (origOnMsg) origOnMsg.call(ws, e);
-  };
 }
 
 // ── Agents ────────────────────────────────────────────────────────
@@ -858,6 +876,14 @@ async function stopAgent(id) {
   await fetch('/api/agents/stop', {method:'POST', headers:authHeaders(), body:JSON.stringify({agentId:id})});
   toast('Agent stopped');
   fetchData();
+}
+
+async function stopSession(id) {
+  try {
+    const r = await fetch('/api/sessions/' + id + '/close', {method:'POST', headers:authHeaders()});
+    if (r.ok) { toast('Session closed'); fetchData(); }
+    else { toast('Failed to close session', 'error'); }
+  } catch(e) { toast('Failed to close session', 'error'); }
 }
 
 // ── Settings Tabs ─────────────────────────────────────────────────
@@ -1347,25 +1373,18 @@ function escHtml(s) {
 async function loadGraphiti() {
   try {
     const data = await fetch('/api/graphiti', {headers:authHeaders()}).then(r=>r.json()).catch(()=>null);
-    if (!data) return;
+    if (!data) { toast('Failed to load Memory Graph', 'error'); return; }
 
-    document.getElementById('g-neo4j').textContent = data.neo4jOnline ? '🟢 Online' : '🔴 Offline';
-    document.getElementById('g-mcp').textContent = data.mcpConnected ? '🟢 Connected' : '🔴 Not connected';
+    // Update stat cards
+    document.getElementById('g-neo4j').textContent = data.graphReady ? '🟢 Ready' : '🔴 Error';
+    document.getElementById('g-mcp').textContent = (data.episodeCount ?? 0) + ' episodes';
     document.getElementById('g-nodes').textContent = data.nodeCount ?? '—';
     document.getElementById('g-edges').textContent = data.edgeCount ?? '—';
 
-    const canvas = document.getElementById('graphiti-canvas') as HTMLCanvasElement;
+    const canvas = document.getElementById('graphiti-canvas');
     const empty = document.getElementById('graphiti-empty');
     const status = document.getElementById('graphiti-status');
     const nodeList = document.getElementById('graphiti-node-list');
-
-    if (!data.neo4jOnline) {
-      canvas.style.display = 'none';
-      empty.style.display = 'none';
-      status.style.display = 'block';
-      nodeList.style.display = 'none';
-      return;
-    }
 
     status.style.display = 'none';
 
@@ -1384,37 +1403,38 @@ async function loadGraphiti() {
     drawGraphitiGraph(canvas, data.nodes, data.edges);
 
     // Render node list below canvas
-    const typeColors: Record<string,string> = {
+    const typeColors = {
+      person:'#06b6d4', topic:'#8b5cf6', project:'#10b981', place:'#f59e0b', fact:'#94a3b8',
       Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
     };
     nodeList.innerHTML = '<table><thead><tr><th>Label</th><th>Type</th><th>ID</th></tr></thead><tbody>' +
-      data.nodes.map((n: any) => {
+      data.nodes.map((n) => {
         const c = typeColors[n.type] || '#64748b';
         return \`<tr><td>\${escHtml(n.label)}</td><td><span style="color:\${c};font-weight:600">\${escHtml(n.type)}</span></td><td style="color:var(--text-dim);font-size:11px;font-family:monospace">\${escHtml(String(n.id).slice(0,12))}…</td></tr>\`;
       }).join('') + '</tbody></table>';
-  } catch(e) { console.error('Graphiti load error', e); }
+
+    // Attach click handler for entity detail card
+    canvas.onclick = (evt) => showEntityDetail(data.nodes, data.edges, canvas, evt);
+  } catch(e) { toast('Failed to load Memory Graph', 'error'); console.error('Graph load error', e); }
 }
 
-function drawGraphitiGraph(canvas: HTMLCanvasElement, nodes: any[], edges: any[]) {
+function drawGraphitiGraph(canvas, nodes, edges) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  // Place nodes in a circle layout
-  const cx = W / 2, cy = H / 2;
-  const r = Math.min(W, H) * 0.38;
-  const positions: Record<string, {x:number,y:number}> = {};
+  if (nodes.length === 0) return;
 
-  const typeColors: Record<string,string> = {
+  const typeColors = {
+    person:'#06b6d4', topic:'#8b5cf6', project:'#10b981', place:'#f59e0b', fact:'#94a3b8',
     Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
   };
 
-  nodes.forEach((n, i) => {
-    const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
-    positions[n.id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
-  });
+  // Use force-directed layout
+  const positions = initForceLayout(nodes, W, H);
+  canvas._positions = positions;
 
   // Draw edges
   ctx.strokeStyle = 'rgba(100,116,139,0.4)';
@@ -1426,7 +1446,6 @@ function drawGraphitiGraph(canvas: HTMLCanvasElement, nodes: any[], edges: any[]
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
-    // Edge label
     if (e.label) {
       ctx.save();
       ctx.font = '9px sans-serif';
@@ -1441,15 +1460,14 @@ function drawGraphitiGraph(canvas: HTMLCanvasElement, nodes: any[], edges: any[]
     const pos = positions[n.id];
     if (!pos) return;
     const color = typeColors[n.type] || '#64748b';
-    // Circle
+    const radius = n.size || 18;
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 18, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fillStyle = color + '33';
     ctx.fill();
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.stroke();
-    // Label
     ctx.save();
     ctx.font = 'bold 10px sans-serif';
     ctx.fillStyle = '#f1f5f9';
@@ -1459,6 +1477,115 @@ function drawGraphitiGraph(canvas: HTMLCanvasElement, nodes: any[], edges: any[]
     ctx.fillText(label, pos.x, pos.y);
     ctx.restore();
   });
+}
+
+// ── Force-directed graph layout init ─────────────────────────────
+function initForceLayout(nodes, W, H) {
+  const positions = {};
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) * 0.38;
+  nodes.forEach((n, i) => {
+    const angle = (2 * Math.PI * i) / nodes.length - Math.PI / 2;
+    positions[n.id] = {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+      vx: 0, vy: 0
+    };
+  });
+  // Run force simulation (200 iterations)
+  const k = 80, spring = 0.05, damping = 0.8;
+  for (let iter = 0; iter < 200; iter++) {
+    // Repulsion between all nodes
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const pi = positions[nodes[i].id], pj = positions[nodes[j].id];
+        const dx = pi.x - pj.x, dy = pi.y - pj.y;
+        const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+        const force = (k * k) / dist;
+        pi.vx += (dx / dist) * force; pi.vy += (dy / dist) * force;
+        pj.vx -= (dx / dist) * force; pj.vy -= (dy / dist) * force;
+      }
+    }
+    // Apply velocities
+    for (const n of nodes) {
+      const p = positions[n.id];
+      p.vx *= damping; p.vy *= damping;
+      p.x = Math.max(30, Math.min(W - 30, p.x + p.vx * 0.1));
+      p.y = Math.max(30, Math.min(H - 30, p.y + p.vy * 0.1));
+    }
+  }
+  return positions;
+}
+
+// ── Entity detail on canvas click ────────────────────────────────
+function showEntityDetail(nodes, edges, canvas, evt) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const mx = (evt.clientX - rect.left) * scaleX;
+  const my = (evt.clientY - rect.top) * scaleX;
+  const detail = document.getElementById('graph-entity-detail');
+  // Check if click is near a node (positions stored on canvas element)
+  const positions = canvas._positions;
+  if (!positions) return;
+  for (const n of nodes) {
+    const p = positions[n.id];
+    if (!p) continue;
+    const r = n.size || 18;
+    if (Math.sqrt((mx - p.x) ** 2 + (my - p.y) ** 2) <= r + 4) {
+      document.getElementById('ged-name').textContent = n.label;
+      document.getElementById('ged-type').textContent = n.type;
+      document.getElementById('ged-aliases').textContent = '';
+      const factsEl = document.getElementById('ged-facts');
+      factsEl.innerHTML = (n.facts && n.facts.length > 0)
+        ? n.facts.map(f => '<li>' + escHtml(f) + '</li>').join('')
+        : '<li style="color:var(--text-dim)">No facts recorded yet</li>';
+      detail.style.display = 'block';
+      return;
+    }
+  }
+  detail.style.display = 'none';
+}
+
+// ── Logs panel ───────────────────────────────────────────────────
+let logsInterval = null;
+let allLogLines = [];
+
+async function loadLogs() {
+  try {
+    const r = await fetch('/api/logs?lines=200', {headers:authHeaders()});
+    if (!r.ok) { toast('Failed to load logs', 'error'); return; }
+    const data = await r.json();
+    allLogLines = data.lines || [];
+    renderLogs();
+  } catch(e) { toast('Failed to load logs', 'error'); }
+}
+
+function renderLogs() {
+  const filter = (document.getElementById('log-filter')?.value || '').toLowerCase();
+  const lines = filter ? allLogLines.filter(l => l.toLowerCase().includes(filter)) : allLogLines;
+  const container = document.getElementById('logs-container');
+  if (!container) return;
+  if (lines.length === 0) { container.innerHTML = '<span style="color:var(--text-dim)">No log lines found.</span>'; return; }
+  container.innerHTML = lines.map(line => {
+    let color = 'var(--text)';
+    if (line.includes('ERROR')) color = 'var(--error)';
+    else if (line.includes('WARN')) color = 'var(--warn)';
+    else if (line.includes('DEBUG')) color = 'var(--text-dim)';
+    return '<span style="color:' + color + '">' + escHtml(line) + '</span>';
+  }).join('\n');
+  container.scrollTop = container.scrollHeight;
+}
+
+function filterLogs() { renderLogs(); }
+
+function startLogs() {
+  loadLogs();
+  if (logsInterval) clearInterval(logsInterval);
+  logsInterval = setInterval(loadLogs, 4000);
+}
+
+function stopLogs() {
+  if (logsInterval) { clearInterval(logsInterval); logsInterval = null; }
 }
 
 // Check if we need to show onboarding

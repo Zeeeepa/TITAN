@@ -13,7 +13,8 @@ import { initMemory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
 import { existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { execSync } from 'child_process';
+import { join, resolve } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import { runDoctor } from './doctor.js';
 import { runOnboard } from './onboard.js';
@@ -480,6 +481,59 @@ program
     .action((options) => {
         console.log(chalk.cyan(`Updating TITAN to latest ${options.channel} release...`));
         console.log(chalk.gray('Run: npm install -g titan-agent@latest'));
+    });
+
+// ─── GRAPHITI MEMORY ─────────────────────────────────────────────
+program
+    .command('graphiti')
+    .description('Manage TITAN\'s Graphiti Temporal Memory (Zep Integration)')
+    .option('--init', 'Spin up the local Graphiti Docker stack and register the MCP server')
+    .option('--down', 'Stop and remove the Graphiti Docker stack')
+    .action((options) => {
+        const composeFile = resolve(join(process.cwd(), 'docker-compose.graphiti.yml'));
+
+        if (options.down) {
+            console.log(chalk.cyan('\n🛑 Stopping Graphiti temporal memory...\n'));
+            try {
+                execSync(`docker compose -f "${composeFile}" down`, { stdio: 'inherit' });
+                removeMcpServer('graphiti');
+                console.log(chalk.green('\n✅ Graphiti stack stopped and MCP server deregistered.'));
+            } catch (error) {
+                console.error(chalk.red(`\n❌ Failed to stop Graphiti: ${(error as Error).message}`));
+            }
+            return;
+        }
+
+        if (options.init) {
+            if (!existsSync(composeFile)) {
+                console.error(chalk.red(`\n❌ Error: docker-compose.graphiti.yml not found at ${composeFile}`));
+                console.error(chalk.gray('Please run this command from the TITAN project root.'));
+                return;
+            }
+
+            console.log(chalk.cyan('\n🧠 Initializing Graphiti temporal memory...\n'));
+            console.log(chalk.gray('Starting Neo4j and Graphiti containers via Docker Compose...'));
+
+            try {
+                execSync(`docker compose -f "${composeFile}" up -d`, { stdio: 'inherit' });
+
+                console.log(chalk.gray('\nRegistering Graphiti MCP Server with TITAN...'));
+                addMcpServer({
+                    id: 'graphiti',
+                    name: 'Graphiti Temporal Memory',
+                    description: 'Zep Graphiti Knowledge Graph for episodic and entity memory',
+                    type: 'http',
+                    url: 'http://localhost:8000/sse',
+                });
+
+                console.log(chalk.green('\n✅ Graphiti integration complete!'));
+                console.log(chalk.gray('  The temporal memory tools will be available in WebChat or CLI directly.'));
+            } catch (error) {
+                console.error(chalk.red(`\n❌ Failed to initialize Graphiti: ${(error as Error).message}`));
+            }
+        } else {
+            console.log(chalk.gray('Please specify an action: titan graphiti --init OR titan graphiti --down'));
+        }
     });
 
 // Parse and execute

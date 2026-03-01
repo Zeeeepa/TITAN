@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework. 14 providers. 27 tools. Zero native dependencies.</strong>
+  <strong>A fully autonomous AI agent framework. 14 providers. 30 tools. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-14-purple" alt="14 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-27-orange" alt="27 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-30-orange" alt="30 Tools"/></a>
 </p>
 
 <p align="center">
@@ -55,42 +55,42 @@ npm run dev:gateway        # Start in dev mode
 | | TITAN | Typical AI agent frameworks |
 |---|---|---|
 | **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation |
-| **Native deps** | Zero | Often require system libraries |
-| **Providers** | 14 (66 models) with automatic failover | 1-4 providers, no failover |
+| **Native compilation** | None — all pure JS deps | Often require node-gyp, system libraries |
+| **Providers** | 14 (50+ preconfigured models) with automatic failover | 1-4 providers, no failover |
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, tool sandboxing | Minimal or none |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 27 built-in + drop-in YAML/JS creation | Fixed tool set |
+| **Skills** | 30 built-in + drop-in YAML/JS creation | Fixed tool set |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
-| **GUI** | 12-panel Mission Control dashboard | CLI only or basic web UI |
-| **Codebase** | ~8K lines TypeScript | 50K-200K+ lines |
+| **GUI** | 11-panel Mission Control dashboard | CLI only or basic web UI |
+| **Codebase** | ~15K lines TypeScript | 50K-200K+ lines |
 
 ---
 
 ## Features
 
-### 14 AI Providers, 66 Models
+### 14 AI Providers, 50+ Models
 
 Connect any combination of cloud and local models. TITAN routes, fails over, and load-balances automatically.
 
 ```bash
 titan model --discover       # Live-detect all available models
-titan model --alias fast openai/gpt-4o-mini   # Create shortcuts
+titan model --alias fast=openai/gpt-4o-mini   # Create shortcuts
 titan model --set anthropic/claude-sonnet-4-20250514
 ```
 
 Built-in aliases: `fast`, `smart`, `cheap`, `reasoning` — fully configurable.
 
-### 27 Built-in Tools
+### 30 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
-| **Shell & Process** | `shell`, `exec`, `process_list`, `process_kill`, `process_spawn` |
+| **Shell & Process** | `shell`, `exec`, `process` (list, kill, spawn, poll, log) |
 | **Filesystem** | `read_file`, `write_file`, `edit_file`, `list_dir`, `apply_patch` |
-| **Web** | `web_search`, `web_fetch`, `browser` (CDP), `web_browser` (Playwright) |
+| **Web** | `web_search`, `web_fetch`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` (Playwright) |
 | **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
 | **Automation** | `cron`, `webhook` |
-| **Memory** | `memory`, `model_switch`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
+| **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
 
 ### Temporal Knowledge Graph
@@ -112,18 +112,19 @@ titan graphiti --stats    # View entity/episode counts
 Run up to 5 concurrent agents, each with its own model and personality.
 
 ```bash
-titan agents spawn --model openai/gpt-4o --name "researcher"
-titan agents spawn --model ollama/llama3.1 --name "coder"
-titan agents list
+titan agents --spawn researcher --model openai/gpt-4o
+titan agents --spawn coder --model ollama/llama3.1
+titan agents --list
 ```
 
 ### Prompt Injection Shield
 
-Three-layer defense against prompt injection attacks:
+Two-layer defense against prompt injection attacks:
 
 - **Heuristic engine** — Detects "ignore previous instructions", system prompt extraction, developer mode exploits
 - **Strict mode** — Keyword density analysis and tail manipulation detection
-- **DM pairing** — New senders must be approved before they can interact with your agent
+
+Combined with the separate **DM pairing** system, which requires new senders to be approved before they can interact with your agent.
 
 ### Loop Detection & Circuit Breaker
 
@@ -148,7 +149,6 @@ Automatic goal decomposition with dependency-aware execution:
 - Auto-summarizes conversation history to stay within token budgets
 - Routes simple queries to cheaper models automatically
 - Per-session cost tracking with configurable daily budgets
-- Context summarization reduces token usage by 30-90%
 
 ### Continuous Learning
 
@@ -177,20 +177,20 @@ TITAN supports 14 AI providers out of the box. Add your API key and go.
 
 | Provider | Models | Type |
 |----------|--------|------|
-| **Anthropic** | Claude Opus 4, Sonnet 4, Haiku 4 | Cloud |
-| **OpenAI** | GPT-4o, GPT-4o-mini, o3-mini, o1 | Cloud |
-| **Google** | Gemini 2.5 Flash/Pro, 2.0 Flash, 1.5 Pro | Cloud |
+| **Anthropic** | Claude Opus 4, Sonnet 4, Haiku 4, 3.5 Sonnet/Haiku | Cloud |
+| **OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo, o1, o1-mini, o3-mini | Cloud |
+| **Google** | Gemini 2.5 Pro/Flash, 2.0 Flash, 1.5 Pro | Cloud |
 | **Ollama** | Any locally installed model | Local |
-| **Groq** | LLaMA 3.3 70B, Mixtral, Gemma 2 | Cloud (Fast inference) |
-| **Mistral** | Mistral Large, Small, Nemo, Codestral | Cloud |
+| **Groq** | LLaMA 3.3 70B, Mixtral, Gemma 2, DeepSeek-R1 Distill | Cloud (Fast inference) |
+| **Mistral** | Mistral Large, Medium, Small, Nemo, Codestral | Cloud |
 | **OpenRouter** | 290+ models from all providers | Cloud (Aggregator) |
-| **Together** | LLaMA 3.1, CodeLlama, Mixtral | Cloud |
-| **Fireworks** | LLaMA 3.1, Mixtral, Qwen 2.5 | Cloud (Fast inference) |
-| **xAI** | Grok-2, Grok-2-mini | Cloud |
-| **DeepSeek** | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| **Cerebras** | LLaMA 3.1 (wafer-scale inference) | Cloud (Fast inference) |
-| **Cohere** | Command-R+, Command-R | Cloud |
-| **Perplexity** | Sonar Large, Sonar Small | Cloud (Search-augmented) |
+| **Together** | LLaMA 3.3, DeepSeek-R1, Qwen 2.5, Mixtral | Cloud |
+| **Fireworks** | LLaMA 3.3, Mixtral, Qwen 3 | Cloud (Fast inference) |
+| **xAI** | Grok-3, Grok-3-fast, Grok-3-mini | Cloud |
+| **DeepSeek** | DeepSeek Chat, DeepSeek Reasoner | Cloud |
+| **Cerebras** | LLaMA 3.3, LLaMA 3.1, Qwen 3 | Cloud (Fast inference) |
+| **Cohere** | Command-R+, Command-R, Command-R 7B | Cloud |
+| **Perplexity** | Sonar, Sonar Pro, Sonar Reasoning | Cloud (Search-augmented) |
 
 All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider.
 
@@ -208,7 +208,7 @@ export OPENROUTER_API_KEY="sk-or-..."
 
 ## Mission Control
 
-A 12-panel dark-mode dashboard at `http://localhost:48420`.
+An 11-panel dark-mode dashboard at `http://localhost:48420`.
 
 | Panel | Description |
 |-------|-------------|
@@ -221,9 +221,8 @@ A 12-panel dark-mode dashboard at `http://localhost:48420`.
 | **Sessions** | Active sessions with message counts and history |
 | **Learning** | Tool success rates and knowledge base stats |
 | **Security** | Audit log and DM pairing management |
-| **Memory Graph** | Visual force-directed graph of entities and relationships |
 | **Logs** | Color-coded real-time log viewer with filtering |
-| **Recipes** | Manage and trigger reusable workflows |
+| **Memory Graph** | Visual force-directed graph of entities and relationships |
 
 All settings are editable live without restarting the gateway.
 
@@ -311,7 +310,7 @@ export default {
 ### AI-Generated Skills
 
 ```bash
-titan skill create "a tool that converts CSV files to JSON"
+titan skills --create "a tool that converts CSV files to JSON"
 ```
 
 TITAN writes, compiles, and hot-loads the skill instantly.
@@ -366,17 +365,20 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 | `titan model --list` | Show all configured models |
 | `titan model --discover` | Live-detect available models |
 | `titan model --set <model>` | Switch the active model |
-| `titan model --alias <name> <model>` | Create a model alias |
+| `titan model --alias <name>=<model>` | Create a model alias |
 | `titan agents` | Multi-agent management |
 | `titan mesh --init` | Initialize mesh networking |
 | `titan mesh --status` | View mesh peers and models |
 | `titan skills` | List installed skills |
-| `titan skill create "..."` | Generate a skill with AI |
+| `titan skills --create "..."` | Generate a skill with AI |
 | `titan pairing` | Manage DM access control |
 | `titan doctor` | System diagnostics |
 | `titan config` | View/edit configuration |
 | `titan graphiti --init` | Initialize knowledge graph |
 | `titan graphiti --stats` | Graph statistics |
+| `titan mcp` | Manage MCP servers |
+| `titan recipe --list` | List and run saved recipes |
+| `titan monitor` | Manage proactive file/schedule monitors |
 | `titan update` | Update to latest version |
 
 ---
@@ -404,7 +406,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (52 tests, 7 files)
+npm run test           # vitest (99 tests, 10 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -419,14 +421,14 @@ src/
   channels/     Discord, Telegram, Slack, Google Chat, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 10 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       27 built-in tools + user skill loader
+  skills/       30 built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing
   gateway/      HTTP/WS server + Mission Control dashboard
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
   recipes/      Workflow engine + persistence
   mcp/          Model Context Protocol client
   config/       Zod schema + loader
-  cli/          Commander.js CLI (12 commands)
+  cli/          Commander.js CLI (15 commands)
   utils/        Constants, logger, helpers
 ```
 
@@ -468,6 +470,51 @@ See [TASKS.md](TASKS.md) for the full development roadmap including Phase 3 and 
 3. Commit your changes (`git commit -m "feat: add my feature"`)
 4. Push (`git push origin feat/my-feature`)
 5. Open a Pull Request
+
+---
+
+## The Future of TITAN
+
+TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes computer use, GitHub/email integration, a plugin marketplace, WhatsApp and more channel adapters, image generation, and much more.
+
+This is just the beginning. If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
+
+Star the repo, join the journey, and help shape what autonomous AI agents look like.
+
+---
+
+## Acknowledgments
+
+TITAN stands on the shoulders of giants. Special thanks to the projects and people whose work made this possible.
+
+### Architectural Inspiration
+
+- **[OpenClaw](https://github.com/openclaw/openclaw)** by [Peter Steinberger](https://github.com/steipete) — TITAN's architecture, CLI surface, tool signatures, workspace layout (AGENTS.md, SOUL.md, TOOLS.md), and DM pairing system are inspired by OpenClaw, the open-source personal AI assistant framework. Licensed under MIT.
+
+### Temporal Knowledge Graph
+
+- **[Graphiti](https://github.com/getzep/graphiti)** by [Zep AI](https://www.getzep.com/) — TITAN's native temporal knowledge graph (`src/memory/graph.ts`) is inspired by the Graphiti project's approach to episodic memory, entity extraction, and temporal graph architecture. Created by [Daniel Chalef](https://github.com/danielchalef), [Preston Rasmussen](https://github.com/prasmussen15), [Pavlo Paliychuk](https://github.com/paul-paliychuk), Travis Beauvais, and [Jack Ryan](https://github.com/jackaldenryan). Licensed under Apache 2.0. Research paper: [arXiv:2501.13956](https://arxiv.org/abs/2501.13956).
+
+### Open-Source Libraries
+
+- [Express](https://expressjs.com/) — HTTP server and API routing
+- [Zod](https://zod.dev/) — Configuration schema validation
+- [Commander.js](https://github.com/tj/commander.js) — CLI framework
+- [ws](https://github.com/websockets/ws) — WebSocket server for real-time communication
+- [Chalk](https://github.com/chalk/chalk) — Terminal styling
+- [Ora](https://github.com/sindresorhus/ora) — Terminal spinners
+- [Boxen](https://github.com/sindresorhus/boxen) — Terminal box rendering
+- [Inquirer](https://github.com/SBoudrias/Inquirer.js) — Interactive CLI prompts
+- [dotenv](https://github.com/motdotla/dotenv) — Environment variable loading
+- [node-cron](https://github.com/node-cron/node-cron) — Cron scheduling
+- [uuid](https://github.com/uuidjs/uuid) — Unique ID generation
+- [Playwright](https://playwright.dev/) — Browser automation (optional)
+- [bonjour-service](https://github.com/onlxltd/bonjour-service) — mDNS mesh discovery (optional)
+- [tsup](https://github.com/egoist/tsup) — Build tooling
+- [Vitest](https://vitest.dev/) — Test framework
+- [TypeScript](https://www.typescriptlang.org/) — Type-safe development
+
+Thank you to all the maintainers and contributors of these projects.
 
 ---
 

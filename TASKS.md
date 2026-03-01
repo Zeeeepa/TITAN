@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
 **Last Updated:** 2026-03-01
-**Current Version:** 2026.4.30
+**Current Version:** 2026.4.31
 **Author:** Tony Elliott (Djtony707)
 
 ---
@@ -118,6 +118,63 @@ Pure TypeScript, no Docker/Neo4j required (`src/memory/graph.ts`):
 - **CLI generator** — `titan skill create "description"` generates skills via AI
 - **Hot-loading** — Skills discovered on startup from entire `~/.titan/skills/` tree
 - **Sandboxed** — YAML skills only have access to built-in Node.js modules
+
+---
+
+## Phase 2.5: OpenClaw-Inspired Features (COMPLETED — v2026.4.31)
+
+### Per-Session Model & Thinking Overrides
+- Session interface extended with `modelOverride`, `thinkingOverride`, `verboseMode`
+- Priority chain: session override > agent override > cost optimizer > config default
+- Setter functions: `setSessionModelOverride()`, `setSessionThinkingOverride()`, `setSessionVerbose()`
+
+### Slash Command System
+New file: `src/gateway/slashCommands.ts` — dispatcher + 8 registered commands:
+
+| Command | What It Does |
+|---------|-------------|
+| `/model [provider/model]` | Show current model + aliases, or switch model for session |
+| `/think [off\|low\|medium\|high]` | Show/set thinking mode for session |
+| `/usage` | Show session token counts, API calls, estimated cost, daily total |
+| `/compact` | Force context compaction — compress history, report savings |
+| `/verbose [on\|off]` | Toggle verbose output for session |
+| `/reset` / `/new` | Clear session + all overrides |
+| `/status` | Show model, thinking, verbose, cost, version |
+
+### Model Allowlisting
+- `allowedModels` config field (empty = all allowed, supports wildcards like `openai/*`)
+- `isModelAllowed()` in router.ts — checked by `/model` command before accepting override
+
+### Auth Profile Rotation
+- New file: `src/providers/authResolver.ts` — API key resolution with failover
+- `AuthProfileSchema` in config: multiple API keys per provider with priority
+- 60-second cooldown on failed keys, automatic failover to next profile
+- Wired into all 4 provider types (Anthropic, OpenAI, Google, OpenAI-compat)
+
+### Provider ID Normalization
+- `PROVIDER_ALIASES` map in router.ts: `grok→xai`, `local→ollama`, `vertex→google`, `azure→openai`
+- `normalizeProvider()` applied in `resolveModel()` after splitting provider/model
+
+### Force Context Compaction
+- `forceCompactContext()` in contextManager.ts — progressive compaction
+- Preserves tool_call/tool_result pairs, strips sensitive content (API keys, passwords)
+- `replaceSessionContext()` in session.ts — clears and replaces session history
+
+### New/Modified Files
+| File | Changes |
+|------|---------|
+| `src/agent/session.ts` | Override fields + setters + replaceSessionContext |
+| `src/agent/agent.ts` | Respect session overrides for model + thinking |
+| `src/gateway/slashCommands.ts` | **NEW** — slash command dispatcher + 8 commands |
+| `src/gateway/server.ts` | Wire slash commands, remove inline /reset /new /status /compact |
+| `src/agent/contextManager.ts` | forceCompactContext() with progressive compaction |
+| `src/config/schema.ts` | allowedModels, AuthProfileSchema, authProfiles |
+| `src/providers/router.ts` | isModelAllowed(), normalizeProvider(), PROVIDER_ALIASES |
+| `src/providers/authResolver.ts` | **NEW** — API key resolution with profile rotation |
+| `src/providers/openai_compat.ts` | Use resolveApiKey() |
+| `src/providers/anthropic.ts` | Use resolveApiKey() |
+| `src/providers/openai.ts` | Use resolveApiKey() |
+| `src/providers/google.ts` | Use resolveApiKey() |
 
 ---
 

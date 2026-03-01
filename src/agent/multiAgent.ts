@@ -162,7 +162,10 @@ export async function routeMessage(
     }
 
     // Process through the agent
-    const response = await processMessage(message, channel, userId);
+    const response = await processMessage(message, channel, userId, {
+        model: agent.model,
+        systemPrompt: agent.systemPrompt,
+    });
 
     return {
         ...response,

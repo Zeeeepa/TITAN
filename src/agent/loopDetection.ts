@@ -37,6 +37,7 @@ const DEFAULT_CONFIG: LoopDetectionConfig = {
 
 const sessionHistory: Map<string, ToolCallRecord[]> = new Map();
 let globalCallCount = 0;
+let globalCallCountResetAt = Date.now();
 
 /** Simple fast hash for comparison */
 function fastHash(str: string): string {
@@ -74,6 +75,12 @@ export function checkForLoop(
     // Trim history
     if (history.length > cfg.historySize) {
         history.splice(0, history.length - cfg.historySize);
+    }
+
+    // Reset global call count every 5 minutes
+    if (Date.now() - globalCallCountResetAt > 5 * 60 * 1000) {
+        globalCallCount = 0;
+        globalCallCountResetAt = Date.now();
     }
 
     globalCallCount++;

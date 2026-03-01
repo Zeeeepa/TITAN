@@ -61,11 +61,33 @@ export const AgentConfigSchema = z.object({
     systemPrompt: z.string().optional(),
     workspace: z.string().optional(),
     thinkingMode: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
+    /** Model aliases — e.g. { fast: "openai/gpt-4o-mini", smart: "anthropic/claude-sonnet-4-20250514", local: "ollama/llama3.1" } */
+    modelAliases: z.record(z.string(), z.string()).default({
+        fast: 'openai/gpt-4o-mini',
+        smart: 'anthropic/claude-sonnet-4-20250514',
+        reasoning: 'openai/o3-mini',
+        cheap: 'google/gemini-2.0-flash',
+    }),
     costOptimization: z.object({
         smartRouting: z.boolean().default(true),
         contextSummarization: z.boolean().default(true),
         dailyBudgetUsd: z.number().optional(),
     }).optional(),
+});
+
+export const MeshConfigSchema = z.object({
+    enabled: z.boolean().default(false),
+    secret: z.string().optional(),
+    /** Auto-discover peers via mDNS (Bonjour) on the local network */
+    mdns: z.boolean().default(true),
+    /** Auto-discover peers via Tailscale VPN */
+    tailscale: z.boolean().default(true),
+    /** Manually specified peer addresses (host:port) */
+    staticPeers: z.array(z.string()).default([]),
+    /** Allow remote nodes to use this node's models */
+    allowRemoteModels: z.boolean().default(true),
+    /** Maximum concurrent remote tasks */
+    maxRemoteTasks: z.number().default(3),
 });
 
 export const TitanConfigSchema = z.object({
@@ -75,6 +97,17 @@ export const TitanConfigSchema = z.object({
         openai: ProviderConfigSchema.default({}),
         google: ProviderConfigSchema.default({}),
         ollama: ProviderConfigSchema.default({}),
+        // OpenAI-compatible providers
+        groq: ProviderConfigSchema.default({}),
+        mistral: ProviderConfigSchema.default({}),
+        openrouter: ProviderConfigSchema.default({}),
+        fireworks: ProviderConfigSchema.default({}),
+        xai: ProviderConfigSchema.default({}),
+        together: ProviderConfigSchema.default({}),
+        deepseek: ProviderConfigSchema.default({}),
+        cerebras: ProviderConfigSchema.default({}),
+        cohere: ProviderConfigSchema.default({}),
+        perplexity: ProviderConfigSchema.default({}),
     }).default({}),
     channels: z.object({
         discord: ChannelConfigSchema.default({}),
@@ -100,6 +133,7 @@ export const TitanConfigSchema = z.object({
         autoDiscover: z.boolean().default(true),
         marketplace: z.boolean().default(false),
     }).default({}),
+    mesh: MeshConfigSchema.default({}),
     logging: z.object({
         level: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
         file: z.boolean().default(true),
@@ -122,3 +156,4 @@ export type ChannelConfig = z.infer<typeof ChannelConfigSchema>;
 export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type MeshConfig = z.infer<typeof MeshConfigSchema>;

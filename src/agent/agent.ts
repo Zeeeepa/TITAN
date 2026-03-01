@@ -12,9 +12,11 @@ import { recordUsage, searchMemories } from '../memory/memory.js';
 import { initLearning, recordToolResult, recordSuccessPattern, getLearningContext } from '../memory/learning.js';
 import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
 import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession } from './stallDetector.js';
+import { resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
+import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
 
@@ -40,7 +42,7 @@ function readPromptFile(path: string): string {
 }
 
 /** Build the system prompt for the agent */
-function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
+function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMessage?: string): string {
     const modelId = config.agent.model || 'unknown';
     const customPrompt = config.agent.systemPrompt || '';
     const memories = searchMemories('preference');
@@ -64,6 +66,10 @@ function buildSystemPrompt(config: ReturnType<typeof loadConfig>): string {
 
     // Personal context from Relationship Memory
     const personalContext = buildPersonalContext();
+
+    // Knowledge graph context — relevant memories from Graphiti
+    const graphContext = userMessage ? getGraphContext(userMessage) : '';
+    const graphSection = graphContext ? `\n\n## Knowledge Graph Memory\n${graphContext}` : '';
 
     return `## CRITICAL: Your Identity
 You are TITAN (The Intelligent Task Automation Network). Your name is TITAN. You were built by Tony Elliott.
@@ -103,7 +109,15 @@ You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful pe
 ## Continuous Learning
 You get smarter with every interaction. Below is your accumulated knowledge:
 ${learningContext}
-${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}${personalContext}`;
+${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}${personalContext}${graphSection}
+
+## Memory Tools
+You have access to a knowledge graph (temporal memory). Use these tools actively:
+- **graph_remember**: Record important facts, decisions, or events for long-term memory
+- **graph_search**: Search past conversations and knowledge by keyword
+- **graph_entities**: List known people, topics, projects, or places
+- **graph_recall**: Recall everything about a specific entity
+Use graph_remember when you learn something important about the user, their projects, or their preferences. This persists across sessions.`;
 }
 
 /** Process a user message through the agent loop */
@@ -111,6 +125,7 @@ export async function processMessage(
     message: string,
     channel: string = 'cli',
     userId: string = 'default',
+    overrides?: { model?: string; systemPrompt?: string },
 ): Promise<AgentResponse> {
     const startTime = Date.now();
     const config = loadConfig();
@@ -121,8 +136,15 @@ export async function processMessage(
     // Add user message to session history
     addMessage(session, 'user', message);
 
-    // Build context
-    const systemPrompt = buildSystemPrompt(config);
+    // Initialize graph memory (lazy, only loads once)
+    initGraph();
+
+    // Auto-record user message to knowledge graph (fire-and-forget)
+    addEpisode(`[${channel}/${userId}] ${message}`, channel).catch(() => {});
+
+    // Build context (pass user message for graph context injection)
+    let systemPrompt = buildSystemPrompt(config, message);
+    if (overrides?.systemPrompt) systemPrompt = overrides.systemPrompt + '\n\n' + systemPrompt;
     const historyMessages = getContextMessages(session);
     const tools = getToolDefinitions();
 
@@ -138,7 +160,8 @@ export async function processMessage(
     let modelUsed = config.agent.model;
 
     // ── Cost optimizer: smart model routing ─────────────────
-    const { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
+    let { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
+    if (overrides?.model) activeModel = overrides.model;
     if (activeModel !== config.agent.model) {
         logger.info(COMPONENT, `Cost router: ${config.agent.model} → ${activeModel} (${routingReason})`);
     }
@@ -166,6 +189,8 @@ export async function processMessage(
         );
         if (didCompress) {
             logger.info(COMPONENT, `Context compressed, saved ~${savedTokens} tokens`);
+            messages.length = 0;
+            messages.push(...compressedMessages);
         }
 
         const response: ChatResponse = await chat({
@@ -189,19 +214,18 @@ export async function processMessage(
             break;
         }
 
-        // ── Stall detector: heartbeat + response check ──────
+        // ── Stall detector: heartbeat ──────
         heartbeat(session.id);
-        const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
-        if (stallEvent) {
-            const nudge = getNudgeMessage(stallEvent);
-            logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
-            messages.push({ role: 'user', content: nudge });
-            // Give the model one more chance to respond
-            continue;
-        }
 
         // If no tool calls, we have the final response
         if (!response.toolCalls || response.toolCalls.length === 0) {
+            const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
+            if (stallEvent) {
+                const nudge = getNudgeMessage(stallEvent);
+                logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
+                messages.push({ role: 'user', content: nudge });
+                continue;
+            }
             finalContent = response.content;
             break;
         }
@@ -241,7 +265,7 @@ export async function processMessage(
                     }
                 }
             } else {
-                toolResults = await executeTools(response.toolCalls);
+                toolResults = await executeTools(response.toolCalls, channel);
             }
         } catch (err) {
             logger.error(COMPONENT, `Tool execution error: ${(err as Error).message}`);
@@ -256,10 +280,14 @@ export async function processMessage(
                 role: 'tool',
                 content: result.content,
                 toolCallId: result.toolCallId,
+                name: result.name,
             });
 
             // ── Stall detector: check for tool loops ──────────
-            const loopEvent = recordToolCall(session.id, result.name, { callId: result.toolCallId });
+            const matchingTc = response.toolCalls!.find(tc => tc.id === result.toolCallId);
+            let tcArgs: Record<string, unknown> = {};
+            try { tcArgs = JSON.parse(matchingTc?.function.arguments || '{}'); } catch { /* use empty */ }
+            const loopEvent = recordToolCall(session.id, result.name, tcArgs);
             if (loopEvent) {
                 const nudge = getNudgeMessage(loopEvent);
                 logger.warn(COMPONENT, `Tool loop detected for ${result.name} — nudging`);
@@ -279,12 +307,18 @@ export async function processMessage(
 
     // Clean up stall detector for this session
     clearSession(session.id);
+    resetLoopDetection(session.id);
 
     // Save assistant response to session
     addMessage(session, 'assistant', finalContent, {
         model: modelUsed,
         tokenCount: totalCompletionTokens,
     });
+
+    // Auto-record agent response to knowledge graph (fire-and-forget, skip short/error responses)
+    if (finalContent.length > 50 && !finalContent.startsWith('⚠️')) {
+        addEpisode(`[TITAN → ${channel}/${userId}] ${finalContent.slice(0, 500)}`, 'agent').catch(() => {});
+    }
 
     // Record usage
     const { provider: providerName } = { provider: modelUsed.split('/')[0] || 'unknown' };

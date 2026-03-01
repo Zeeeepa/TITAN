@@ -10,6 +10,7 @@ import {
 } from './base.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { fetchWithRetry } from '../utils/helpers.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Anthropic';
@@ -65,7 +66,7 @@ export class AnthropicProvider extends LLMProvider {
             body.temperature = options.temperature;
         }
 
-        const response = await fetch(`${this.baseUrl}/v1/messages`, {
+        const response = await fetchWithRetry(`${this.baseUrl}/v1/messages`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -81,10 +82,20 @@ export class AnthropicProvider extends LLMProvider {
         }
 
         const data = await response.json() as Record<string, unknown>;
-        const content = data.content as Array<Record<string, unknown>>;
+        const content = data.content as Array<Record<string, unknown>> | undefined;
 
         let textContent = '';
         const toolCalls: ToolCall[] = [];
+
+        if (!content || !Array.isArray(content)) {
+            return {
+                id: (data.id as string) || uuid(),
+                content: '',
+                usage: undefined,
+                finishReason: 'stop',
+                model,
+            };
+        }
 
         for (const block of content) {
             if (block.type === 'text') {
@@ -114,7 +125,12 @@ export class AnthropicProvider extends LLMProvider {
                     totalTokens: usage.input_tokens + usage.output_tokens,
                 }
                 : undefined,
-            finishReason: toolCalls.length > 0 ? 'tool_calls' : 'stop',
+            finishReason: (() => {
+                const sr = data.stop_reason as string | undefined;
+                if (sr === 'max_tokens') return 'length';
+                if (sr === 'tool_use') return 'tool_calls';
+                return toolCalls.length > 0 ? 'tool_calls' : 'stop';
+            })(),
             model,
         };
     }

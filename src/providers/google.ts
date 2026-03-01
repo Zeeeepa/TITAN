@@ -10,6 +10,7 @@ import {
 } from './base.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { fetchWithRetry } from '../utils/helpers.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Google';
@@ -33,10 +34,18 @@ export class GoogleProvider extends LLMProvider {
         const systemInstruction = options.messages.find((m) => m.role === 'system')?.content;
         const contents = options.messages
             .filter((m) => m.role !== 'system')
-            .map((m) => ({
-                role: m.role === 'assistant' ? 'model' : m.role === 'tool' ? 'user' : 'user',
-                parts: [{ text: m.content }],
-            }));
+            .map((m) => {
+                if (m.role === 'tool') {
+                    return {
+                        role: 'function' as const,
+                        parts: [{ functionResponse: { name: m.name || 'tool', response: { result: m.content } } }],
+                    };
+                }
+                return {
+                    role: (m.role === 'assistant' ? 'model' : 'user') as string,
+                    parts: [{ text: m.content }],
+                };
+            });
 
         const body: Record<string, unknown> = {
             contents,
@@ -60,10 +69,13 @@ export class GoogleProvider extends LLMProvider {
             }];
         }
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+        const response = await fetchWithRetry(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey,
+            },
             body: JSON.stringify(body),
         });
 
@@ -136,8 +148,10 @@ export class GoogleProvider extends LLMProvider {
     async healthCheck(): Promise<boolean> {
         try {
             if (!this.apiKey) return false;
-            const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${this.apiKey}`;
-            const response = await fetch(url);
+            const url = `https://generativelanguage.googleapis.com/v1beta/models`;
+            const response = await fetch(url, {
+                headers: { 'x-goog-api-key': this.apiKey },
+            });
             return response.ok;
         } catch {
             return false;

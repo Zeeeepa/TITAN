@@ -102,43 +102,23 @@ export function initGraph(): void {
     logger.info(COMPONENT, `Graph loaded: ${graph.episodes.length} episodes, ${graph.entities.length} entities`);
 }
 
-// ── Entity extraction via LLM ────────────────────────────────────
+// ── Entity extraction via any configured LLM ────────────────────
 async function extractEntities(content: string): Promise<Array<{ name: string; type: string; facts: string[] }>> {
     try {
+        // Dynamic import to avoid circular dependency (router → config → graph)
+        const { chat: routerChat } = await import('../providers/router.js');
         const config = loadConfig();
-        const ollamaBase = config.providers?.ollama?.baseUrl || 'http://localhost:11434';
 
-        // Try kimi-k2.5:cloud first, fall back to any available model
-        const modelsRes = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(2000) });
-        if (!modelsRes.ok) return [];
-        const modelsData = await modelsRes.json() as { models?: Array<{ name: string }> };
-        const availableModels = (modelsData.models || []).map((m) => m.name);
+        const prompt = `Extract entities from this text as a JSON array. Each item: {"name":"...","type":"person|topic|project|place|fact","facts":["fact1","fact2"]}. Return ONLY the JSON array, no other text.\n\nText: ${content.slice(0, 500)}`;
 
-        const preferred = ['kimi-k2.5:cloud', 'kimi-k2.5', 'llama3.1', 'llama3', 'mistral'];
-        const model = preferred.find((m) => availableModels.some((a) => a.startsWith(m.split(':')[0])))
-            || availableModels[0];
-
-        if (!model) return [];
-
-        const prompt = `Extract entities from this text as a JSON array. Each item: {"name":"...","type":"person|topic|project|place|fact","facts":["fact1","fact2"]}. Return ONLY the JSON array, no other text. Text: ${content.slice(0, 500)}`;
-
-        const res = await fetch(`${ollamaBase}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model,
-                messages: [{ role: 'user', content: prompt }],
-                stream: false,
-                options: { num_predict: 512, temperature: 0.1 },
-            }),
-            signal: AbortSignal.timeout(15000),
+        const response = await routerChat({
+            model: config.agent.model,
+            messages: [{ role: 'user', content: prompt }],
+            maxTokens: 512,
+            temperature: 0.1,
         });
 
-        if (!res.ok) return [];
-        const data = await res.json() as { message?: { content?: string } };
-        const text = data.message?.content || '';
-
-        // Extract JSON array from response
+        const text = response.content || '';
         const match = text.match(/\[[\s\S]*\]/);
         if (!match) return [];
         const parsed = JSON.parse(match[0]);
@@ -207,8 +187,37 @@ export async function addEpisode(content: string, source: string): Promise<Episo
                 episode.entities.push(entity.id);
             }
         }
+        // Create edges between co-occurring entities in this episode
+        if (episode.entities.length > 1) {
+            for (let i = 0; i < episode.entities.length; i++) {
+                for (let j = i + 1; j < episode.entities.length; j++) {
+                    const fromId = episode.entities[i];
+                    const toId = episode.entities[j];
+                    const exists = graph.edges.some(
+                        e => (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId)
+                    );
+                    if (!exists) {
+                        graph.edges.push({
+                            id: uuid(),
+                            from: fromId,
+                            to: toId,
+                            relation: 'co_mentioned',
+                            createdAt: new Date().toISOString(),
+                        });
+                    }
+                }
+            }
+        }
+        // Enforce size limits
+        if (graph.episodes.length > 5000) {
+            graph.episodes = graph.episodes.slice(-5000);
+        }
+        if (graph.entities.length > 1000) {
+            graph.entities.sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
+            graph.entities = graph.entities.slice(0, 1000);
+        }
         saveGraph();
-        logger.debug(COMPONENT, `Episode ${episode.id.slice(0, 8)}: extracted ${extracted.length} entities`);
+        logger.debug(COMPONENT, `Episode ${episode.id.slice(0, 8)}: extracted ${extracted.length} entities, ${graph.edges.length} edges`);
     }).catch(() => {});
 
     return episode;
@@ -293,6 +302,41 @@ export function getGraphStats(): { episodeCount: number; entityCount: number; ed
         entityCount: graph.entities.length,
         edgeCount: graph.edges.length,
     };
+}
+
+/** Get relevant graph context for a user message (for system prompt injection) */
+export function getGraphContext(query: string): string {
+    if (!initialized) initGraph();
+    if (graph.episodes.length === 0 && graph.entities.length === 0) return '';
+
+    const parts: string[] = [];
+
+    // Search for relevant episodes
+    if (query) {
+        const relevant = searchMemory(query, 5);
+        if (relevant.length > 0) {
+            parts.push('Relevant memories from knowledge graph:');
+            for (const ep of relevant) {
+                parts.push(`- [${ep.source}, ${ep.createdAt.slice(0, 10)}]: ${ep.content.slice(0, 150)}`);
+            }
+        }
+    }
+
+    // Include recently active entities (top 5)
+    const recentEntities = graph.entities
+        .slice()
+        .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen))
+        .slice(0, 5);
+
+    if (recentEntities.length > 0) {
+        parts.push('Known entities:');
+        for (const e of recentEntities) {
+            const factsStr = e.facts.length > 0 ? ` (${e.facts.slice(0, 2).join('; ')})` : '';
+            parts.push(`- ${e.name} [${e.type}]${factsStr}`);
+        }
+    }
+
+    return parts.length > 0 ? parts.join('\n') : '';
 }
 
 /** Clear all graph data */

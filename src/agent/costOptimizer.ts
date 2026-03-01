@@ -104,6 +104,7 @@ interface SessionCost {
 
 const sessionCosts: Map<string, SessionCost> = new Map();
 let todayTotalUsd = 0;
+let todayDate = new Date().toISOString().split('T')[0];
 
 export function recordTokenUsage(
     sessionId: string,
@@ -111,7 +112,13 @@ export function recordTokenUsage(
     inputTokens: number,
     outputTokens: number,
 ): { sessionTotal: number; dailyTotal: number; budgetWarning: boolean; budgetExceeded: boolean } {
-    const costs = MODEL_COSTS[model] ?? MODEL_COSTS['openai/gpt-4o'] ?? { input: 0, output: 0 };
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== todayDate) {
+        todayTotalUsd = 0;
+        todayDate = today;
+    }
+
+    const costs = MODEL_COSTS[model] || (model.startsWith('ollama/') ? { input: 0, output: 0, tier: 'fast' as const } : MODEL_COSTS['openai/gpt-4o']) || { input: 0, output: 0 };
     const callCost = (inputTokens / 1_000_000) * costs.input + (outputTokens / 1_000_000) * costs.output;
 
     const existing = sessionCosts.get(sessionId) ?? { inputTokens: 0, outputTokens: 0, estimatedUsd: 0, calls: 0 };

@@ -138,6 +138,7 @@ export function initMemory(): void {
 
 /** Close / flush the memory system */
 export function closeMemory(): void {
+  if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null; }
   saveStore();
   store = null;
 }
@@ -280,7 +281,16 @@ export function searchMemories(category?: string, query?: string): Array<{ key: 
     );
   }
 
-  return results.slice(-50).map((m) => ({ key: m.key, value: m.value, category: m.category }));
+  // Sort by relevance when a query is provided
+  if (query) {
+    const q = query.toLowerCase();
+    results.sort((a, b) => {
+      const aScore = (a.key.toLowerCase().includes(q) ? 2 : 0) + (a.value.toLowerCase().includes(q) ? 1 : 0);
+      const bScore = (b.key.toLowerCase().includes(q) ? 2 : 0) + (b.value.toLowerCase().includes(q) ? 1 : 0);
+      return bScore - aScore;
+    });
+  }
+  return results.slice(0, 50).map((m) => ({ key: m.key, value: m.value, category: m.category }));
 }
 
 // ─── Usage Tracking ──────────────────────────────────────────────

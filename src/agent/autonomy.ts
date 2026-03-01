@@ -78,7 +78,7 @@ let hitlCallback: ((action: PendingAction) => Promise<boolean>) | null = null;
 export function getAutonomyMode(): AutonomyMode {
     try {
         const config = loadConfig();
-        return (config as any).autonomy?.mode || 'supervised';
+        return config.autonomy.mode || 'supervised';
     } catch {
         return 'supervised'; // Safe default
     }

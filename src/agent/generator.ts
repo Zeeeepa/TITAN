@@ -11,7 +11,7 @@ import type { ChatMessage } from '../providers/base.js';
 import { TITAN_HOME } from '../utils/constants.js';
 import { loadAutoSkills } from '../skills/registry.js';
 import logger from '../utils/logger.js';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 const COMPONENT = 'SkillGenerator';
 const AUTO_SKILLS_DIR = path.join(TITAN_HOME, 'skills', 'auto');
@@ -134,7 +134,7 @@ export async function generateAndInstallSkill(
         try {
             // Use tsx or tsc to compile it to JS so Node can load it dynamically
             // We'll write a tiny compiler script or use tsc directly if available globally
-            execSync(`npx tsc "${tsFilePath}" --module NodeNext --moduleResolution NodeNext --target ES2022`, { stdio: 'pipe' });
+            execFileSync('npx', ['tsc', tsFilePath, '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--target', 'ES2022'], { stdio: 'pipe' });
             logger.info(COMPONENT, `Compiled ${finalName}.ts successfully.`);
         } catch (compileError: any) {
             logger.error(COMPONENT, `Compilation failed for ${finalName}`);

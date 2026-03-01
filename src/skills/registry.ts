@@ -110,6 +110,7 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerVisionSkill } = await import('./builtin/vision.js');
     const { registerVoiceSkills } = await import('./builtin/voice.js');
     const { registerMemoryGraphSkill } = await import('./builtin/memory_graph.js');
+    const { initWebBrowserTool } = await import('./builtin/web_browser.js');
 
     registerShellSkill();
     registerFilesystemSkill();
@@ -126,49 +127,164 @@ export async function initBuiltinSkills(): Promise<void> {
     registerVisionSkill();
     registerVoiceSkills();
     registerMemoryGraphSkill();
+    initWebBrowserTool();
 
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
 }
 
-/** 
- * Discover and load auto-generated skills from ~/.titan/skills/auto/
+/**
+ * Discover and load user skills from ~/.titan/skills/ (all subdirs).
+ * Supports:
+ *  1. JavaScript files (.js) that export default { name, description, parameters, execute }
+ *  2. YAML skill definitions (.yaml/.yml) with inline scripts
+ *  3. Auto-generated skills from ~/.titan/skills/auto/
  */
 export async function loadAutoSkills(): Promise<void> {
-    const autoDir = join(TITAN_HOME, 'skills', 'auto');
-    if (!existsSync(autoDir)) return;
+    const skillsRoot = join(TITAN_HOME, 'skills');
+    if (!existsSync(skillsRoot)) return;
 
-    logger.info(COMPONENT, 'Checking for auto-generated skills...');
-    const files = readdirSync(autoDir).filter(f => f.endsWith('.js'));
-
+    logger.info(COMPONENT, 'Scanning for user skills...');
     let loadedCount = 0;
-    for (const file of files) {
-        try {
-            const skillPath = join(autoDir, file);
-            // Append cache buster to force hot-reload of ES modules
-            const modulePath = `file://${skillPath}?t=${Date.now()}`;
-            const mod = await import(modulePath);
 
-            if (mod.default && mod.default.name && mod.default.execute) {
-                const handler = mod.default as ToolHandler;
+    // Scan both root and all subdirectories
+    const dirsToScan = [skillsRoot];
+    const entries = readdirSync(skillsRoot, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.isDirectory()) dirsToScan.push(join(skillsRoot, entry.name));
+    }
 
-                // Add to our registry metadata
-                const meta: SkillMeta = {
-                    name: handler.name,
-                    description: handler.description || 'Auto-generated skill',
-                    version: '1.0.0',
-                    source: 'workspace', // Consider it part of user workspace
-                    enabled: true,
-                };
+    for (const dir of dirsToScan) {
+        const files = readdirSync(dir).filter(f =>
+            f.endsWith('.js') || f.endsWith('.yaml') || f.endsWith('.yml')
+        );
 
-                registerSkill(meta, handler);
-                loadedCount++;
+        for (const file of files) {
+            const filePath = join(dir, file);
+            try {
+                if (file.endsWith('.js')) {
+                    // JavaScript skill — export default { name, description, parameters, execute }
+                    const modulePath = `file://${filePath}?t=${Date.now()}`;
+                    const mod = await import(modulePath);
+                    if (mod.default && mod.default.name && mod.default.execute) {
+                        const handler = mod.default as ToolHandler;
+                        if (registeredSkills.has(handler.name)) continue; // Skip duplicates
+                        registerSkill({
+                            name: handler.name,
+                            description: handler.description || 'User skill',
+                            version: '1.0.0',
+                            source: 'workspace',
+                            enabled: true,
+                        }, handler);
+                        loadedCount++;
+                    }
+                } else {
+                    // YAML skill definition
+                    const loaded = loadYamlSkill(filePath);
+                    if (loaded && !registeredSkills.has(loaded.name)) {
+                        registerSkill({
+                            name: loaded.name,
+                            description: loaded.description,
+                            version: '1.0.0',
+                            source: 'workspace',
+                            enabled: true,
+                        }, loaded);
+                        loadedCount++;
+                    }
+                }
+            } catch (e: any) {
+                logger.warn(COMPONENT, `Failed to load skill ${file}: ${e.message}`);
             }
-        } catch (e: any) {
-            logger.error(COMPONENT, `Failed to load auto skill ${file}: ${e.message}`);
         }
     }
 
     if (loadedCount > 0) {
-        logger.info(COMPONENT, `Successfully loaded ${loadedCount} auto-generated skills`);
+        logger.info(COMPONENT, `Loaded ${loadedCount} user skill(s) from ~/.titan/skills/`);
     }
+}
+
+/**
+ * Load a YAML skill definition.
+ * Format:
+ *   name: my_tool
+ *   description: What it does
+ *   parameters:
+ *     myParam:
+ *       type: string
+ *       description: A parameter
+ *       required: true
+ *   script: |
+ *     // JavaScript code. Use `args.myParam` for inputs.
+ *     // Return a string result.
+ *     return "Hello " + args.myParam;
+ */
+function loadYamlSkill(filePath: string): ToolHandler | null {
+    const content = readFileSync(filePath, 'utf-8');
+
+    // Simple YAML parser (no dependency needed for this basic format)
+    const name = content.match(/^name:\s*(.+)$/m)?.[1]?.trim();
+    const description = content.match(/^description:\s*(.+)$/m)?.[1]?.trim();
+    const scriptMatch = content.match(/^script:\s*\|\n([\s\S]+?)(?=\n\w|\n$|$)/m);
+    const script = scriptMatch?.[1]?.replace(/^ {2}/gm, ''); // Remove YAML indent
+
+    if (!name || !description || !script) {
+        logger.debug(COMPONENT, `Skipping ${filePath}: missing name, description, or script`);
+        return null;
+    }
+
+    // Parse parameters section
+    const paramsSection = content.match(/^parameters:\n((?:\s{2}\w[\s\S]*?)(?=\nscript:|\n\w|\n$))/m);
+    const properties: Record<string, any> = {};
+    const required: string[] = [];
+
+    if (paramsSection) {
+        const paramLines = paramsSection[1].split('\n');
+        let currentParam = '';
+        for (const line of paramLines) {
+            const paramMatch = line.match(/^\s{2}(\w+):\s*$/);
+            if (paramMatch) {
+                currentParam = paramMatch[1];
+                properties[currentParam] = {};
+                continue;
+            }
+            if (currentParam) {
+                const typeMatch = line.match(/^\s{4}type:\s*(.+)$/);
+                const descMatch = line.match(/^\s{4}description:\s*(.+)$/);
+                const reqMatch = line.match(/^\s{4}required:\s*true$/);
+                const defMatch = line.match(/^\s{4}default:\s*(.+)$/);
+                if (typeMatch) properties[currentParam].type = typeMatch[1].trim();
+                if (descMatch) properties[currentParam].description = descMatch[1].trim();
+                if (reqMatch) required.push(currentParam);
+                if (defMatch) properties[currentParam].default = defMatch[1].trim();
+            }
+        }
+    }
+
+    // Create the execute function from the script
+    const handler: ToolHandler = {
+        name,
+        description,
+        parameters: {
+            type: 'object',
+            properties,
+            required: required.length > 0 ? required : undefined,
+        },
+        execute: async (args: Record<string, unknown>) => {
+            try {
+                // Create a sandboxed function from the script
+                const fn = new Function('args', 'require', script);
+                const result = await fn(args, (mod: string) => {
+                    // Only allow built-in modules
+                    const allowed = ['fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'url', 'util'];
+                    if (!allowed.includes(mod)) throw new Error(`Module "${mod}" not allowed in YAML skills`);
+                    return require(mod);
+                });
+                return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+            } catch (err) {
+                return `Error: ${(err as Error).message}`;
+            }
+        },
+    };
+
+    logger.debug(COMPONENT, `Loaded YAML skill: ${name} from ${filePath}`);
+    return handler;
 }

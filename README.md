@@ -5,179 +5,353 @@
 </p>
 
 <p align="center">
-  <strong>Your own personal AI agent. Any OS. Any platform. Superior by design.</strong>
+  <strong>A fully autonomous AI agent framework. 14 providers. 27 tools. Zero native dependencies.</strong>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#features">Features</a> •
-  <a href="#cli-reference">CLI Reference</a> •
-  <a href="#mission-control">Mission Control</a> •
-  <a href="#providers">Providers</a> •
-  <a href="#comparison">Comparison</a> •
-  <a href="#roadmap">Roadmap</a>
+  <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
+  <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-14-purple" alt="14 Providers"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-27-orange" alt="27 Tools"/></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#why-titan">Why TITAN</a> &bull;
+  <a href="#features">Features</a> &bull;
+  <a href="#providers">Providers</a> &bull;
+  <a href="#mission-control">Mission Control</a> &bull;
+  <a href="#mesh-networking">Mesh Networking</a> &bull;
+  <a href="#custom-skills">Custom Skills</a> &bull;
+  <a href="#cli-reference">CLI</a>
 </p>
 
 ---
 
 ## Quick Start
 
-**Requirements:** Node.js >= 20, npm >= 9
+**Requirements:** Node.js >= 20
 
 ```bash
 npm install -g titan-agent
-titan onboard          # Interactive setup wizard (choose your AI provider + API key)
-titan gateway          # Start Mission Control at http://localhost:48420
-titan agent -m "Hello" # Send a direct message
+titan onboard             # Interactive setup (pick a provider, paste your API key)
+titan gateway             # Launch Mission Control at http://localhost:48420
+titan agent -m "Hello"    # Talk to your agent from the terminal
 ```
 
-### Run from Source
+### From Source
 
 ```bash
-git clone https://github.com/Djtony707/TITAN.git
-cd TITAN/titan
+git clone https://github.com/Djtony707/TITAN.git && cd TITAN/titan
 npm install
-cp .env.example .env   # Add your API keys
-npm run onboard
-npm run dev:gateway
+cp .env.example .env      # Add API keys
+npm run dev:gateway        # Start in dev mode
 ```
+
+---
+
+## Why TITAN
+
+| | TITAN | Typical AI agent frameworks |
+|---|---|---|
+| **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation |
+| **Native deps** | Zero | Often require system libraries |
+| **Providers** | 14 (66 models) with automatic failover | 1-4 providers, no failover |
+| **Security** | Prompt injection shield, DM pairing, E2E encryption, tool sandboxing | Minimal or none |
+| **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
+| **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
+| **Skills** | 27 built-in + drop-in YAML/JS creation | Fixed tool set |
+| **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
+| **GUI** | 12-panel Mission Control dashboard | CLI only or basic web UI |
+| **Codebase** | ~8K lines TypeScript | 50K-200K+ lines |
 
 ---
 
 ## Features
 
-### Prompt Injection Shield
+### 14 AI Providers, 66 Models
 
-Zero tolerance for unauthorized takeovers (`src/security/shield.ts`):
+Connect any combination of cloud and local models. TITAN routes, fails over, and load-balances automatically.
 
-- **Heuristic Engine** — Detects and blocks "ignore previous instructions", "developer mode", and system prompt extraction attempts.
-- **Strict Mode** — Scans for keyword density and tail manipulations in large payloads.
-- **DM Pairing System** — Approve or deny access from new senders before they can interact with your agent (`src/security/pairing.ts`).
+```bash
+titan model --discover       # Live-detect all available models
+titan model --alias fast openai/gpt-4o-mini   # Create shortcuts
+titan model --set anthropic/claude-sonnet-4-20250514
+```
 
-### Loop Detection and Circuit Breaker
+Built-in aliases: `fast`, `smart`, `cheap`, `reasoning` — fully configurable.
 
-No more infinite tool loops (`src/agent/loopDetection.ts`). Three detection algorithms run in parallel:
+### 27 Built-in Tools
 
-- **Generic Repeat** — Same tool with identical arguments called repeatedly.
-- **No-Progress Polling** — Tool returns identical output on consecutive calls.
-- **Ping-Pong** — Alternating A/B tool patterns with no forward progress.
-- **Global Circuit Breaker** — Hard stop after a configurable threshold.
+| Category | Tools |
+|----------|-------|
+| **Shell & Process** | `shell`, `exec`, `process_list`, `process_kill`, `process_spawn` |
+| **Filesystem** | `read_file`, `write_file`, `edit_file`, `list_dir`, `apply_patch` |
+| **Web** | `web_search`, `web_fetch`, `browser` (CDP), `web_browser` (Playwright) |
+| **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
+| **Automation** | `cron`, `webhook` |
+| **Memory** | `memory`, `model_switch`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
+| **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
 
-### Task Planner with Dependency Graphs
+### Temporal Knowledge Graph
 
-`src/agent/planner.ts`:
+Pure TypeScript graph memory — no Docker, no Neo4j, no external services.
 
-- Automatic goal decomposition into ordered sub-tasks.
-- Dependency tracking — tasks only execute when prerequisites are met.
-- 3x auto-retry on failure with exponential backoff.
-- Parallel execution of independent tasks.
-- Persistent plan state at `~/.titan/plans/`.
+- Conversations are automatically recorded as timestamped episodes
+- Entities (people, projects, topics) are extracted and linked
+- Relevant memories are injected into every system prompt
+- Searchable across time with natural language
 
-### Smart Context Manager
-
-`src/agent/contextManager.ts`:
-
-- Auto-summarizes old conversation history to stay within token budgets.
-- Priority-based context allocation (recent > relevant > old).
-- Per-model token limit enforcement with smart truncation that preserves tool call context.
-
-### Cost Optimizer
-
-`src/agent/costOptimizer.ts`:
-
-- Intelligently routes requests to cheaper models when full power is not needed.
-- Tracks real-time cost per session against configurable budgets.
-- Context summarization reduces token usage by 30–90% on long sessions.
-
-### Continuous Learning Engine
-
-`src/memory/learning.ts`:
-
-- Tracks tool success and failure rates across all interactions.
-- Records error patterns and successful resolutions.
-- Builds a persistent knowledge base at `~/.titan/knowledge.json`.
-- Injects learned context into every system prompt automatically.
-- TITAN gets more effective the more you use it.
-
-### Relationship Memory
-
-`src/memory/relationship.ts`:
-
-- Persistent user profile (`~/.titan/profile.json`) that survives restarts.
-- Remembers your name, preferences, work context, and interaction history.
-- Provides JARVIS-like personal continuity across sessions.
+```bash
+titan graphiti --init     # Initialize the graph
+titan graphiti --stats    # View entity/episode counts
+```
 
 ### Multi-Agent System
 
-`src/agent/multiAgent.ts`:
+Run up to 5 concurrent agents, each with its own model and personality.
 
-- Up to 5 concurrent independent agent instances.
-- Each agent can run a different model and system prompt.
-- Channel-based routing — agents bind to specific channels.
-- Spawn and stop agents from the CLI or Mission Control GUI.
+```bash
+titan agents spawn --model openai/gpt-4o --name "researcher"
+titan agents spawn --model ollama/llama3.1 --name "coder"
+titan agents list
+```
 
-### Kimi Swarm Architecture
+### Prompt Injection Shield
 
-`src/agent/swarm.ts`:
+Three-layer defense against prompt injection attacks:
 
-- Specialized routing for Ollama kimi-k2.5 models.
-- Prevents context collapse by splitting the 22-tool set into domain-focused sub-agents (file, web, system, memory).
-- Each sub-agent receives 3–4 tools instead of the full monolith.
+- **Heuristic engine** — Detects "ignore previous instructions", system prompt extraction, developer mode exploits
+- **Strict mode** — Keyword density analysis and tail manipulation detection
+- **DM pairing** — New senders must be approved before they can interact with your agent
 
-### 22 Built-in Skills
+### Loop Detection & Circuit Breaker
 
-| Group | Skills |
-|-------|--------|
-| **Runtime** | `shell`, `exec` (background/timeout), `process` (list/poll/kill/log) |
-| **Filesystem** | `read`, `write`, `edit`, `list_dir`, `apply_patch` |
-| **Web** | `web_search`, `web_fetch`, `browser` (CDP), `web_browser` (Playwright bulk DOM) |
-| **Intelligence** | `auto_generate_skill`, `analyze_image` (Vision), `transcribe_audio` (STT), `generate_speech` (TTS) |
-| **Automation** | `cron`, `webhook` |
-| **Memory** | `memory_skill`, `model_switch` |
-| **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
+Three detection algorithms prevent runaway tool loops:
 
-### Skill Auto-Generation
+- **Repeat detection** — Same tool, same arguments, called repeatedly
+- **No-progress detection** — Tool returns identical output on consecutive calls
+- **Ping-pong detection** — Alternating tool patterns with no forward progress
+- **Global circuit breaker** — Hard stop after configurable threshold
 
-- If TITAN encounters a task it cannot solve with existing tools, `auto_generate_skill` writes a new TypeScript skill, compiles it, and hot-loads it instantly.
-- Auto-generated skills are saved to `~/.titan/skills/auto/` and persist across restarts.
+### Task Planner
 
-### Graphiti Temporal Memory
+Automatic goal decomposition with dependency-aware execution:
 
-- Neo4j + Graphiti MCP server via Docker Compose.
-- Provides graph-based temporal memory for complex, time-aware knowledge retrieval.
-- Start with `titan graphiti --init`, stop with `titan graphiti --down`.
+- Breaks complex goals into ordered sub-tasks
+- Parallel execution of independent tasks
+- 3x auto-retry with exponential backoff
+- Persistent state at `~/.titan/plans/`
 
-### Recipes
+### Smart Context & Cost Optimization
 
-`src/recipes/`:
+- Auto-summarizes conversation history to stay within token budgets
+- Routes simple queries to cheaper models automatically
+- Per-session cost tracking with configurable daily budgets
+- Context summarization reduces token usage by 30-90%
 
-- Reusable multi-step workflows defined as structured configs.
-- Trigger with slash commands in any connected channel.
-- Parameterized — pass values at invocation time.
+### Continuous Learning
 
-### MCP Support
+TITAN gets smarter the more you use it:
 
-`src/mcp/`:
+- Tracks tool success/failure rates across all interactions
+- Records error patterns and successful resolutions
+- Persistent knowledge base at `~/.titan/knowledge.json`
+- Learned context injected into every system prompt
 
-- Connect external tools and services via the Model Context Protocol.
-- Register MCP servers by URL; tools are exposed automatically to the agent.
+### Relationship Memory
+
+- Persistent user profile that survives restarts
+- Remembers your name, preferences, work context
+- Personal continuity across all sessions
 
 ### E2E Encrypted Sessions
 
-`src/security/encryption.ts`:
+AES-256-GCM encryption for sensitive conversations. Keys generated per-session, held in memory only.
 
-- AES-256-GCM encryption for sensitive conversations.
-- Keys are generated per-session and held in memory only.
+---
 
-### Channel Adapters
+## Providers
 
-Discord · Telegram · Slack · Google Chat · WebChat · WhatsApp
+TITAN supports 14 AI providers out of the box. Add your API key and go.
 
-Each adapter is an independent module in `src/channels/`.
+| Provider | Models | Type |
+|----------|--------|------|
+| **Anthropic** | Claude Opus 4, Sonnet 4, Haiku 4 | Cloud |
+| **OpenAI** | GPT-4o, GPT-4o-mini, o3-mini, o1 | Cloud |
+| **Google** | Gemini 2.5 Flash/Pro, 2.0 Flash, 1.5 Pro | Cloud |
+| **Ollama** | Any locally installed model | Local |
+| **Groq** | LLaMA 3.3 70B, Mixtral, Gemma 2 | Cloud (Fast inference) |
+| **Mistral** | Mistral Large, Small, Nemo, Codestral | Cloud |
+| **OpenRouter** | 290+ models from all providers | Cloud (Aggregator) |
+| **Together** | LLaMA 3.1, CodeLlama, Mixtral | Cloud |
+| **Fireworks** | LLaMA 3.1, Mixtral, Qwen 2.5 | Cloud (Fast inference) |
+| **xAI** | Grok-2, Grok-2-mini | Cloud |
+| **DeepSeek** | DeepSeek-V3, DeepSeek-R1 | Cloud |
+| **Cerebras** | LLaMA 3.1 (wafer-scale inference) | Cloud (Fast inference) |
+| **Cohere** | Command-R+, Command-R | Cloud |
+| **Perplexity** | Sonar Large, Sonar Small | Cloud (Search-augmented) |
 
-### Model-Agnostic
+All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider.
 
-Anthropic · OpenAI · Google · Ollama — with automatic failover between providers.
+```bash
+# Configure via CLI
+titan config set providers.groq.apiKey "gsk_..."
+titan config set providers.openrouter.apiKey "sk-or-..."
+
+# Or via environment variables
+export GROQ_API_KEY="gsk_..."
+export OPENROUTER_API_KEY="sk-or-..."
+```
+
+---
+
+## Mission Control
+
+A 12-panel dark-mode dashboard at `http://localhost:48420`.
+
+| Panel | Description |
+|-------|-------------|
+| **Overview** | System health, uptime, memory, model info, cost stats |
+| **WebChat** | Real-time chat with your agent via WebSocket |
+| **Agents** | Spawn, stop, and monitor agent instances |
+| **Settings** | 6-tab live configuration (AI, Providers, Channels, Security, Gateway, Profile) |
+| **Channels** | Connection status for all channel adapters |
+| **Skills** | Installed skills with enable/disable controls |
+| **Sessions** | Active sessions with message counts and history |
+| **Learning** | Tool success rates and knowledge base stats |
+| **Security** | Audit log and DM pairing management |
+| **Memory Graph** | Visual force-directed graph of entities and relationships |
+| **Logs** | Color-coded real-time log viewer with filtering |
+| **Recipes** | Manage and trigger reusable workflows |
+
+All settings are editable live without restarting the gateway.
+
+---
+
+## Mesh Networking
+
+Deploy TITAN across multiple computers with zero configuration. Machines auto-discover each other and share models.
+
+### LAN Discovery (mDNS)
+
+Machines on the same network find each other automatically via Bonjour/mDNS.
+
+```bash
+# On machine 1
+titan mesh --init        # Generates a shared secret
+
+# On machine 2
+titan mesh --join "your-secret-here"
+
+# Check connectivity
+titan mesh --status
+```
+
+### Tailscale Integration
+
+If you run Tailscale, TITAN automatically discovers peers on your VPN — works across networks, data centers, and cloud instances.
+
+```json
+{
+  "mesh": {
+    "enabled": true,
+    "tailscale": true
+  }
+}
+```
+
+### Remote Model Routing
+
+When a requested model isn't available locally, TITAN automatically routes to a peer that has it. Load-balanced across all available nodes.
+
+---
+
+## Custom Skills
+
+Create new tools for TITAN in seconds. Drop files into `~/.titan/skills/` and they're loaded automatically.
+
+### YAML Skills (Easiest)
+
+```yaml
+# ~/.titan/skills/word_count.yaml
+name: word_count
+description: Count words, lines, and characters in a file
+parameters:
+  filePath:
+    type: string
+    description: Path to the file
+    required: true
+script: |
+  const fs = require('fs');
+  const content = fs.readFileSync(args.filePath, 'utf-8');
+  const lines = content.split('\n').length;
+  const words = content.split(/\s+/).filter(Boolean).length;
+  return 'Lines: ' + lines + ', Words: ' + words + ', Characters: ' + content.length;
+```
+
+### JavaScript Skills
+
+```javascript
+// ~/.titan/skills/hello.js
+export default {
+  name: 'hello',
+  description: 'Greet someone by name',
+  parameters: {
+    type: 'object',
+    properties: {
+      name: { type: 'string', description: 'Name to greet' }
+    },
+    required: ['name']
+  },
+  execute: async (args) => `Hello, ${args.name}!`
+};
+```
+
+### AI-Generated Skills
+
+```bash
+titan skill create "a tool that converts CSV files to JSON"
+```
+
+TITAN writes, compiles, and hot-loads the skill instantly.
+
+### Skill Auto-Generation
+
+When TITAN encounters a task it can't solve with existing tools, it can write a new skill on the fly, compile it, and use it immediately.
+
+---
+
+## Channel Adapters
+
+Connect TITAN to your messaging platforms:
+
+| Channel | Library | Status |
+|---------|---------|--------|
+| **Discord** | discord.js | Ready |
+| **Telegram** | grammY | Ready |
+| **Slack** | @slack/bolt | Ready |
+| **Google Chat** | Webhooks | Ready |
+| **WebChat** | Built-in WebSocket | Ready |
+
+All channels support the DM pairing security system. Configure via `~/.titan/titan.json` or Mission Control Settings.
+
+---
+
+## Recipes
+
+Reusable multi-step workflows triggered by slash commands.
+
+```bash
+# Built-in recipes
+/code-review     # Review files for bugs and improvements
+/standup         # Prepare daily standup notes
+/explain         # Explain code in plain English
+/brainstorm      # Generate ideas on a topic
+/debug           # Debug errors with guided analysis
+```
+
+Recipes support parameterized prompts (`{{variable}}`), optional tool-direct steps, and confirmation gates.
 
 ---
 
@@ -185,173 +359,120 @@ Anthropic · OpenAI · Google · Ollama — with automatic failover between prov
 
 | Command | Description |
 |---------|-------------|
-| `titan onboard` | Interactive setup wizard — configure provider, API keys, and channels |
-| `titan gateway` | Start Mission Control at `http://localhost:48420` |
-| `titan agent -m "..."` | Send a direct message to your agent |
-| `titan send --to ch:id -m "..."` | Send a message to a specific channel |
-| `titan pairing` | Manage DM access control (approve/deny senders) |
-| `titan agents` | Multi-agent management (spawn, stop, list) |
-| `titan doctor` | System diagnostics — checks config, connectivity, and dependencies |
-| `titan skills` | Skill management (list, install, generate) |
-| `titan config` | View or edit configuration |
-| `titan update` | Update TITAN to the latest version |
-| `titan graphiti --init` | Start Graphiti temporal memory stack (Docker) |
-| `titan graphiti --down` | Stop Graphiti stack and deregister MCP server |
-
----
-
-## Mission Control
-
-TITAN ships with a **Mission Control** web GUI — a dark-mode dashboard served from the gateway at `http://localhost:48420`.
-
-### Panels
-
-| Panel | Description |
-|-------|-------------|
-| **Overview** | System health, uptime, memory usage, version |
-| **WebChat** | Built-in real-time chat via WebSocket |
-| **Agents** | Spawn and stop agent instances, view capacity |
-| **Settings** | 6-tab configuration: AI and Model, Providers, Channels, Security, Gateway, Profile |
-| **Channels** | Connection status for each channel adapter |
-| **Skills** | Installed skills with status |
-| **Sessions** | Active session list with message counts |
-| **Learning** | Learning engine stats and tool success rates |
-| **Security** | Security audit log and DM pairing management |
-| **Graphiti** | Temporal memory panel (Neo4j/Graphiti integration) |
-
-The Settings panel covers provider API keys, model selection, autonomy mode, channel configuration, gateway options, and user profile — all editable live without restarting.
-
----
-
-## Providers
-
-| Provider | Models | Cost |
-|----------|--------|------|
-| **Anthropic** | Claude Opus 4, Claude Sonnet 4, Claude Haiku 4 | Paid |
-| **OpenAI** | GPT-4o, GPT-4o-mini, o-series | Paid |
-| **Google** | Gemini 2.5 Flash/Pro, Gemini 2.0 Flash, Gemini 1.5 Flash/Pro | Paid |
-| **Ollama** | Any locally installed model (kimi-k2.5, llama, mistral, etc.) | Free |
-
-Provider selection and failover are configured in `~/.titan/titan.json` or via the Mission Control Settings panel.
+| `titan onboard` | Interactive setup wizard |
+| `titan gateway` | Start Mission Control |
+| `titan agent -m "..."` | Send a message to your agent |
+| `titan send --to ch:id -m "..."` | Message a specific channel |
+| `titan model --list` | Show all configured models |
+| `titan model --discover` | Live-detect available models |
+| `titan model --set <model>` | Switch the active model |
+| `titan model --alias <name> <model>` | Create a model alias |
+| `titan agents` | Multi-agent management |
+| `titan mesh --init` | Initialize mesh networking |
+| `titan mesh --status` | View mesh peers and models |
+| `titan skills` | List installed skills |
+| `titan skill create "..."` | Generate a skill with AI |
+| `titan pairing` | Manage DM access control |
+| `titan doctor` | System diagnostics |
+| `titan config` | View/edit configuration |
+| `titan graphiti --init` | Initialize knowledge graph |
+| `titan graphiti --stats` | Graph statistics |
+| `titan update` | Update to latest version |
 
 ---
 
 ## Configuration
 
-TITAN stores all state in `~/.titan/`:
+All state lives in `~/.titan/`:
 
 | Path | Purpose |
 |------|---------|
-| `~/.titan/titan.json` | Main configuration |
-| `~/.titan/titan-data.json` | Runtime data |
-| `~/.titan/knowledge.json` | Learning engine knowledge base |
-| `~/.titan/profile.json` | Relationship memory / user profile |
-| `~/.titan/logs/titan-YYYY-MM-DD.log` | Daily log files |
-| `~/.titan/plans/` | Persistent task planner state |
-| `~/.titan/skills/auto/` | Auto-generated skills |
+| `titan.json` | Main configuration |
+| `titan-data.json` | Runtime data (sessions, webhooks) |
+| `graph.json` | Temporal knowledge graph |
+| `knowledge.json` | Learning engine knowledge base |
+| `profile.json` | User profile and preferences |
+| `node-id` | Mesh networking node identity |
+| `logs/` | Daily log files |
+| `plans/` | Persistent task planner state |
+| `skills/` | Custom user skills (YAML, JS) |
+| `recipes/` | Saved recipe workflows |
 
 ---
 
 ## Development
 
 ```bash
-npm run build        # tsup production build
-npm run test         # vitest run (52 tests across 7 files)
-npm run ci           # typecheck + full test suite
-npm run typecheck    # tsc --noEmit (0 errors)
-npm run dev:gateway  # Run gateway directly via tsx
+npm run build          # tsup ESM production build
+npm run test           # vitest (52 tests, 7 files)
+npm run ci             # typecheck + full test suite
+npm run typecheck      # tsc --noEmit
+npm run dev:gateway    # Dev mode with tsx
+npm run test:coverage  # Coverage report
 ```
 
-The test suite covers core agent behavior, multi-agent routing, server endpoints, updater, and integration scenarios.
+### Architecture
+
+```
+src/
+  agent/        Core agent loop, multi-agent, swarm, planner, autonomy
+  channels/     Discord, Telegram, Slack, Google Chat, WebChat
+  providers/    Anthropic, OpenAI, Google, Ollama + 10 OpenAI-compatible
+  memory/       Episodic, learning, relationship, temporal graph
+  skills/       27 built-in tools + user skill loader
+  security/     Shield, sandbox, encryption, pairing
+  gateway/      HTTP/WS server + Mission Control dashboard
+  mesh/         mDNS + Tailscale peer discovery, WebSocket transport
+  recipes/      Workflow engine + persistence
+  mcp/          Model Context Protocol client
+  config/       Zod schema + loader
+  cli/          Commander.js CLI (12 commands)
+  utils/        Constants, logger, helpers
+```
 
 ---
 
-## Comparison
+## Autonomy Modes
 
-> Note: The frameworks below are fictional analogs used here for feature positioning purposes. They represent common archetypes in the AI agent framework space (bloated monolith, minimal implementation, Rust-compiled, cloud-managed, Python-based) rather than specific real projects.
+| Mode | Behavior |
+|------|----------|
+| `autonomous` | Full auto — TITAN executes all tools without asking |
+| `supervised` | Asks before dangerous operations (default) |
+| `locked` | Asks permission for every tool call |
 
-| Feature | **TITAN** | Bloated TS | Minimal TS | Rust-based | Cloud-managed | Python-based |
-|---------|-----------|------------|------------|------------|---------------|--------------|
-| **Language** | TypeScript | TypeScript | TypeScript | Rust | Cloud | Python |
-| **Native deps** | None | Required | None | Required | N/A | None |
-| **Loop detection** | 3 detectors + circuit breaker | None | None | None | None | None |
-| **Task planner** | Dependency graphs + retry | None | None | None | None | None |
-| **Smart context** | Auto-summarize + budget | None | None | None | None | None |
-| **Continuous learning** | Built-in | None | None | None | None | None |
-| **Multi-agent** | Up to 5 | Yes | None | None | None | None |
-| **Mission Control GUI** | 10+ panels, premium | Basic | None | None | Yes | None |
-| **Browser control** | CDP + Playwright | CDP | None | None | Yes | None |
-| **Skill auto-generation** | Yes | None | None | None | None | None |
-| **Graphiti memory** | Yes (Docker) | None | None | None | None | None |
-| **Local models (Ollama)** | Yes | Yes | Yes | Yes | None | Yes |
-| **RAM usage** | ~50 MB | ~1 GB+ | ~30 MB | ~20 MB | Cloud | ~40 MB |
-| **Setup** | `npm install -g titan-agent` | Complex | Simple | Compile | OAuth | `pip install` |
-
-### Where TITAN sits in the landscape
-
-**vs. bloated monolith frameworks** — Comparable capabilities in ~10K lines of pure TypeScript with zero native dependencies, plus exclusive features: loop detection, task planner, smart context, continuous learning, and skill auto-generation that larger frameworks lack.
-
-**vs. minimal implementations** — Minimal agents prioritize small codebases over features. They typically lack browser control, multi-agent, background processes, task planning, and a GUI. TITAN provides all of these without reaching monolith size.
-
-**vs. Rust/compiled frameworks** — Strong security and performance but require compilation, have steeper setup, and limited ecosystem. TITAN provides comparable security via sandboxing and encryption with a `npm install` setup.
-
-**vs. cloud-managed agents** — Cloud agents remove self-hosting control. TITAN runs entirely on your own hardware with full local model support and no external service dependency.
-
-**vs. Python agents** — Python agents have a large ML ecosystem but typically lack browser integration, multi-agent coordination, task planning, and a built-in GUI. TITAN covers all of these.
+Configure via `titan config set autonomy.mode supervised` or Mission Control Settings.
 
 ---
 
 ## Roadmap
 
-### Completed
+See [TASKS.md](TASKS.md) for the full development roadmap including Phase 3 and Phase 4 plans.
 
-- Multi-agent system (up to 5 concurrent)
-- 22 built-in skills (shell, filesystem, browser, process, web, cron, webhooks, sessions, memory, patch, vision, voice)
-- Continuous learning engine
-- Loop detection and circuit breaker (3 algorithms)
-- Task planner with dependency graphs
-- Smart context manager and cost optimizer
-- Mission Control GUI (10+ panels, dark mode)
-- Channel adapters: Discord, Telegram, Slack, Google Chat, WebChat, WhatsApp
-- 4 LLM provider families with failover
-- DM pairing security
-- E2E AES-256-GCM encryption
-- Skill auto-generation and hot-loading
-- Recipes (reusable multi-step workflows)
-- MCP (Model Context Protocol) support
-- Kimi Swarm Architecture for local models
-- Graphiti temporal memory (Neo4j + Docker Compose)
-- Mission Control Settings: 6-tab live configuration panel
-- 52-test suite across 7 test files
-
-### Planned
-
-- **Proactive agent mode** — TITAN monitors your environment and initiates actions without being prompted.
-- **Multi-model reasoning chains** — Route sub-tasks to specialized models (fast model for planning, powerful model for execution).
-- **Git workflow integration** — PR review, automated commits, branch management tools.
-- **Expanded channel adapters** — Matrix, Signal, MS Teams, and others.
-- **Team mode** — Multiple users with role-based access and shared agent pools.
-- **OAuth integrations** — Direct connections to SaaS tools (GitHub, Google, Notion, Jira, etc.).
+### Upcoming
+- GitHub skill (PR review, issues, repos)
+- Email skill (IMAP/SMTP)
+- Morning briefing recipe
+- Computer use (screenshots, mouse, keyboard)
+- WhatsApp channel adapter
+- Image generation skill
+- PDF parsing skill
+- Persistent webhooks
+- Plugin marketplace
 
 ---
 
-## Feature Requests
+## Contributing
 
-Open an issue on GitHub or contact the author directly:
-
-- [Open a Feature Request](https://github.com/Djtony707/TITAN/issues/new?labels=feature-request&template=feature_request.md&title=%5BFeature%5D+)
-- [Tony Elliott on GitHub](https://github.com/Djtony707)
-
----
-
-## Credits
-
-**Project Creator:** [Tony Elliott (Djtony707)](https://github.com/Djtony707)
-
-**Dependencies:** Anthropic SDK, OpenAI SDK, Google Generative AI SDK, discord.js, grammY, Bolt (Slack), Zod, Commander.js, Express, ws, Playwright, chalk, uuid, tsup, Vitest.
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Commit your changes (`git commit -m "feat: add my feature"`)
+4. Push (`git push origin feat/my-feature`)
+5. Open a Pull Request
 
 ---
 
 ## License
 
-MIT License — Copyright (c) 2026 Tony Elliott. See [LICENSE](LICENSE).
+MIT License — Copyright (c) 2026 Tony Elliott
+
+Created by [Tony Elliott (Djtony707)](https://github.com/Djtony707)

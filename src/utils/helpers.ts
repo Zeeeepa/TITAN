@@ -61,6 +61,43 @@ export function formatDuration(ms: number): string {
     return `${Math.floor(ms / 3600000)}h ${Math.floor((ms % 3600000) / 60000)}m`;
 }
 
+/** Fetch with retry logic and exponential backoff */
+export async function fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    config?: { maxRetries?: number; initialDelayMs?: number; retryableStatuses?: number[] }
+): Promise<Response> {
+    const maxRetries = config?.maxRetries ?? 3;
+    const initialDelay = config?.initialDelayMs ?? 1000;
+    const retryable = new Set(config?.retryableStatuses ?? [429, 500, 502, 503]);
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url, options);
+            if (!retryable.has(response.status) || attempt === maxRetries) {
+                return response;
+            }
+            // Respect Retry-After header (cap at 30s)
+            const retryAfter = response.headers.get('Retry-After');
+            const delayMs = retryAfter
+                ? Math.min(parseInt(retryAfter, 10) * 1000 || initialDelay, 30000)
+                : initialDelay * Math.pow(2, attempt);
+
+            // Import logger dynamically to avoid circular deps
+            const { default: logger } = await import('../utils/logger.js');
+            logger.warn('Retry', `${response.status} from ${url} — retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+            await new Promise(r => setTimeout(r, delayMs));
+        } catch (err) {
+            lastError = err as Error;
+            if (attempt === maxRetries) break;
+            const delayMs = initialDelay * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+    throw lastError || new Error('Request failed after retries');
+}
+
 /** Deep merge two objects */
 export function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
     const result = { ...target };

@@ -85,7 +85,7 @@ export function registerFilesystemSkill(): void {
                     let content = readFileSync(filePath, 'utf-8');
                     const target = args.target as string;
                     if (!content.includes(target)) return `Error: Target string not found in ${filePath}`;
-                    content = content.replace(target, args.replacement as string);
+                    content = content.split(target).join(args.replacement as string);
                     writeFileSync(filePath, content, 'utf-8');
                     return `Successfully edited ${filePath}`;
                 } catch (e) { return `Error editing file: ${(e as Error).message}`; }

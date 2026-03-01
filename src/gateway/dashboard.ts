@@ -1166,7 +1166,7 @@ async function fetchData() {
     if (agents.agents && agents.agents.length > 0) {
       document.getElementById('agents-list').innerHTML =
         '<table><tr><th>Name</th><th>ID</th><th>Model</th><th>Messages</th><th>Status</th><th>Action</th></tr>' +
-        agents.agents.map(a=>'<tr><td><strong>'+a.name+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+a.id.slice(0,8)+'</td><td style="font-size:12px">'+a.model+'</td><td>'+a.messageCount+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+a.status+'</span></td><td><button class="btn danger" data-id="'+a.id+'" onclick="stopAgent(this.dataset.id)">Stop</button></td></tr>').join('')+'</table>';
+        agents.agents.map(a=>'<tr><td><strong>'+escHtml(a.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+escHtml(a.id.slice(0,8))+'</td><td style="font-size:12px">'+escHtml(a.model)+'</td><td>'+escHtml(a.messageCount)+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+escHtml(a.status)+'</span></td><td><button class="btn danger" data-id="'+escHtml(a.id)+'" onclick="stopAgent(this.dataset.id)">Stop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('agents-list').innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>No agents running. Spawn one above.</p></div>';
     }
@@ -1186,7 +1186,7 @@ async function fetchData() {
     if (Array.isArray(sessions) && sessions.length > 0) {
       document.getElementById('sessions-list').innerHTML =
         '<table><tr><th>ID</th><th>Channel</th><th>User</th><th>Messages</th><th>Last Active</th><th>Action</th></tr>' +
-        sessions.map(s=>'<tr><td><a href="#" data-id="'+s.id+'" onclick="showSessionModal(this.dataset.id)" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+s.id.slice(0,8)+'</a></td><td>'+s.channel+'</td><td>'+(s.userId||s.user_id||'—')+'</td><td>'+(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+(s.lastActive||'—')+'</td><td><button class="btn danger" data-id="'+s.id+'" onclick="stopSession(this.dataset.id)">Drop</button></td></tr>').join('')+'</table>';
+        sessions.map(s=>'<tr><td><a href="#" data-id="'+escHtml(s.id)+'" onclick="showSessionModal(this.dataset.id)" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+escHtml(s.id.slice(0,8))+'</a></td><td>'+escHtml(s.channel)+'</td><td>'+escHtml(s.userId||s.user_id||'—')+'</td><td>'+escHtml(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+escHtml(s.lastActive||'—')+'</td><td><button class="btn danger" data-id="'+escHtml(s.id)+'" onclick="stopSession(this.dataset.id)">Drop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('sessions-list').innerHTML = '<div class="empty-state"><div class="icon">🔗</div><p>No active sessions yet. Start a conversation in WebChat.</p></div>';
     }
@@ -1195,14 +1195,14 @@ async function fetchData() {
     if (Array.isArray(skills) && skills.length > 0) {
       document.getElementById('skills-list').innerHTML =
         '<table><tr><th>Skill</th><th>Version</th><th>Source</th><th>Status</th></tr>' +
-        skills.map(s=>'<tr><td><strong>'+s.name+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px">'+s.version+'</td><td><span class="badge info">'+s.source+'</span></td><td><span class="badge '+(s.enabled?'active':'idle')+'">'+(s.enabled?'enabled':'disabled')+'</span></td></tr>').join('')+'</table>';
+        skills.map(s=>'<tr><td><strong>'+escHtml(s.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px">'+escHtml(s.version)+'</td><td><span class="badge info">'+escHtml(s.source)+'</span></td><td><span class="badge '+(s.enabled?'active':'idle')+'">'+(s.enabled?'enabled':'disabled')+'</span></td></tr>').join('')+'</table>';
     }
 
     // Channels — API returns array [{name, connected}]
     if (Array.isArray(channelStatus) && channelStatus.length > 0) {
       document.getElementById('channels-list').innerHTML =
         '<table><tr><th>Channel</th><th>Status</th></tr>' +
-        channelStatus.map(c=>'<tr><td><strong>'+c.name+'</strong></td><td><span class="badge '+(c.connected?'active':'idle')+'">'+(c.connected?'✅ Connected':'⚫ Disconnected')+'</span></td></tr>').join('')+'</table>';
+        channelStatus.map(c=>'<tr><td><strong>'+escHtml(c.name)+'</strong></td><td><span class="badge '+(c.connected?'active':'idle')+'">'+(c.connected?'✅ Connected':'⚫ Disconnected')+'</span></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('channels-list').innerHTML = '<div class="empty-state"><p>No channel data available.</p></div>';
     }
@@ -1210,7 +1210,7 @@ async function fetchData() {
     // Security audit — array of {level, message}
     if (Array.isArray(security) && security.length > 0) {
       document.getElementById('security-audit').innerHTML =
-        security.map(i=>'<div class="audit-item '+i.level+'">'+(i.level==='error'?'🚨':i.level==='warn'?'⚠️':'ℹ️')+' <span>'+i.message+'</span></div>').join('');
+        security.map(i=>'<div class="audit-item '+escHtml(i.level)+'">'+(i.level==='error'?'🚨':i.level==='warn'?'⚠️':'ℹ️')+' <span>'+escHtml(i.message)+'</span></div>').join('');
     } else {
       document.getElementById('security-audit').innerHTML = '<div class="audit-item info">ℹ️ <span>No security issues found.</span></div>';
     }

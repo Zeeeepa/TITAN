@@ -13,7 +13,6 @@ import { initMemory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
 import { existsSync, unlinkSync } from 'fs';
-import { execSync } from 'child_process';
 import { join, resolve } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import { runDoctor } from './doctor.js';
@@ -218,6 +217,8 @@ program
     .command('skills')
     .description('Manage TITAN skills & marketplace')
     .option('--list', 'List all installed skills')
+    .option('--create <description>', 'Create a new skill from natural language (AI-generated)')
+    .option('--name <name>', 'Name for the new skill (used with --create)')
     .option('--search <query>', 'Search ClaWHub marketplace')
     .option('--install <name>', 'Install a skill (from ClaWHub or URL) — security scanned automatically')
     .option('--remove <name>', 'Remove an installed skill')
@@ -226,7 +227,22 @@ program
         initMemory();
         await initBuiltinSkills();
 
-        if (options.search) {
+        if (options.create) {
+            const description = options.create as string;
+            const name = (options.name as string) || description.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 30);
+            console.log(chalk.cyan(`\n✨ Generating skill: "${name}"...`));
+            console.log(chalk.gray(`  Description: ${description}\n`));
+
+            const { generateAndInstallSkill } = await import('../agent/generator.js');
+            const result = await generateAndInstallSkill(description, name);
+            if (result.success) {
+                console.log(chalk.green(`\n✅ Skill "${result.skillName}" created successfully!`));
+                console.log(chalk.gray(`   File: ${result.filePath}`));
+                console.log(chalk.gray('   The skill is now available to TITAN. Restart the gateway to use it.'));
+            } else {
+                console.log(chalk.red(`\n❌ Failed to create skill: ${result.error}`));
+            }
+        } else if (options.search) {
             console.log(chalk.cyan(`\n🔍 Searching ClaWHub for "${options.search}"...\n`));
             const results = await searchSkills(options.search);
             if (results.skills.length === 0) {
@@ -378,23 +394,94 @@ program
 // ─── MODEL ───────────────────────────────────────────────────────
 program
     .command('model')
-    .description('View or switch the active AI model')
-    .option('--list', 'List available models')
-    .option('--set <model>', 'Switch to a different model')
+    .description('View, switch, or discover AI models across all providers')
+    .option('--list', 'List known models (static)')
+    .option('--discover', 'Live-discover models from all providers (detects local Ollama models)')
+    .option('--set <model>', 'Switch to a different model (accepts aliases: fast, smart, cheap, reasoning, local)')
+    .option('--alias <name=model>', 'Set a model alias (e.g. --alias local=ollama/llama3.1)')
+    .option('--aliases', 'Show all model aliases')
     .option('--current', 'Show the currently active model')
-    .action((options) => {
+    .action(async (options) => {
         const config = loadConfig();
         if (options.set) {
-            updateConfig({ agent: { ...config.agent, model: options.set } });
-            console.log(chalk.green(`\n✅ Model switched to: ${options.set}`));
+            // Support alias resolution for --set
+            const aliases = config.agent.modelAliases || {};
+            const resolved = aliases[options.set] || options.set;
+            updateConfig({ agent: { ...config.agent, model: resolved } });
+            const aliasNote = resolved !== options.set ? ` (alias "${options.set}")` : '';
+            console.log(chalk.green(`\n✅ Model switched to: ${resolved}${aliasNote}`));
             console.log(chalk.gray('  Active from next message.'));
+        } else if (options.alias) {
+            const [name, ...rest] = (options.alias as string).split('=');
+            const modelId = rest.join('=');
+            if (!name || !modelId) {
+                console.log(chalk.red('Usage: titan model --alias <name>=<provider/model>'));
+                return;
+            }
+            const aliases = { ...(config.agent.modelAliases || {}), [name]: modelId };
+            updateConfig({ agent: { ...config.agent, modelAliases: aliases } });
+            console.log(chalk.green(`\n✅ Alias set: "${name}" → ${modelId}`));
+        } else if (options.aliases) {
+            const aliases = config.agent.modelAliases || {};
+            console.log(chalk.cyan('\n🏷️  Model Aliases\n'));
+            if (Object.keys(aliases).length === 0) {
+                console.log(chalk.gray('  No aliases configured.'));
+            } else {
+                for (const [name, model] of Object.entries(aliases)) {
+                    const active = model === config.agent.model ? chalk.green(' ← active') : '';
+                    console.log(`  ${chalk.yellow(name)} → ${chalk.white(model)}${active}`);
+                }
+            }
+            console.log(chalk.gray('\n  Set alias: titan model --alias local=ollama/llama3.1'));
+            console.log(chalk.gray('  Use alias: titan model --set local'));
+        } else if (options.discover) {
+            console.log(chalk.cyan('\n🔍 Discovering models across all providers...\n'));
+            const { discoverAllModels } = await import('../providers/router.js');
+            const models = await discoverAllModels(true);
+
+            // Group by provider
+            const grouped = new Map<string, typeof models>();
+            for (const m of models) {
+                const list = grouped.get(m.provider) || [];
+                list.push(m);
+                grouped.set(m.provider, list);
+            }
+
+            for (const [providerName, providerModels] of grouped) {
+                const first = providerModels[0];
+                const liveTag = providerModels.some(m => m.source === 'live') ? chalk.green(' [LIVE]') : chalk.gray(' [static]');
+                console.log(chalk.white(`  ${first.displayName}${liveTag}:`));
+                for (const m of providerModels) {
+                    const active = m.id === config.agent.model ? chalk.green(' ← active') : '';
+                    console.log(`    ${chalk.gray(m.id)}${active}`);
+                }
+                console.log();
+            }
+
+            const ollamaModels = models.filter(m => m.provider === 'ollama' && m.source === 'live');
+            if (ollamaModels.length > 0) {
+                console.log(chalk.green(`  ✅ ${ollamaModels.length} local Ollama model(s) detected`));
+            } else {
+                console.log(chalk.gray('  ℹ  No local Ollama models found — start Ollama to see local models'));
+            }
+            console.log(chalk.gray('\n  Switch model: titan model --set <model-id>'));
         } else if (options.list) {
-            console.log(chalk.cyan('\n🧠 Available Models\n'));
+            console.log(chalk.cyan('\n🧠 Known Models (14 Providers)\n'));
             const models = [
-                { provider: 'Anthropic', models: ['anthropic/claude-sonnet-4-20250514', 'anthropic/claude-opus-4-0', 'anthropic/claude-3-5-haiku-20241022'] },
+                { provider: 'Anthropic', models: ['anthropic/claude-opus-4-0', 'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-haiku-4-20250414'] },
                 { provider: 'OpenAI', models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'] },
-                { provider: 'Google', models: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'google/gemini-2.0-flash'] },
-                { provider: 'Ollama (local)', models: ['ollama/llama3.1', 'ollama/mistral', 'ollama/codellama', 'ollama/<any-installed>'] },
+                { provider: 'Google', models: ['google/gemini-2.5-pro', 'google/gemini-2.5-flash', 'google/gemini-2.0-flash'] },
+                { provider: 'Groq (Fast)', models: ['groq/llama-3.3-70b-versatile', 'groq/mixtral-8x7b-32768', 'groq/deepseek-r1-distill-llama-70b'] },
+                { provider: 'Mistral AI', models: ['mistral/mistral-large-latest', 'mistral/mistral-small-latest', 'mistral/codestral-latest'] },
+                { provider: 'OpenRouter (290+)', models: ['openrouter/anthropic/claude-sonnet-4-20250514', 'openrouter/openai/gpt-4o', 'openrouter/meta-llama/llama-3.3-70b'] },
+                { provider: 'xAI (Grok)', models: ['xai/grok-3', 'xai/grok-3-fast', 'xai/grok-3-mini'] },
+                { provider: 'Together AI', models: ['together/meta-llama/Llama-3.3-70B-Instruct-Turbo', 'together/deepseek-ai/DeepSeek-R1'] },
+                { provider: 'Fireworks AI', models: ['fireworks/accounts/fireworks/models/llama-v3p3-70b-instruct'] },
+                { provider: 'DeepSeek', models: ['deepseek/deepseek-chat', 'deepseek/deepseek-reasoner'] },
+                { provider: 'Cerebras (Ultra-Fast)', models: ['cerebras/llama-3.3-70b', 'cerebras/qwen-3-32b'] },
+                { provider: 'Cohere', models: ['cohere/command-r-plus', 'cohere/command-r'] },
+                { provider: 'Perplexity (Search)', models: ['perplexity/sonar', 'perplexity/sonar-pro'] },
+                { provider: 'Ollama (local)', models: ['ollama/<your-models>'] },
             ];
             for (const group of models) {
                 console.log(chalk.white(`  ${group.provider}:`));
@@ -404,9 +491,15 @@ program
                 }
                 console.log();
             }
+            console.log(chalk.gray('  Tip: Run `titan model --discover` to query all providers for live model lists'));
         } else {
-            console.log(chalk.cyan(`\n🧠 Current model: ${chalk.white(config.agent.model)}`));
+            const aliases = config.agent.modelAliases || {};
+            const aliasNote = Object.entries(aliases).find(([, v]) => v === config.agent.model);
+            const extra = aliasNote ? chalk.gray(` (alias: "${aliasNote[0]}")`) : '';
+            console.log(chalk.cyan(`\n🧠 Current model: ${chalk.white(config.agent.model)}${extra}`));
             console.log(chalk.gray('  Switch: titan model --set openai/gpt-4o'));
+            console.log(chalk.gray('  Aliases: titan model --set fast  (use titan model --aliases to see all)'));
+            console.log(chalk.gray('  Discover: titan model --discover  (finds local Ollama models)'));
         }
     });
 
@@ -455,6 +548,86 @@ program
         }
     });
 
+
+// ─── MESH ───────────────────────────────────────────────────────
+program
+    .command('mesh')
+    .description('Manage TITAN mesh networking (multi-computer, zero config)')
+    .option('--init', 'Initialize mesh mode and generate a shared secret')
+    .option('--join <secret>', 'Join an existing mesh using a shared secret')
+    .option('--status', 'Show mesh status and connected peers')
+    .option('--add <address>', 'Manually add a peer (host:port)')
+    .option('--leave', 'Leave the mesh and disable mesh networking')
+    .action(async (options) => {
+        const config = loadConfig();
+
+        if (options.init) {
+            const { randomBytes } = await import('crypto');
+            const secret = `TITAN-${randomBytes(2).toString('hex')}-${randomBytes(2).toString('hex')}-${randomBytes(2).toString('hex')}`;
+            updateConfig({
+                mesh: { ...config.mesh, enabled: true, secret },
+            } as any);
+            const { getOrCreateNodeId } = await import('../mesh/identity.js');
+            const nodeId = getOrCreateNodeId();
+
+            console.log(chalk.cyan('\n🕸️  TITAN Mesh Initialized!\n'));
+            console.log(chalk.white(`  Node ID: ${nodeId.slice(0, 8)}...`));
+            console.log(chalk.yellow(`  Mesh Secret: ${secret}\n`));
+            console.log(chalk.gray('  Share this secret with your other TITAN instances.'));
+            console.log(chalk.gray('  On each machine, run:\n'));
+            console.log(chalk.white(`    titan mesh --join ${secret}\n`));
+            console.log(chalk.gray('  Then start the gateway: titan gateway'));
+
+        } else if (options.join) {
+            const secret = options.join as string;
+            if (!secret.startsWith('TITAN-')) {
+                console.log(chalk.red('Invalid mesh secret. Secrets start with TITAN-'));
+                return;
+            }
+            updateConfig({
+                mesh: { ...config.mesh, enabled: true, secret },
+            } as any);
+            const { getOrCreateNodeId } = await import('../mesh/identity.js');
+            const nodeId = getOrCreateNodeId();
+
+            console.log(chalk.green('\n✅ Joined TITAN mesh!'));
+            console.log(chalk.gray(`  Node ID: ${nodeId.slice(0, 8)}...`));
+            console.log(chalk.gray('  Start the gateway to begin discovering peers: titan gateway'));
+
+        } else if (options.add) {
+            const addr = options.add as string;
+            const staticPeers = [...(config.mesh.staticPeers || [])];
+            if (!staticPeers.includes(addr)) staticPeers.push(addr);
+            updateConfig({
+                mesh: { ...config.mesh, staticPeers },
+            } as any);
+            console.log(chalk.green(`\n✅ Added static peer: ${addr}`));
+            console.log(chalk.gray('  Restart the gateway to connect.'));
+
+        } else if (options.leave) {
+            updateConfig({
+                mesh: { ...config.mesh, enabled: false, secret: undefined },
+            } as any);
+            console.log(chalk.green('\n✅ Left the mesh. Mesh networking disabled.'));
+
+        } else if (options.status) {
+            console.log(chalk.cyan('\n🕸️  TITAN Mesh Status\n'));
+            console.log(chalk.gray(`  Enabled: ${config.mesh.enabled ? chalk.green('Yes') : chalk.red('No')}`));
+            console.log(chalk.gray(`  Secret: ${config.mesh.secret ? config.mesh.secret.slice(0, 6) + '****' : 'Not set'}`));
+            console.log(chalk.gray(`  mDNS: ${config.mesh.mdns ? 'On' : 'Off'}`));
+            console.log(chalk.gray(`  Tailscale: ${config.mesh.tailscale ? 'On' : 'Off'}`));
+            if (config.mesh.staticPeers.length > 0) {
+                console.log(chalk.gray(`  Static peers: ${config.mesh.staticPeers.join(', ')}`));
+            }
+            if (config.mesh.enabled) {
+                const { getOrCreateNodeId } = await import('../mesh/identity.js');
+                console.log(chalk.gray(`  Node ID: ${getOrCreateNodeId()}`));
+                console.log(chalk.gray('\n  Start the gateway to see connected peers: titan gateway'));
+            }
+        } else {
+            console.log(chalk.gray('Usage: titan mesh --init | --join <secret> | --status | --add <host:port> | --leave'));
+        }
+    });
 
 // ─── CONFIG ──────────────────────────────────────────────────────
 program

@@ -46,7 +46,7 @@ const STRICT_KEYWORDS = [
  */
 export function checkPromptInjection(text: string): ShieldResult {
     const config = loadConfig();
-    const shieldConfig = (config as any).security?.shield || { enabled: true, mode: 'strict' };
+    const shieldConfig = config.security.shield;
 
     if (!shieldConfig.enabled) {
         return { safe: true };

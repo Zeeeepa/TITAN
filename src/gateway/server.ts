@@ -17,7 +17,7 @@ import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
-import { healthCheckAll } from '../providers/router.js';
+import { healthCheckAll, discoverAllModels, getModelAliases } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { WebChatChannel, getOutboundQueue } from '../channels/webchat.js';
 import { DiscordChannel } from '../channels/discord.js';
@@ -57,7 +57,16 @@ export function stopGateway(): Promise<void> {
 }
 
 /** Active session tokens (in-memory, cleared on restart) */
-const authTokens = new Set<string>();
+const authTokens = new Map<string, { createdAt: number }>();
+
+// Clean expired tokens every 10 minutes
+setInterval(() => {
+    const now = Date.now();
+    const ttlMs = 24 * 60 * 60 * 1000;
+    for (const [tok, entry] of authTokens) {
+        if (now - entry.createdAt > ttlMs) authTokens.delete(tok);
+    }
+}, 600_000);
 
 /** Check if a request token is valid */
 function isValidToken(token: string | undefined, config: ReturnType<typeof loadConfig>): boolean {
@@ -65,7 +74,16 @@ function isValidToken(token: string | undefined, config: ReturnType<typeof loadC
   if (!auth || auth.mode === 'none') return true;
   if (!token) return false;
   if (auth.mode === 'token') return token === auth.token;
-  if (auth.mode === 'password') return authTokens.has(token);
+  if (auth.mode === 'password') {
+    const entry = authTokens.get(token);
+    if (!entry) return false;
+    const ttlMs = 24 * 60 * 60 * 1000; // 24 hours
+    if (Date.now() - entry.createdAt > ttlMs) {
+        authTokens.delete(token);
+        return false;
+    }
+    return true;
+  }
   return false;
 }
 
@@ -454,7 +472,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   const config = loadConfig();
   initFileLogger(TITAN_LOGS_DIR);
   const port = options?.port || config.gateway.port;
-  const host = options?.host || config.gateway.host;
+  let host = options?.host || config.gateway.host;
 
   logger.info(COMPONENT, `Starting ${TITAN_NAME} Gateway v${TITAN_VERSION}`);
 
@@ -464,9 +482,59 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   await initBuiltinSkills();
   initAgents();
 
+  // ── Rate limiter (inline, no deps) ─────────────────────────
+  const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+  function rateLimit(windowMs: number, maxRequests: number) {
+      return (req: any, res: any, next: any) => {
+          const key = req.ip || req.socket?.remoteAddress || 'unknown';
+          const now = Date.now();
+          const entry = rateLimitStore.get(key);
+          if (!entry || now > entry.resetAt) {
+              rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+              next();
+          } else if (entry.count < maxRequests) {
+              entry.count++;
+              next();
+          } else {
+              res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+              res.status(429).json({ error: 'Too many requests' });
+          }
+      };
+  }
+
+  // Clean rate limit store every 60 seconds
+  setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of rateLimitStore) {
+          if (now > entry.resetAt) rateLimitStore.delete(key);
+      }
+  }, 60_000);
+
   // Create Express app
   const app = express();
   app.use(express.json());
+
+  // Security headers
+  app.use((req, res, next) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.removeHeader('X-Powered-By');
+      next();
+  });
+
+  // CORS
+  app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
+      next();
+  });
 
   // ── Login routes (no auth required) ──────────────────────────
   app.get('/login', (_req, res) => {
@@ -474,7 +542,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.send(getLoginHTML());
   });
 
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', rateLimit(60000, 5), (req, res) => {
     const cfg = loadConfig();
     const auth = cfg.gateway.auth;
     if (!auth || auth.mode === 'none') {
@@ -487,7 +555,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     if (auth.mode === 'token' && password === auth.token) valid = true;
     if (!valid) { res.status(401).json({ error: 'Invalid password' }); return; }
     const token = randomBytes(32).toString('hex');
-    authTokens.add(token);
+    authTokens.set(token, { createdAt: Date.now() });
     res.json({ token });
   });
 
@@ -601,7 +669,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // Agent message endpoint (uses multi-agent routing)
-  app.post('/api/message', async (req, res) => {
+  app.post('/api/message', rateLimit(60000, 30), async (req, res) => {
     const { content, channel = 'api', userId = 'api-user' } = req.body;
     if (!content) {
       res.status(400).json({ error: 'content is required' });
@@ -725,26 +793,47 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // Models endpoint — lists all providers + live Ollama models
+  // Model discovery + management endpoints
   app.get('/api/models', async (_req, res) => {
     const cfg = loadConfig();
-    const ollamaBase = cfg.providers.ollama?.baseUrl || 'http://localhost:11434';
-    let ollamaModels: string[] = [];
-    try {
-      const r = await fetch(`${ollamaBase}/api/tags`, { signal: AbortSignal.timeout(3000) });
-      const j = await r.json() as { models?: { name: string }[] };
-      ollamaModels = (j.models || []).map((m) => `ollama/${m.name}`);
-    } catch { /* Ollama not running */ }
+    const models = await discoverAllModels();
+    // Group by provider
+    const grouped: Record<string, string[]> = {};
+    for (const m of models) {
+      if (!grouped[m.provider]) grouped[m.provider] = [];
+      grouped[m.provider].push(m.id);
+    }
     res.json({
-      anthropic: [
-        'anthropic/claude-sonnet-4-20250514',
-        'anthropic/claude-opus-4-0',
-        'anthropic/claude-3-5-haiku-20241022',
-      ],
-      openai: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'],
-      google: ['google/gemini-2.5-flash', 'google/gemini-2.5-pro', 'google/gemini-2.0-flash'],
-      ollama: ollamaModels,
+      ...grouped,
       current: cfg.agent.model,
+      aliases: getModelAliases(),
     });
+  });
+
+  app.get('/api/models/discover', async (_req, res) => {
+    const models = await discoverAllModels(true);
+    const cfg = loadConfig();
+    res.json({
+      models,
+      current: cfg.agent.model,
+      aliases: getModelAliases(),
+    });
+  });
+
+  app.post('/api/model/switch', (req, res) => {
+    try {
+      const { model } = req.body as { model?: string };
+      if (!model) { res.status(400).json({ error: 'model is required' }); return; }
+      const cfg = loadConfig();
+      // Resolve aliases
+      const aliases = cfg.agent.modelAliases || {};
+      const resolved = aliases[model] || model;
+      updateConfig({ agent: { ...cfg.agent, model: resolved } });
+      logger.info(COMPONENT, `Model switched to: ${resolved}${resolved !== model ? ` (alias: ${model})` : ''}`);
+      res.json({ success: true, model: resolved, alias: resolved !== model ? model : undefined });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
   });
 
   // Profile endpoints
@@ -785,13 +874,54 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         return;
       }
       const lineCount = req.query.lines ? parseInt(req.query.lines as string, 10) : 200;
-      const content = fs.readFileSync(logPath, 'utf-8');
+      // Read only the last portion of the file
+      const stats = fs.statSync(logPath);
+      const readSize = Math.min(stats.size, 100000); // Read last 100KB max
+      const fd = fs.openSync(logPath, 'r');
+      const buf = Buffer.alloc(readSize);
+      fs.readSync(fd, buf, 0, readSize, Math.max(0, stats.size - readSize));
+      fs.closeSync(fd);
+      const content = buf.toString('utf-8');
       const all = content.split('\n').filter(Boolean);
-      const tail = all.slice(-Math.max(1, lineCount));
+      // If we started mid-line, drop the first partial line
+      const lines = stats.size > readSize ? all.slice(1) : all;
+      const tail = lines.slice(-Math.max(1, lineCount));
       res.json({ lines: tail });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
+  });
+
+  // ── Mesh Networking Endpoints ─────────────────────────────────
+  app.get('/api/mesh/hello', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.status(404).json({ titan: false }); return; }
+    const { getOrCreateNodeId } = await import('../mesh/identity.js');
+    const { discoverAllModels: discoverModels } = await import('../providers/router.js');
+    const models = await discoverModels();
+    const { listAgents: meshListAgents } = await import('../agent/multiAgent.js');
+    res.json({
+      titan: true,
+      nodeId: getOrCreateNodeId(),
+      version: TITAN_VERSION,
+      models: models.map(m => m.id),
+      agentCount: meshListAgents().length,
+      load: 0,
+    });
+  });
+
+  app.get('/api/mesh/peers', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.json({ peers: [], enabled: false }); return; }
+    const { getPeers } = await import('../mesh/discovery.js');
+    res.json({ peers: getPeers(), enabled: true });
+  });
+
+  app.get('/api/mesh/models', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.json({ models: [] }); return; }
+    const { getMeshModels } = await import('../mesh/registry.js');
+    res.json({ models: getMeshModels() });
   });
 
   // Native Memory Graph endpoint (replaces Neo4j/Graphiti)
@@ -818,12 +948,39 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer });
 
-  wss.on('connection', (ws, req) => {
-    // Auth check for WebSocket connections
+  wss.on('connection', async (ws, req) => {
     const cfg = loadConfig();
+    const url = new URL(req.url || '/', `http://${req.headers.host}`);
+
+    // ── Mesh peer WebSocket connections ──────────────
+    if (url.searchParams.get('mesh') === 'true' && cfg.mesh.enabled && cfg.mesh.secret) {
+      const peerNodeId = url.searchParams.get('nodeId') || '';
+      const authToken = url.searchParams.get('auth') || '';
+      const { verifyMeshAuth, handleMeshWebSocket } = await import('../mesh/transport.js');
+      const { getOrCreateNodeId } = await import('../mesh/identity.js');
+
+      if (!verifyMeshAuth(authToken, peerNodeId, cfg.mesh.secret)) {
+        ws.close(1008, 'Mesh auth failed');
+        return;
+      }
+
+      handleMeshWebSocket(ws, peerNodeId, getOrCreateNodeId(), async (msg, reply) => {
+        // Handle incoming task requests from mesh peers
+        try {
+          const result = await processMessage(msg.payload.message, 'mesh', msg.fromNodeId, {
+            model: msg.payload.model,
+          });
+          reply(result);
+        } catch (err) {
+          reply({ error: (err as Error).message });
+        }
+      });
+      return; // Don't add to wsClients — mesh peers use separate handling
+    }
+
+    // ── Regular dashboard WebSocket connections ──────
     const auth = cfg.gateway.auth;
     if (auth && auth.mode !== 'none') {
-      const url = new URL(req.url || '/', `http://${req.headers.host}`);
       const token = url.searchParams.get('token') || '';
       if (!isValidToken(token, cfg)) {
         ws.close(1008, 'Unauthorized');
@@ -892,6 +1049,32 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     logger.info(COMPONENT, `Monitor "${monitor.name}" responded: ${response.content.slice(0, 100)}`);
   });
   initMonitors();
+
+  // ── Mesh Networking ───────────────────────────────────────────
+  if (config.mesh.enabled && config.mesh.secret) {
+    const { getOrCreateNodeId } = await import('../mesh/identity.js');
+    const { startDiscovery } = await import('../mesh/discovery.js');
+    const nodeId = getOrCreateNodeId();
+    await startDiscovery(nodeId, port, { mdns: config.mesh.mdns, tailscale: config.mesh.tailscale });
+
+    // Auto-bind to 0.0.0.0 when mesh is enabled (so peers can reach us)
+    if (host === '127.0.0.1') {
+      host = '0.0.0.0';
+      logger.info(COMPONENT, 'Mesh enabled — binding to 0.0.0.0 (was 127.0.0.1) so peers can connect');
+    }
+
+    // Connect to static peers
+    if (config.mesh.staticPeers.length > 0) {
+      const { connectToPeer } = await import('../mesh/transport.js');
+      for (const addr of config.mesh.staticPeers) {
+        const [peerHost, peerPort] = addr.split(':');
+        connectToPeer(peerHost, parseInt(peerPort || '48420', 10), nodeId, config.mesh.secret)
+          .catch(() => logger.debug(COMPONENT, `Static peer unreachable: ${addr}`));
+      }
+    }
+
+    logger.info(COMPONENT, `Mesh active — Node: ${nodeId.slice(0, 8)}... | mDNS: ${config.mesh.mdns} | Tailscale: ${config.mesh.tailscale}`);
+  }
 
   // Start server
   httpServer.on('error', (err: any) => {

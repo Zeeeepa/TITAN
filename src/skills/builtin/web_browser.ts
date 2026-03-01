@@ -43,19 +43,14 @@ interface BrowseResult {
 // ─── Persistent browser session ───────────────────────────────────
 let playwrightBrowser: any = null;
 let playwrightContext: any = null;
+let launchPromise: Promise<any> | null = null;
 
-async function getOrCreateBrowser(): Promise<any> {
-    if (playwrightBrowser && playwrightBrowser.isConnected()) {
-        return playwrightContext;
-    }
-
+async function doLaunchBrowser(): Promise<any> {
     let chromium: any;
     try {
-        // Try loading playwright (installed as optional dep)
         const pw = await import('playwright' as any);
         chromium = pw.chromium;
     } catch {
-        // Not installed yet — auto-install chromium
         const { execSync } = await import('child_process');
         logger.info(COMPONENT, 'Installing Playwright Chromium (first time only, may take ~1 min)...');
         execSync('npx playwright install chromium --with-deps 2>&1', { stdio: 'pipe', timeout: 120_000 });
@@ -73,6 +68,17 @@ async function getOrCreateBrowser(): Promise<any> {
     });
     logger.info(COMPONENT, 'Playwright browser started');
     return playwrightContext;
+}
+
+async function getOrCreateBrowser(): Promise<any> {
+    if (playwrightBrowser && playwrightBrowser.isConnected()) {
+        return playwrightContext;
+    }
+    // Singleton launch — prevents thundering herd (concurrent requests launching multiple browsers)
+    if (!launchPromise) {
+        launchPromise = doLaunchBrowser().finally(() => { launchPromise = null; });
+    }
+    return launchPromise;
 }
 
 /** Extract clean readable text from HTML */
@@ -220,8 +226,8 @@ export function initWebBrowserTool(): void {
 
     // Web search using DuckDuckGo (no API key needed)
     registerTool({
-        name: 'web_search',
-        description: 'Search the internet for current information. Returns real search results with titles, URLs, and snippets. Works without any API key — truly set and forget.',
+        name: 'browser_search',
+        description: 'Search the internet for current information using a real browser. Returns real search results with titles, URLs, and snippets. Works without any API key — truly set and forget.',
         parameters: {
             type: 'object',
             properties: {
@@ -370,7 +376,7 @@ export function initWebBrowserTool(): void {
         },
     });
 
-    logger.info(COMPONENT, 'Web browser tools registered (browse_url, web_search, browser_navigate)');
+    logger.info(COMPONENT, 'Web browser tools registered (browse_url, browser_search, browser_auto_nav)');
 }
 
 /** Gracefully close the browser session on gateway shutdown */

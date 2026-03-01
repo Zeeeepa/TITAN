@@ -5,6 +5,7 @@
 import type { ToolCall, ToolDefinition } from '../providers/base.js';
 import logger from '../utils/logger.js';
 import { loadConfig } from '../config/config.js';
+import { checkAutonomy } from './autonomy.js';
 
 const COMPONENT = 'ToolRunner';
 
@@ -67,7 +68,7 @@ export function getToolDefinitions(): ToolDefinition[] {
 }
 
 /** Execute a single tool call */
-export async function executeTool(toolCall: ToolCall): Promise<ToolResult> {
+export async function executeTool(toolCall: ToolCall, channel?: string): Promise<ToolResult> {
     const config = loadConfig();
     const startTime = Date.now();
     const handler = toolRegistry.get(toolCall.function.name);
@@ -104,6 +105,18 @@ export async function executeTool(toolCall: ToolCall): Promise<ToolResult> {
 
         logger.info(COMPONENT, `Executing tool: ${handler.name}`);
 
+        // Autonomy gate: check if the tool is permitted under current mode
+        const autonomyResult = await checkAutonomy(handler.name, args, channel);
+        if (!autonomyResult.allowed) {
+            return {
+                toolCallId: toolCall.id,
+                name: handler.name,
+                content: 'Action blocked by autonomy policy: ' + (autonomyResult.reason || 'Not permitted'),
+                success: false,
+                durationMs: Date.now() - startTime,
+            };
+        }
+
         // Execute with timeout
         const timeout = config.security.commandTimeout || 30000;
         const result = await Promise.race([
@@ -119,7 +132,7 @@ export async function executeTool(toolCall: ToolCall): Promise<ToolResult> {
         return {
             toolCallId: toolCall.id,
             name: handler.name,
-            content: result,
+            content: result.length > 50000 ? result.slice(0, 50000) + '\n\n[Output truncated at 50KB]' : result,
             success: true,
             durationMs,
         };
@@ -139,7 +152,7 @@ export async function executeTool(toolCall: ToolCall): Promise<ToolResult> {
 }
 
 /** Execute multiple tool calls (in parallel where possible) */
-export async function executeTools(toolCalls: ToolCall[]): Promise<ToolResult[]> {
+export async function executeTools(toolCalls: ToolCall[], channel?: string): Promise<ToolResult[]> {
     const config = loadConfig();
     const maxConcurrent = config.security.maxConcurrentTasks || 5;
 
@@ -147,7 +160,7 @@ export async function executeTools(toolCalls: ToolCall[]): Promise<ToolResult[]>
     const results: ToolResult[] = [];
     for (let i = 0; i < toolCalls.length; i += maxConcurrent) {
         const batch = toolCalls.slice(i, i + maxConcurrent);
-        const batchResults = await Promise.all(batch.map(executeTool));
+        const batchResults = await Promise.all(batch.map(tc => executeTool(tc, channel)));
         results.push(...batchResults);
     }
 

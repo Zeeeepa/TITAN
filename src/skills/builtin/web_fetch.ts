@@ -4,8 +4,8 @@
  * Matches OpenClaw's web_fetch tool.
  */
 import { registerSkill } from '../registry.js';
-import { exec } from 'child_process';
 import logger from '../../utils/logger.js';
+import { TITAN_VERSION } from '../../utils/constants.js';
 
 const COMPONENT = 'WebFetch';
 
@@ -86,31 +86,41 @@ export function registerWebFetchSkill(): void {
                 const mode = (args.extractMode as string) || 'markdown';
                 const maxChars = Math.min((args.maxChars as number) || 50000, 100000);
 
-                return new Promise<string>((resolve) => {
-                    const escapedUrl = url.replace(/"/g, '\\"');
-                    exec(
-                        `curl -sL --max-time 20 -A "Mozilla/5.0 (compatible; TITAN/1.0)" "${escapedUrl}" | head -c 200000`,
-                        { timeout: 25000, maxBuffer: 1024 * 1024 * 5 },
-                        (err, stdout) => {
-                            if (err) {
-                                resolve(`Error fetching ${url}: ${err.message}`);
-                                return;
-                            }
-                            if (!stdout.trim()) {
-                                resolve(`Empty response from ${url}`);
-                                return;
-                            }
+                try {
+                    const response = await fetch(url, {
+                        headers: { 'User-Agent': `Mozilla/5.0 (compatible; TITAN/${TITAN_VERSION})` },
+                        signal: AbortSignal.timeout(20000),
+                    });
+                    const reader = response.body?.getReader();
+                    if (!reader) return `Error: No response body from ${url}`;
+                    const chunks: Uint8Array[] = [];
+                    let totalBytes = 0;
+                    const maxBytes = 200000;
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        chunks.push(value);
+                        totalBytes += value.length;
+                        if (totalBytes >= maxBytes) break;
+                    }
+                    reader.cancel().catch(() => {});
+                    const decoder = new TextDecoder();
+                    const stdout = chunks.map(c => decoder.decode(c, { stream: true })).join('').slice(0, maxBytes);
 
-                            // Extract title
-                            const title = stdout.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'Untitled';
+                    if (!stdout.trim()) {
+                        return `Empty response from ${url}`;
+                    }
 
-                            // Convert
-                            const content = mode === 'markdown' ? htmlToMarkdown(stdout) : htmlToText(stdout);
+                    // Extract title
+                    const title = stdout.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || 'Untitled';
 
-                            resolve(`# ${title}\n\nSource: ${url}\n\n${content.slice(0, maxChars)}`);
-                        },
-                    );
-                });
+                    // Convert
+                    const content = mode === 'markdown' ? htmlToMarkdown(stdout) : htmlToText(stdout);
+
+                    return `# ${title}\n\nSource: ${url}\n\n${content.slice(0, maxChars)}`;
+                } catch (e) {
+                    return `Error fetching ${url}: ${(e as Error).message}`;
+                }
             },
         },
     );

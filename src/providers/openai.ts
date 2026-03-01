@@ -10,6 +10,7 @@ import {
 } from './base.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { fetchWithRetry } from '../utils/helpers.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'OpenAI';
@@ -35,8 +36,11 @@ export class OpenAIProvider extends LLMProvider {
 
         logger.debug(COMPONENT, `Chat request: model=${model}, messages=${options.messages.length}`);
 
+        const cleanModel = model.replace('openai/', '');
+        const isReasoningModel = /^(o1|o3|o4)/.test(cleanModel);
+
         const body: Record<string, unknown> = {
-            model: model.replace('openai/', ''),
+            model: cleanModel,
             messages: options.messages.map((m) => {
                 if (m.role === 'tool') {
                     return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
@@ -52,20 +56,31 @@ export class OpenAIProvider extends LLMProvider {
                         })),
                     };
                 }
+                // o-series reasoning models use 'developer' role instead of 'system'
+                if (m.role === 'system' && isReasoningModel) {
+                    return { role: 'developer', content: m.content };
+                }
                 return { role: m.role, content: m.content };
             }),
-            max_tokens: options.maxTokens || 8192,
         };
+
+        // o-series models require max_completion_tokens, not max_tokens
+        if (isReasoningModel) {
+            body.max_completion_tokens = options.maxTokens || 8192;
+        } else {
+            body.max_tokens = options.maxTokens || 8192;
+        }
 
         if (options.tools && options.tools.length > 0) {
             body.tools = options.tools;
         }
 
-        if (options.temperature !== undefined) {
+        // o-series models reject the temperature parameter
+        if (options.temperature !== undefined && !isReasoningModel) {
             body.temperature = options.temperature;
         }
 
-        const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+        const response = await fetchWithRetry(`${this.baseUrl}/v1/chat/completions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -80,7 +95,18 @@ export class OpenAIProvider extends LLMProvider {
         }
 
         const data = await response.json() as Record<string, unknown>;
-        const choices = data.choices as Array<Record<string, unknown>>;
+        const choices = data.choices as Array<Record<string, unknown>> | undefined;
+
+        if (!choices || choices.length === 0) {
+            return {
+                id: (data.id as string) || uuid(),
+                content: '',
+                usage: undefined,
+                finishReason: 'stop',
+                model,
+            };
+        }
+
         const choice = choices[0];
         const message = choice.message as Record<string, unknown>;
 

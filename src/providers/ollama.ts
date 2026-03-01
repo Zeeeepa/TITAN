@@ -10,6 +10,7 @@ import {
 } from './base.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { fetchWithRetry } from '../utils/helpers.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Ollama';
@@ -61,7 +62,7 @@ export class OllamaProvider extends LLMProvider {
             }));
         }
 
-        const response = await fetch(`${this.baseUrl}/api/chat`, {
+        const response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),

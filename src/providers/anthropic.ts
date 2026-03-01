@@ -136,16 +136,103 @@ export class AnthropicProvider extends LLMProvider {
     }
 
     async *chatStream(options: ChatOptions): AsyncGenerator<ChatStreamChunk> {
-        // For streaming, we'll use the non-streaming endpoint and yield the full response
-        // A full streaming implementation would use SSE, which we'd implement for production
+        const model = options.model || 'claude-sonnet-4-20250514';
+        const apiKey = this.apiKey;
+        if (!apiKey) { yield { type: 'error', error: 'Anthropic API key not configured' }; return; }
+
+        const systemMessage = options.messages.find((m) => m.role === 'system');
+        const nonSystemMessages = options.messages.filter((m) => m.role !== 'system');
+
+        const body: Record<string, unknown> = {
+            model: model.replace('anthropic/', ''),
+            max_tokens: options.maxTokens || 8192,
+            stream: true,
+            messages: nonSystemMessages.map((m) => ({
+                role: m.role === 'tool' ? 'user' : m.role,
+                content: m.role === 'tool'
+                    ? [{ type: 'tool_result', tool_use_id: m.toolCallId, content: m.content }]
+                    : m.content,
+            })),
+        };
+
+        if (systemMessage) body.system = systemMessage.content;
+        if (options.tools && options.tools.length > 0) {
+            body.tools = options.tools.map((t) => ({
+                name: t.function.name,
+                description: t.function.description,
+                input_schema: t.function.parameters,
+            }));
+        }
+        if (options.temperature !== undefined) body.temperature = options.temperature;
+
         try {
-            const response = await this.chat(options);
-            if (response.content) {
-                yield { type: 'text', content: response.content };
+            const response = await fetch(`${this.baseUrl}/v1/messages`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify(body),
+            });
+
+            if (!response.ok || !response.body) {
+                const errorText = await response.text();
+                yield { type: 'error', error: `Anthropic API error (${response.status}): ${errorText}` };
+                return;
             }
-            if (response.toolCalls) {
-                for (const tc of response.toolCalls) {
-                    yield { type: 'tool_call', toolCall: tc };
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let currentToolId = '';
+            let currentToolName = '';
+            let toolArgsBuffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const json = line.slice(6).trim();
+                    if (json === '[DONE]' || !json) continue;
+
+                    try {
+                        const event = JSON.parse(json);
+                        if (event.type === 'content_block_delta') {
+                            const delta = event.delta;
+                            if (delta.type === 'text_delta' && delta.text) {
+                                yield { type: 'text', content: delta.text };
+                            } else if (delta.type === 'input_json_delta' && delta.partial_json) {
+                                toolArgsBuffer += delta.partial_json;
+                            }
+                        } else if (event.type === 'content_block_start') {
+                            const block = event.content_block;
+                            if (block?.type === 'tool_use') {
+                                currentToolId = block.id;
+                                currentToolName = block.name;
+                                toolArgsBuffer = '';
+                            }
+                        } else if (event.type === 'content_block_stop') {
+                            if (currentToolId) {
+                                yield {
+                                    type: 'tool_call',
+                                    toolCall: {
+                                        id: currentToolId,
+                                        type: 'function',
+                                        function: { name: currentToolName, arguments: toolArgsBuffer || '{}' },
+                                    },
+                                };
+                                currentToolId = '';
+                                toolArgsBuffer = '';
+                            }
+                        }
+                    } catch { /* skip malformed SSE lines */ }
                 }
             }
             yield { type: 'done' };

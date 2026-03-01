@@ -163,11 +163,87 @@ export class OpenAICompatProvider extends LLMProvider {
     }
 
     async *chatStream(options: ChatOptions): AsyncGenerator<ChatStreamChunk> {
+        const model = (options.model || this.config.defaultModel).replace(`${this.name}/`, '');
+        const apiKey = this.apiKey;
+        if (!apiKey) { yield { type: 'error', error: `${this.displayName} API key not configured` }; return; }
+
+        const body: Record<string, unknown> = {
+            model,
+            stream: true,
+            messages: options.messages.map((m) => {
+                if (m.role === 'tool') return { role: 'tool', content: m.content, tool_call_id: m.toolCallId };
+                if (m.role === 'assistant' && m.toolCalls) {
+                    return {
+                        role: 'assistant', content: m.content || null,
+                        tool_calls: m.toolCalls.map((tc) => ({ id: tc.id, type: 'function', function: { name: tc.function.name, arguments: tc.function.arguments } })),
+                    };
+                }
+                return { role: m.role, content: m.content };
+            }),
+            max_tokens: options.maxTokens || 8192,
+        };
+        if (options.tools && options.tools.length > 0) body.tools = options.tools;
+        if (options.temperature !== undefined) body.temperature = options.temperature;
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            ...(this.config.extraHeaders || {}),
+        };
+
         try {
-            const response = await this.chat(options);
-            if (response.content) yield { type: 'text', content: response.content };
-            if (response.toolCalls) {
-                for (const tc of response.toolCalls) yield { type: 'tool_call', toolCall: tc };
+            const response = await fetch(`${this.baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(body),
+            });
+
+            if (!response.ok || !response.body) {
+                const errorText = await response.text();
+                yield { type: 'error', error: `${this.displayName} API error (${response.status}): ${errorText}` };
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const toolCalls = new Map<number, { id: string; name: string; args: string }>();
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const json = line.slice(6).trim();
+                    if (json === '[DONE]' || !json) continue;
+                    try {
+                        const chunk = JSON.parse(json);
+                        const delta = chunk.choices?.[0]?.delta;
+                        if (!delta) continue;
+                        if (delta.content) yield { type: 'text', content: delta.content };
+                        if (delta.tool_calls) {
+                            for (const tc of delta.tool_calls) {
+                                const idx = tc.index ?? 0;
+                                if (!toolCalls.has(idx)) toolCalls.set(idx, { id: tc.id || '', name: '', args: '' });
+                                const entry = toolCalls.get(idx)!;
+                                if (tc.id) entry.id = tc.id;
+                                if (tc.function?.name) entry.name = tc.function.name;
+                                if (tc.function?.arguments) entry.args += tc.function.arguments;
+                            }
+                        }
+                    } catch { /* skip malformed SSE lines */ }
+                }
+            }
+
+            for (const [, tc] of toolCalls) {
+                if (tc.id && tc.name) {
+                    yield { type: 'tool_call', toolCall: { id: tc.id, type: 'function', function: { name: tc.name, arguments: tc.args || '{}' } } };
+                }
             }
             yield { type: 'done' };
         } catch (error) {

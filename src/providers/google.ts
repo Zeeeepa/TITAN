@@ -129,11 +129,76 @@ export class GoogleProvider extends LLMProvider {
     }
 
     async *chatStream(options: ChatOptions): AsyncGenerator<ChatStreamChunk> {
+        const model = (options.model || 'gemini-2.0-flash').replace('google/', '');
+        const apiKey = this.apiKey;
+        if (!apiKey) { yield { type: 'error', error: 'Google API key not configured' }; return; }
+
+        const systemInstruction = options.messages.find((m) => m.role === 'system')?.content;
+        const contents = options.messages.filter((m) => m.role !== 'system').map((m) => {
+            if (m.role === 'tool') {
+                return { role: 'function' as const, parts: [{ functionResponse: { name: m.name || 'tool', response: { result: m.content } } }] };
+            }
+            return { role: (m.role === 'assistant' ? 'model' : 'user') as string, parts: [{ text: m.content }] };
+        });
+
+        const body: Record<string, unknown> = {
+            contents,
+            generationConfig: { maxOutputTokens: options.maxTokens || 8192, temperature: options.temperature ?? 0.7 },
+        };
+        if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
+        if (options.tools && options.tools.length > 0) {
+            body.tools = [{ functionDeclarations: options.tools.map((t) => ({ name: t.function.name, description: t.function.description, parameters: t.function.parameters })) }];
+        }
+
         try {
-            const response = await this.chat(options);
-            if (response.content) yield { type: 'text', content: response.content };
-            if (response.toolCalls) {
-                for (const tc of response.toolCalls) yield { type: 'tool_call', toolCall: tc };
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+                body: JSON.stringify(body),
+            });
+
+            if (!response.ok || !response.body) {
+                const errorText = await response.text();
+                yield { type: 'error', error: `Google API error (${response.status}): ${errorText}` };
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const json = line.slice(6).trim();
+                    if (!json) continue;
+
+                    try {
+                        const chunk = JSON.parse(json);
+                        const candidates = chunk.candidates as Array<Record<string, unknown>> | undefined;
+                        if (candidates && candidates.length > 0) {
+                            const parts = (candidates[0].content as Record<string, unknown>)?.parts as Array<Record<string, unknown>> || [];
+                            for (const part of parts) {
+                                if (part.text) yield { type: 'text', content: part.text as string };
+                                if (part.functionCall) {
+                                    const fc = part.functionCall as Record<string, unknown>;
+                                    yield {
+                                        type: 'tool_call',
+                                        toolCall: { id: uuid(), type: 'function', function: { name: fc.name as string, arguments: JSON.stringify(fc.args) } },
+                                    };
+                                }
+                            }
+                        }
+                    } catch { /* skip malformed SSE lines */ }
+                }
             }
             yield { type: 'done' };
         } catch (error) {

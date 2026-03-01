@@ -17,7 +17,7 @@ import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
-import { healthCheckAll, discoverAllModels, getModelAliases } from '../providers/router.js';
+import { healthCheckAll, discoverAllModels, getModelAliases, chatStream } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { WebChatChannel, getOutboundQueue } from '../channels/webchat.js';
 import { DiscordChannel } from '../channels/discord.js';
@@ -681,6 +681,33 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
+  });
+
+  // SSE streaming endpoint — real token-by-token delivery
+  app.post('/api/chat/stream', rateLimit(60000, 30), async (req, res) => {
+    const { content, model, channel = 'api', userId = 'api-user' } = req.body;
+    if (!content) { res.status(400).json({ error: 'content is required' }); return; }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    try {
+      const config = loadConfig();
+      const modelId = model || config.agent.model || 'anthropic/claude-sonnet-4-20250514';
+      const systemMessages = [{ role: 'system' as const, content: `You are TITAN, an intelligent assistant.` }];
+      const userMessages = [{ role: 'user' as const, content }];
+
+      for await (const chunk of chatStream({ model: modelId, messages: [...systemMessages, ...userMessages], maxTokens: config.agent.maxTokens, temperature: config.agent.temperature })) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        if (chunk.type === 'done' || chunk.type === 'error') break;
+      }
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: (error as Error).message })}\n\n`);
+    }
+    res.end();
   });
 
   // Cost optimizer endpoint for Mission Control

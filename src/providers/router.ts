@@ -14,6 +14,24 @@ import logger from '../utils/logger.js';
 
 const COMPONENT = 'Router';
 
+// ── Provider name normalization ─────────────────────────────────
+const PROVIDER_ALIASES: Record<string, string> = {
+    'z.ai': 'xai',
+    'zai': 'xai',
+    'grok': 'xai',
+    'local': 'ollama',
+    'vertex': 'google',
+    'vertex-ai': 'google',
+    'azure': 'openai',
+    'azure-openai': 'openai',
+};
+
+/** Normalize provider names for consistency (e.g. "grok" → "xai", "local" → "ollama") */
+export function normalizeProvider(name: string): string {
+    const lower = name.toLowerCase();
+    return PROVIDER_ALIASES[lower] || lower;
+}
+
 /** Provider registry */
 const providers: Map<string, LLMProvider> = new Map();
 let initialized = false;
@@ -61,12 +79,34 @@ export function resolveModel(modelId: string): { provider: LLMProvider; model: s
     initProviders();
     // First resolve aliases
     const resolved = resolveAlias(modelId);
-    const { provider: providerName, model } = LLMProvider.parseModelId(resolved);
+    const { provider: rawProviderName, model } = LLMProvider.parseModelId(resolved);
+    // Normalize provider name (e.g. "grok" → "xai", "local" → "ollama")
+    const providerName = normalizeProvider(rawProviderName);
     const provider = providers.get(providerName);
     if (!provider) {
         throw new Error(`Unknown provider: ${providerName}. Available: ${Array.from(providers.keys()).join(', ')}`);
     }
     return { provider, model };
+}
+
+/** Check if a model is allowed by the allowlist. Empty list = all allowed. */
+export function isModelAllowed(modelId: string): boolean {
+    const config = loadConfig();
+    const allowedModels = config.agent.allowedModels;
+    if (!allowedModels || allowedModels.length === 0) return true;
+
+    // Resolve alias first
+    const resolved = resolveAlias(modelId);
+
+    for (const pattern of allowedModels) {
+        if (pattern === resolved) return true;
+        // Wildcard support: "openai/*" matches "openai/gpt-4o"
+        if (pattern.endsWith('/*')) {
+            const prefix = pattern.slice(0, -1); // "openai/"
+            if (resolved.startsWith(prefix)) return true;
+        }
+    }
+    return false;
 }
 
 /** Discovered model info */
@@ -163,23 +203,58 @@ export async function chat(options: ChatOptions): Promise<ChatResponse> {
     }
 }
 
-/** Send a streaming chat request */
+/** Send a streaming chat request with failover */
 export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStreamChunk> {
     const modelId = options.model || 'anthropic/claude-sonnet-4-20250514';
     const { provider, model } = resolveModel(modelId);
-    yield* provider.chatStream({ ...options, model });
+
+    logger.info(COMPONENT, `Streaming via ${provider.displayName} (model: ${model})`);
+
+    try {
+        yield* provider.chatStream({ ...options, model });
+    } catch (error) {
+        logger.error(COMPONENT, `Stream provider ${provider.name} failed: ${(error as Error).message}`);
+        // Attempt failover to other providers
+        const failoverOrder = ['anthropic', 'openai', 'google', 'ollama'];
+        let failedOver = false;
+        for (const fallbackName of failoverOrder) {
+            if (fallbackName === provider.name) continue;
+            const fallback = providers.get(fallbackName);
+            if (!fallback) continue;
+
+            try {
+                const healthy = await fallback.healthCheck();
+                if (!healthy) continue;
+
+                const models = await fallback.listModels();
+                if (models.length === 0) continue;
+
+                logger.warn(COMPONENT, `Stream failing over to ${fallback.displayName} (model: ${models[0]})`);
+                yield* fallback.chatStream({ ...options, model: models[0] });
+                failedOver = true;
+                break;
+            } catch {
+                continue;
+            }
+        }
+        if (!failedOver) {
+            yield { type: 'error', error: (error as Error).message };
+        }
+    }
 }
 
 /** Health check all providers */
 export async function healthCheckAll(): Promise<Record<string, boolean>> {
     initProviders();
+    const entries = Array.from(providers.entries());
+    const settled = await Promise.allSettled(
+        entries.map(([, provider]) => provider.healthCheck())
+    );
     const results: Record<string, boolean> = {};
-    for (const [name, provider] of providers) {
-        try {
-            results[name] = await provider.healthCheck();
-        } catch {
-            results[name] = false;
-        }
+    for (let i = 0; i < entries.length; i++) {
+        const [name] = entries[i];
+        const outcome = settled[i];
+        results[name] = outcome.status === 'fulfilled' ? outcome.value : false;
     }
     return results;
 }

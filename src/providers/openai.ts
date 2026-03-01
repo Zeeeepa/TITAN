@@ -11,6 +11,7 @@ import {
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { fetchWithRetry } from '../utils/helpers.js';
+import { resolveApiKey } from './authResolver.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'OpenAI';
@@ -21,7 +22,7 @@ export class OpenAIProvider extends LLMProvider {
 
     private get apiKey(): string {
         const config = loadConfig();
-        return config.providers.openai.apiKey || process.env.OPENAI_API_KEY || '';
+        return resolveApiKey('openai', config.providers.openai.authProfiles || [], config.providers.openai.apiKey || '', 'OPENAI_API_KEY');
     }
 
     private get baseUrl(): string {
@@ -78,6 +79,12 @@ export class OpenAIProvider extends LLMProvider {
         // o-series models reject the temperature parameter
         if (options.temperature !== undefined && !isReasoningModel) {
             body.temperature = options.temperature;
+        }
+
+        // Reasoning effort for o-series models
+        if (options.thinking && isReasoningModel) {
+            const effortMap: Record<string, string> = { low: 'low', medium: 'medium', high: 'high' };
+            body.reasoning_effort = effortMap[options.thinkingLevel || 'medium'] || 'medium';
         }
 
         const response = await fetchWithRetry(`${this.baseUrl}/v1/chat/completions`, {
@@ -168,6 +175,12 @@ export class OpenAIProvider extends LLMProvider {
         else { body.max_tokens = options.maxTokens || 8192; }
         if (options.tools && options.tools.length > 0) body.tools = options.tools;
         if (options.temperature !== undefined && !isReasoningModel) body.temperature = options.temperature;
+
+        // Reasoning effort for o-series models
+        if (options.thinking && isReasoningModel) {
+            const effortMap: Record<string, string> = { low: 'low', medium: 'medium', high: 'high' };
+            body.reasoning_effort = effortMap[options.thinkingLevel || 'medium'] || 'medium';
+        }
 
         try {
             const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {

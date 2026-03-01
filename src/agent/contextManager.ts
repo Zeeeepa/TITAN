@@ -136,6 +136,64 @@ export function buildSmartContext(
     return result;
 }
 
+/**
+ * Force context compaction (used by /compact command).
+ * Progressive compaction that preserves tool_call/tool_result pairs
+ * and strips sensitive content from summaries.
+ */
+export function forceCompactContext(
+    messages: ChatMessage[],
+): { messages: ChatMessage[]; savedTokens: number } {
+    if (messages.length <= 4) {
+        return { messages, savedTokens: 0 };
+    }
+
+    const beforeTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content || ''), 0);
+
+    // Keep system messages + last 6 messages, summarize everything else
+    const systemMsgs = messages.filter((m) => m.role === 'system');
+    const nonSystem = messages.filter((m) => m.role !== 'system');
+
+    // Preserve recent messages (including tool_call/tool_result pairs)
+    const keepCount = Math.min(nonSystem.length, 6);
+    const recent = nonSystem.slice(-keepCount);
+    const toSummarize = nonSystem.slice(0, -keepCount);
+
+    if (toSummarize.length === 0) {
+        return { messages, savedTokens: 0 };
+    }
+
+    // Build progressive summary — strip sensitive patterns
+    const sensitivePatterns = /(?:api[_-]?key|password|secret|token|bearer)\s*[:=]\s*\S+/gi;
+    const userTopics = toSummarize
+        .filter((m) => m.role === 'user')
+        .map((m) => (m.content || '').replace(sensitivePatterns, '[REDACTED]').slice(0, 100))
+        .join('; ');
+
+    const assistantActions = toSummarize
+        .filter((m) => m.role === 'assistant')
+        .map((m) => (m.content || '').replace(sensitivePatterns, '[REDACTED]').slice(0, 80))
+        .slice(-3)
+        .join('; ');
+
+    const toolCount = toSummarize.filter((m) => m.role === 'tool').length;
+
+    const summary: ChatMessage = {
+        role: 'system',
+        content: [
+            `[Compacted: ${toSummarize.length} messages, ${toolCount} tool calls]`,
+            userTopics ? `User discussed: ${userTopics}` : '',
+            assistantActions ? `Assistant: ${assistantActions}` : '',
+        ].filter(Boolean).join('\n'),
+    };
+
+    const compacted = [...systemMsgs, summary, ...recent];
+    const afterTokens = compacted.reduce((sum, m) => sum + estimateTokens(m.content || ''), 0);
+
+    logger.info(COMPONENT, `Force compacted: ${messages.length} → ${compacted.length} messages, saved ~${beforeTokens - afterTokens} tokens`);
+    return { messages: compacted, savedTokens: Math.max(0, beforeTokens - afterTokens) };
+}
+
 /** Get context window stats */
 export function getContextStats(messages: ChatMessage[]): {
     messageCount: number;

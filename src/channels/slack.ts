@@ -11,6 +11,7 @@ export class SlackChannel extends ChannelAdapter {
     readonly name = 'slack';
     readonly displayName = 'Slack';
     private connected = false;
+    private boltClient: any = null;
 
     async connect(): Promise<void> {
         const config = loadConfig();
@@ -40,6 +41,7 @@ export class SlackChannel extends ChannelAdapter {
             });
 
             await app.start();
+            this.boltClient = app.client;
             this.connected = true;
             logger.info(COMPONENT, 'Connected to Slack');
         } catch (error) {
@@ -48,9 +50,28 @@ export class SlackChannel extends ChannelAdapter {
         }
     }
 
-    async disconnect(): Promise<void> { this.connected = false; }
-    async send(message: OutboundMessage): Promise<void> {
-        logger.debug(COMPONENT, `Would send to ${message.userId || message.groupId}: ${message.content.slice(0, 100)}`);
+    async disconnect(): Promise<void> {
+        this.connected = false;
+        this.boltClient = null;
     }
+
+    async send(message: OutboundMessage): Promise<void> {
+        if (!this.boltClient) {
+            logger.warn(COMPONENT, 'Slack not connected — cannot send message');
+            return;
+        }
+        const channel = message.groupId || message.userId;
+        if (!channel) {
+            logger.warn(COMPONENT, 'No channel or userId provided for Slack message');
+            return;
+        }
+        try {
+            await this.boltClient.chat.postMessage({ channel, text: message.content });
+            logger.debug(COMPONENT, `Sent message to ${channel}`);
+        } catch (error) {
+            logger.error(COMPONENT, `Failed to send message: ${(error as Error).message}`);
+        }
+    }
+
     getStatus(): ChannelStatus { return { name: this.displayName, connected: this.connected }; }
 }

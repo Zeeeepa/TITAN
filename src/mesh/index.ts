@@ -22,6 +22,8 @@ export {
     verifyMeshAuth,
     getConnectedPeerCount,
     disconnectAll,
+    startHeartbeat,
+    stopHeartbeat,
     type MeshMessage,
 } from './transport.js';
 export {

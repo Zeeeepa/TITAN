@@ -14,6 +14,7 @@ import {
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { fetchWithRetry } from '../utils/helpers.js';
+import { resolveApiKey } from './authResolver.js';
 import { v4 as uuid } from 'uuid';
 
 /** Configuration for an OpenAI-compatible provider */
@@ -53,7 +54,7 @@ export class OpenAICompatProvider extends LLMProvider {
     private get apiKey(): string {
         const cfg = loadConfig();
         const providerCfg = (cfg.providers as any)[this.config.configKey];
-        return providerCfg?.apiKey || process.env[this.config.envKey] || '';
+        return resolveApiKey(this.config.name, providerCfg?.authProfiles || [], providerCfg?.apiKey || '', this.config.envKey);
     }
 
     private get baseUrl(): string {

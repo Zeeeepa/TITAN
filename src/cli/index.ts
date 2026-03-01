@@ -639,6 +639,37 @@ program
     .action((options) => {
         if (options.path) {
             console.log(TITAN_CONFIG_PATH);
+        } else if (options.set) {
+            const eqIdx = (options.set as string).indexOf('=');
+            if (eqIdx === -1) {
+                console.log(chalk.red('Invalid format. Use: titan config --set key=value'));
+                return;
+            }
+            const key = (options.set as string).slice(0, eqIdx).trim();
+            const rawValue = (options.set as string).slice(eqIdx + 1).trim();
+
+            // Coerce value types
+            let value: unknown = rawValue;
+            if (rawValue === 'true') value = true;
+            else if (rawValue === 'false') value = false;
+            else if (rawValue !== '' && !isNaN(Number(rawValue))) value = Number(rawValue);
+
+            // Walk dot-notation into a nested object
+            const parts = key.split('.');
+            const partial: Record<string, unknown> = {};
+            let current: Record<string, unknown> = partial;
+            for (let i = 0; i < parts.length - 1; i++) {
+                current[parts[i]] = {};
+                current = current[parts[i]] as Record<string, unknown>;
+            }
+            current[parts[parts.length - 1]] = value;
+
+            try {
+                updateConfig(partial as any);
+                console.log(chalk.green(`✔ Set ${key} = ${JSON.stringify(value)}`));
+            } catch (err) {
+                console.log(chalk.red(`Failed to set config: ${(err as Error).message}`));
+            }
         } else {
             const config = loadConfig();
             console.log(chalk.cyan('\n⚙️  TITAN Configuration\n'));

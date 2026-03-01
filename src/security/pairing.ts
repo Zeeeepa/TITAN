@@ -5,6 +5,7 @@
 import { getDb } from '../memory/memory.js';
 import logger from '../utils/logger.js';
 import { v4 as uuid } from 'uuid';
+import { randomBytes } from 'crypto';
 
 const COMPONENT = 'Pairing';
 
@@ -23,7 +24,7 @@ const approvedUsers: Map<string, Set<string>> = new Map(); // channel -> Set<use
 
 /** Generate a short pairing code */
 function generatePairingCode(): string {
-    return Math.random().toString(36).substring(2, 8).toUpperCase();
+    return randomBytes(4).toString('hex').toUpperCase().slice(0, 8);
 }
 
 /** Check if a user is approved on a channel */

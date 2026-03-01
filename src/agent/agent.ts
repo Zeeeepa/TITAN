@@ -11,9 +11,11 @@ import { executeTools, getToolDefinitions } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
 import { initLearning, recordToolResult, recordSuccessPattern, getLearningContext } from '../memory/learning.js';
 import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
-import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession } from './stallDetector.js';
-import { resetLoopDetection } from './loopDetection.js';
+import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler } from './stallDetector.js';
+import { checkForLoop, resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
+import { getCachedResponse, setCachedResponse } from './responseCache.js';
+import { buildSmartContext, estimateTokens } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
@@ -22,6 +24,12 @@ import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js'
 
 const COMPONENT = 'Agent';
 const MAX_TOOL_ROUNDS = 10;
+
+// Wire the stall detector so silence timeouts are logged rather than silently discarded
+setStallHandler(async (event) => {
+    logger.warn(COMPONENT, `Stall event [${event.type}] in session ${event.sessionId}: ${event.detail} (nudge #${event.nudgeCount})`);
+    return event.detail;
+});
 
 /** Agent response with metadata */
 export interface AgentResponse {
@@ -41,6 +49,17 @@ function readPromptFile(path: string): string {
     return '';
 }
 
+/** Module-level cache for prompt files — avoids re-reading on every request */
+const cachedPromptFiles: Map<string, string> = new Map();
+
+/** Read a prompt file with a module-level cache (files are stable for the process lifetime) */
+function getCachedPromptFile(path: string): string {
+    if (cachedPromptFiles.has(path)) return cachedPromptFiles.get(path)!;
+    const content = readPromptFile(path);
+    cachedPromptFiles.set(path, content);
+    return content;
+}
+
 /** Build the system prompt for the agent */
 function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMessage?: string): string {
     const modelId = config.agent.model || 'unknown';
@@ -51,9 +70,10 @@ function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMessage?: 
         : '';
 
     // Read workspace prompt files (like OpenClaw's AGENTS.md, SOUL.md, TOOLS.md)
-    const agentsMd = readPromptFile(AGENTS_MD);
-    const soulMd = readPromptFile(SOUL_MD);
-    const toolsMd = readPromptFile(TOOLS_MD);
+    // Using cached reads — these files don't change while the process is running
+    const agentsMd = getCachedPromptFile(AGENTS_MD);
+    const soulMd = getCachedPromptFile(SOUL_MD);
+    const toolsMd = getCachedPromptFile(TOOLS_MD);
 
     const workspaceContext = [
         agentsMd ? `\n## Agent Instructions (AGENTS.md)\n${agentsMd}` : '',
@@ -162,6 +182,11 @@ export async function processMessage(
     // ── Cost optimizer: smart model routing ─────────────────
     let { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
     if (overrides?.model) activeModel = overrides.model;
+    // Session override has highest priority (set via /model command)
+    if (session.modelOverride) {
+        activeModel = session.modelOverride;
+        routingReason = 'session override (/model)';
+    }
     if (activeModel !== config.agent.model) {
         logger.info(COMPONENT, `Cost router: ${config.agent.model} → ${activeModel} (${routingReason})`);
     }
@@ -193,12 +218,27 @@ export async function processMessage(
             messages.push(...compressedMessages);
         }
 
+        // ── Smart context manager: second compression layer ───
+        const tokenBudget = (config.agent.maxTokens || 4096) * 4; // rough context window estimate
+        const smartMessages = buildSmartContext(compressedMessages as ChatMessage[], tokenBudget);
+
+        // ── Response cache: check before calling LLM ───
+        const cachedResponse = getCachedResponse(smartMessages, activeModel);
+        if (cachedResponse) {
+            logger.info(COMPONENT, `Cache hit — skipping LLM call`);
+            finalContent = cachedResponse;
+            break;
+        }
+
+        const thinkingMode = session.thinkingOverride || config.agent.thinkingMode || 'off';
         const response: ChatResponse = await chat({
             model: activeModel,
-            messages: compressedMessages,
+            messages: smartMessages,
             tools: activeTools.length > 0 ? activeTools : undefined,
             maxTokens: config.agent.maxTokens,
             temperature: config.agent.temperature,
+            thinking: thinkingMode !== 'off',
+            thinkingLevel: thinkingMode,
         });
 
         modelUsed = response.model;
@@ -227,6 +267,10 @@ export async function processMessage(
                 continue;
             }
             finalContent = response.content;
+
+            // ── Response cache: store final text responses ───
+            setCachedResponse(smartMessages, activeModel, finalContent);
+
             break;
         }
 
@@ -274,6 +318,7 @@ export async function processMessage(
         }
 
         // Add tool results to messages and record for learning
+        let loopBroken = false;
         for (const result of toolResults) {
             toolsUsed.push(result.name);
             messages.push({
@@ -294,10 +339,22 @@ export async function processMessage(
                 messages.push({ role: 'user', content: nudge });
             }
 
+            // ── Loop detection: advanced 3-detector analysis ──────────
+            const loopCheck = checkForLoop(session.id, result.name, tcArgs, result.content);
+            if (!loopCheck.allowed) {
+                logger.warn(COMPONENT, `Loop breaker [${loopCheck.level}]: ${loopCheck.reason}`);
+                finalContent = loopCheck.reason || 'Loop detected — stopping to prevent runaway execution.';
+                loopBroken = true;
+                break;
+            }
+
             // Record tool result for continuous learning
             const success = !result.content.toLowerCase().includes('error:');
             recordToolResult(result.name, success, undefined, success ? undefined : result.content.slice(0, 200));
         }
+
+        // Break outer agent loop if loop detection triggered
+        if (loopBroken) break;
 
         // If this is the last round, add a note
         if (round === MAX_TOOL_ROUNDS - 1) {

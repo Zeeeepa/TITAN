@@ -17,6 +17,8 @@ import logger from '../utils/logger.js';
 const PROFILE_PATH = join(TITAN_HOME, 'profile.json');
 const COMPONENT = 'RelationshipMemory';
 
+let cachedProfile: PersonalProfile | null = null;
+
 // ─── Types ────────────────────────────────────────────────────────
 export interface PersonalProfile {
     /** User's preferred name */
@@ -55,12 +57,15 @@ function ensureDir(): void {
 }
 
 export function loadProfile(): PersonalProfile {
+    if (cachedProfile) return cachedProfile;
     try {
         if (existsSync(PROFILE_PATH)) {
-            return JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')) as PersonalProfile;
+            cachedProfile = JSON.parse(readFileSync(PROFILE_PATH, 'utf-8')) as PersonalProfile;
+            return cachedProfile;
         }
     } catch { /* */ }
-    return createEmptyProfile();
+    cachedProfile = createEmptyProfile();
+    return cachedProfile;
 }
 
 function createEmptyProfile(): PersonalProfile {
@@ -82,6 +87,7 @@ export function saveProfile(profile: PersonalProfile): void {
     ensureDir();
     profile.lastSeenAt = new Date().toISOString();
     profile.interactionCount++;
+    cachedProfile = profile; // Update cache with the latest saved version
     try {
         writeFileSync(PROFILE_PATH, JSON.stringify(profile, null, 2), 'utf-8');
     } catch (err) {

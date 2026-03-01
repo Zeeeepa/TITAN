@@ -41,6 +41,7 @@ export interface ChatOptions {
     temperature?: number;
     stream?: boolean;
     thinking?: boolean;
+    thinkingLevel?: 'off' | 'low' | 'medium' | 'high';
 }
 
 /** Response from a chat completion */

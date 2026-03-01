@@ -21,6 +21,10 @@ export interface Session {
     createdAt: string;
     lastActive: string;
     e2eKey?: string; // Stored only in memory for active sessions
+    // Per-session overrides (in-memory only, reset when session closes/times out)
+    modelOverride?: string;
+    thinkingOverride?: 'off' | 'low' | 'medium' | 'high';
+    verboseMode?: boolean;
 }
 
 /** Active sessions cache */
@@ -166,6 +170,55 @@ export function listSessions(): Session[] {
             createdAt: s.created_at,
             lastActive: s.last_active,
         }));
+}
+
+/** Set a model override for the current session */
+export function setSessionModelOverride(channel: string, userId: string, model: string): void {
+    const session = getOrCreateSession(channel, userId, 'default');
+    session.modelOverride = model;
+    logger.info(COMPONENT, `Session ${session.id.slice(0, 8)}: model override → ${model}`);
+}
+
+/** Set a thinking mode override for the current session */
+export function setSessionThinkingOverride(channel: string, userId: string, level: 'off' | 'low' | 'medium' | 'high'): void {
+    const session = getOrCreateSession(channel, userId, 'default');
+    session.thinkingOverride = level;
+    logger.info(COMPONENT, `Session ${session.id.slice(0, 8)}: thinking override → ${level}`);
+}
+
+/** Set verbose mode for the current session */
+export function setSessionVerbose(channel: string, userId: string, on: boolean): void {
+    const session = getOrCreateSession(channel, userId, 'default');
+    session.verboseMode = on;
+    logger.info(COMPONENT, `Session ${session.id.slice(0, 8)}: verbose → ${on}`);
+}
+
+/** Replace session message context with compacted messages (used by /compact) */
+export function replaceSessionContext(session: Session, messages: ChatMessage[]): void {
+    // Clear existing history from the DB for this session
+    const store = getDb();
+    store.conversations = store.conversations.filter((m) => m.sessionId !== session.id);
+
+    // Re-insert compacted messages
+    for (const msg of messages) {
+        if (msg.role === 'system') continue; // system prompts are rebuilt each turn
+        saveMessage({
+            id: uuid(),
+            sessionId: session.id,
+            role: msg.role,
+            content: msg.content || '',
+            toolCalls: msg.toolCalls ? JSON.stringify(msg.toolCalls) : undefined,
+            toolCallId: msg.toolCallId,
+            tokenCount: 0,
+        }, session.e2eKey);
+    }
+
+    // Update session message count
+    session.messageCount = messages.filter((m) => m.role !== 'system').length;
+    const sessionRec = store.sessions.find((s) => s.id === session.id);
+    if (sessionRec) sessionRec.message_count = session.messageCount;
+
+    logger.info(COMPONENT, `Session ${session.id.slice(0, 8)}: context replaced (${session.messageCount} messages)`);
 }
 
 /** Close a session */

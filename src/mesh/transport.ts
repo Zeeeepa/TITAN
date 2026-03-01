@@ -4,15 +4,18 @@
  * Reuses the existing gateway WS server — no new protocol needed.
  */
 import { WebSocket } from 'ws';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import logger from '../utils/logger.js';
 import { getPeer, registerPeer, type MeshPeer } from './discovery.js';
+import { getOrCreateNodeId } from './identity.js';
 
 const COMPONENT = 'MeshTransport';
 
 // ── Active WebSocket connections to peers ──────────────────────
 const peerConnections = new Map<string, WebSocket>();
 const pendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
+const reconnectState = new Map<string, { attempts: number }>();
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 /** Mesh message format */
 export interface MeshMessage {
@@ -37,7 +40,7 @@ export function verifyMeshAuth(token: string, nodeId: string, meshSecret: string
     // Check current and previous window to handle clock skew
     for (const ts of [now.toString(), (now - 1).toString()]) {
         const expected = createHmac('sha256', meshSecret).update(ts + nodeId).digest('hex');
-        if (token === expected) return true;
+        if (token.length === expected.length && timingSafeEqual(Buffer.from(token), Buffer.from(expected))) return true;
     }
     return false;
 }
@@ -49,15 +52,20 @@ export async function connectToPeer(
     localNodeId: string,
     meshSecret: string,
 ): Promise<boolean> {
+    const peerKey = `${address}:${port}`;
+
     return new Promise((resolve) => {
         const auth = generateMeshAuth(localNodeId, meshSecret);
         const url = `ws://${address}:${port}?mesh=true&nodeId=${localNodeId}&auth=${auth}`;
 
         const ws = new WebSocket(url, { handshakeTimeout: 5000 });
         let remoteNodeId: string | null = null;
+        let resolved = false;
 
         ws.on('open', () => {
             logger.info(COMPONENT, `Connected to peer at ${address}:${port}`);
+            // Reset reconnect state on successful connection
+            reconnectState.delete(peerKey);
         });
 
         ws.on('message', (data) => {
@@ -80,7 +88,7 @@ export async function connectToPeer(
                         discoveredVia: 'manual',
                         lastSeen: Date.now(),
                     });
-                    resolve(true);
+                    if (!resolved) { resolved = true; resolve(true); }
                 }
 
                 if (msg.action === 'task_response' && msg.requestId) {
@@ -96,20 +104,39 @@ export async function connectToPeer(
             }
         });
 
-        ws.on('error', () => resolve(false));
+        ws.on('error', () => {
+            if (!resolved) { resolved = true; resolve(false); }
+        });
+
         ws.on('close', () => {
             if (remoteNodeId) {
                 peerConnections.delete(remoteNodeId);
                 logger.debug(COMPONENT, `Peer disconnected: ${remoteNodeId}`);
             }
-            resolve(false);
+            if (!resolved) { resolved = true; resolve(false); }
+
+            // ── Reconnect with exponential backoff ──
+            const state = reconnectState.get(peerKey) || { attempts: 0 };
+            state.attempts++;
+            const maxAttempts = 5;
+            if (state.attempts > maxAttempts) {
+                logger.warn(COMPONENT, `Gave up reconnecting to ${address}:${port} after ${maxAttempts} attempts`);
+                reconnectState.delete(peerKey);
+                return;
+            }
+            reconnectState.set(peerKey, state);
+            const delay = Math.min(2000 * Math.pow(2, state.attempts - 1), 60000);
+            logger.debug(COMPONENT, `Reconnecting to ${address}:${port} in ${delay}ms (attempt ${state.attempts}/${maxAttempts})`);
+            setTimeout(() => {
+                connectToPeer(address, port, localNodeId, meshSecret).catch(() => {});
+            }, delay);
         });
 
         // Timeout
         setTimeout(() => {
             if (ws.readyState !== WebSocket.OPEN) {
                 ws.close();
-                resolve(false);
+                if (!resolved) { resolved = true; resolve(false); }
             }
         }, 5000);
     });
@@ -154,7 +181,7 @@ export function routeTaskToNode(
         const sent = sendToPeer(nodeId, {
             type: 'mesh',
             action: 'task_request',
-            fromNodeId: '', // Will be set by caller
+            fromNodeId: getOrCreateNodeId(),
             toNodeId: nodeId,
             requestId,
             payload: { message, model },
@@ -233,6 +260,31 @@ export function handleMeshWebSocket(
     });
 }
 
+/** Start sending periodic heartbeats to all connected peers */
+export function startHeartbeat(localNodeId: string, payload?: Record<string, any>): void {
+    if (heartbeatInterval) return; // Already running
+    heartbeatInterval = setInterval(() => {
+        const msg: MeshMessage = {
+            type: 'mesh',
+            action: 'heartbeat',
+            fromNodeId: localNodeId,
+            payload: payload || {},
+            timestamp: new Date().toISOString(),
+        };
+        broadcastToMesh(msg);
+    }, 60_000);
+    logger.debug(COMPONENT, 'Heartbeat interval started (60s)');
+}
+
+/** Stop the heartbeat interval */
+export function stopHeartbeat(): void {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+        logger.debug(COMPONENT, 'Heartbeat interval stopped');
+    }
+}
+
 /** Get connected peer count */
 export function getConnectedPeerCount(): number {
     let count = 0;
@@ -244,6 +296,7 @@ export function getConnectedPeerCount(): number {
 
 /** Disconnect all peers */
 export function disconnectAll(): void {
+    stopHeartbeat();
     for (const [nodeId, ws] of peerConnections) {
         ws.close();
         peerConnections.delete(nodeId);
@@ -253,4 +306,5 @@ export function disconnectAll(): void {
         req.reject(new Error('Mesh shutting down'));
         pendingRequests.delete(id);
     }
+    reconnectState.clear();
 }

@@ -66,6 +66,37 @@ function htmlToMarkdown(html: string): string {
     return md.trim();
 }
 
+/** Block requests to loopback, private, and link-local addresses (SSRF protection) */
+function isInternalUrl(urlStr: string): boolean {
+    let hostname: string;
+    try {
+        hostname = new URL(urlStr).hostname;
+    } catch {
+        return true; // Treat unparseable URLs as internal/blocked
+    }
+
+    // Block localhost by name
+    if (hostname === 'localhost' || hostname === 'localhost.') return true;
+
+    // Resolve numeric IPv4
+    const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4) {
+        const [, a, b] = ipv4.map(Number);
+        if (a === 127) return true;                              // 127.0.0.0/8  loopback
+        if (a === 10) return true;                               // 10.0.0.0/8   private
+        if (a === 172 && b >= 16 && b <= 31) return true;       // 172.16.0.0/12 private
+        if (a === 192 && b === 168) return true;                 // 192.168.0.0/16 private
+        if (a === 169 && b === 254) return true;                 // 169.254.0.0/16 link-local
+    }
+
+    // Block IPv6 loopback (::1) and link-local (fe80::/10)
+    const h = hostname.replace(/^\[|\]$/g, '');
+    if (h === '::1') return true;
+    if (/^fe[89ab][0-9a-f]:/i.test(h)) return true;
+
+    return false;
+}
+
 export function registerWebFetchSkill(): void {
     registerSkill(
         { name: 'web_fetch', description: 'Fetch URL content', version: '1.0.0', source: 'bundled', enabled: true },
@@ -87,6 +118,9 @@ export function registerWebFetchSkill(): void {
                 const maxChars = Math.min((args.maxChars as number) || 50000, 100000);
 
                 try {
+                    if (isInternalUrl(url)) {
+                        return `Error: Fetching internal/private network addresses is not permitted.`;
+                    }
                     const response = await fetch(url, {
                         headers: { 'User-Agent': `Mozilla/5.0 (compatible; TITAN/${TITAN_VERSION})` },
                         signal: AbortSignal.timeout(20000),

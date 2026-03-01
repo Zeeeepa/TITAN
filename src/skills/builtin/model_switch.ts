@@ -4,7 +4,7 @@
  * Like telling JARVIS to "switch to a faster mode" or "use the smarter model for this".
  */
 import { z } from 'zod';
-import { registerTool } from '../../agent/toolRunner.js';
+import { registerSkill } from '../registry.js';
 import { loadConfig, updateConfig } from '../../config/config.js';
 
 const SwitchModelSchema = z.object({
@@ -13,7 +13,13 @@ const SwitchModelSchema = z.object({
 });
 
 export function initModelSwitchTool(): void {
-    registerTool({
+    registerSkill({
+        name: 'switch_model',
+        description: 'Switch the active AI model mid-session.',
+        version: '1.0.0',
+        source: 'bundled',
+        enabled: true,
+    }, {
         name: 'switch_model',
         description: 'Switch the active AI model mid-session. Use this when a task requires a different model — e.g. switch to a faster model for quick tasks or a smarter model for complex reasoning.',
         parameters: {

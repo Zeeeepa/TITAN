@@ -13,12 +13,20 @@ import {
     ALLOWED_TOOLS_DEFAULT,
 } from '../utils/constants.js';
 
+export const AuthProfileSchema = z.object({
+    name: z.string(),
+    apiKey: z.string(),
+    priority: z.number().default(0),
+});
+
 export const ProviderConfigSchema = z.object({
     apiKey: z.string().optional(),
     baseUrl: z.string().optional(),
     model: z.string().optional(),
     maxTokens: z.number().optional(),
     temperature: z.number().min(0).max(2).optional(),
+    /** Multiple API keys with automatic failover */
+    authProfiles: z.array(AuthProfileSchema).default([]),
 });
 
 export const ChannelConfigSchema = z.object({
@@ -73,6 +81,8 @@ export const AgentConfigSchema = z.object({
         contextSummarization: z.boolean().default(true),
         dailyBudgetUsd: z.number().optional(),
     }).optional(),
+    /** Restrict which models users can select via /model. Empty = all allowed. Supports wildcards: "openai/*" */
+    allowedModels: z.array(z.string()).default([]),
 });
 
 export const MeshConfigSchema = z.object({

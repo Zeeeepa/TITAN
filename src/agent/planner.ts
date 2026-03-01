@@ -10,6 +10,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
+import { registerTool } from './toolRunner.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Planner';
@@ -226,4 +227,47 @@ export function loadPlans(): void {
     } catch {
         // Non-critical
     }
+}
+
+/** Register the planner as an LLM-invocable tool */
+export function registerPlannerTool(): void {
+    registerTool({
+        name: 'plan_task',
+        description: 'Decompose a complex goal into a structured plan with sub-tasks and dependencies. Returns a task dependency graph that can be executed step by step.',
+        parameters: {
+            type: 'object',
+            properties: {
+                goal: {
+                    type: 'string',
+                    description: 'The goal or complex task to decompose into sub-tasks',
+                },
+            },
+            required: ['goal'],
+        },
+        execute: async (args: Record<string, unknown>) => {
+            const goal = String(args.goal || '');
+            if (!goal) return 'Error: No goal provided. Please specify a goal to plan.';
+
+            // Decompose the goal into logical sub-tasks
+            const steps = goal.split(/[,;]|\band\b|\bthen\b/i)
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+
+            const tasks = steps.length > 1
+                ? steps.map((step, i) => ({
+                    title: step.slice(0, 80),
+                    description: step,
+                    dependsOn: i > 0 ? [`task-${i}`] : [],
+                }))
+                : [
+                    { title: `Research: ${goal.slice(0, 60)}`, description: `Gather information needed for: ${goal}`, dependsOn: [] as string[] },
+                    { title: `Execute: ${goal.slice(0, 60)}`, description: `Carry out the main work: ${goal}`, dependsOn: ['task-1'] },
+                    { title: `Verify: ${goal.slice(0, 60)}`, description: `Confirm completion and quality of: ${goal}`, dependsOn: ['task-2'] },
+                ];
+
+            const plan = createPlan(goal, tasks);
+            return getPlanStatus(plan.id);
+        },
+    });
+    logger.info(COMPONENT, 'Registered plan_task tool');
 }

@@ -3,6 +3,7 @@
  * Executes tool calls from the LLM with sandboxing, timeouts, and result formatting.
  */
 import type { ToolCall, ToolDefinition } from '../providers/base.js';
+import { executeToolsParallel } from './parallelTools.js';
 import logger from '../utils/logger.js';
 import { loadConfig } from '../config/config.js';
 import { checkAutonomy } from './autonomy.js';
@@ -151,18 +152,39 @@ export async function executeTool(toolCall: ToolCall, channel?: string): Promise
     }
 }
 
-/** Execute multiple tool calls (in parallel where possible) */
+/** Execute multiple tool calls (in parallel where possible, with write-conflict detection) */
 export async function executeTools(toolCalls: ToolCall[], channel?: string): Promise<ToolResult[]> {
-    const config = loadConfig();
-    const maxConcurrent = config.security.maxConcurrentTasks || 5;
-
-    // Execute in batches
-    const results: ToolResult[] = [];
-    for (let i = 0; i < toolCalls.length; i += maxConcurrent) {
-        const batch = toolCalls.slice(i, i + maxConcurrent);
-        const batchResults = await Promise.all(batch.map(tc => executeTool(tc, channel)));
-        results.push(...batchResults);
+    // Single tool — fast path
+    if (toolCalls.length <= 1) {
+        return Promise.all(toolCalls.map(tc => executeTool(tc, channel)));
     }
 
-    return results;
+    // Multiple tools — use parallelTools engine with write-conflict detection
+    const parallelCalls = toolCalls.map(tc => {
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(tc.function.arguments); } catch { /* use empty */ }
+        return { id: tc.id, name: tc.function.name, args };
+    });
+
+    const executor = async (name: string, args: Record<string, unknown>): Promise<string> => {
+        // Build a synthetic ToolCall for executeTool
+        const syntheticTc: ToolCall = {
+            id: '',
+            type: 'function',
+            function: { name, arguments: JSON.stringify(args) },
+        };
+        const result = await executeTool(syntheticTc, channel);
+        return result.content;
+    };
+
+    const parallelResults = await executeToolsParallel(parallelCalls, executor);
+
+    // Map back to ToolResult format with full metadata
+    return parallelResults.map(pr => ({
+        toolCallId: pr.toolCallId,
+        name: pr.name,
+        content: pr.content,
+        success: !pr.content.startsWith('Error:'),
+        durationMs: 0,
+    }));
 }

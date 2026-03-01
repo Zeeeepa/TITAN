@@ -129,6 +129,10 @@ export async function initBuiltinSkills(): Promise<void> {
     registerMemoryGraphSkill();
     initWebBrowserTool();
 
+    // Register planner as an LLM-invocable tool
+    const { registerPlannerTool } = await import('../agent/planner.js');
+    registerPlannerTool();
+
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
 }
 

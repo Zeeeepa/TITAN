@@ -8,6 +8,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { v4 as uuid } from 'uuid';
 import { loadConfig } from '../config/config.js';
+import { recordTokenUsage } from '../agent/costOptimizer.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Graph';
@@ -117,6 +118,16 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
             maxTokens: 512,
             temperature: 0.1,
         });
+
+        // Track LLM costs for entity extraction so cost optimizer sees them
+        if (response.usage) {
+            recordTokenUsage(
+                'graph:extractEntities',
+                config.agent.model,
+                response.usage.promptTokens ?? 0,
+                response.usage.completionTokens ?? 0,
+            );
+        }
 
         const text = response.content || '';
         const match = text.match(/\[[\s\S]*\]/);

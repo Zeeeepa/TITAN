@@ -23,6 +23,7 @@
  * 
  * AUTO-INSTALL: Playwright chromium is auto-installed on first use.
  */
+import { registerSkill } from '../registry.js';
 import { registerTool } from '../../agent/toolRunner.js';
 import { z } from 'zod';
 import logger from '../../utils/logger.js';
@@ -178,7 +179,13 @@ const SearchSchema = z.object({
 // ─── Register tools ────────────────────────────────────────────────
 export function initWebBrowserTool(): void {
     // Browse any URL
-    registerTool({
+    registerSkill({
+        name: 'browse_url',
+        description: 'Browse any webpage and extract its content as clean text. Uses a real browser with JavaScript support for dynamic sites.',
+        version: '1.0.0',
+        source: 'bundled',
+        enabled: true,
+    }, {
         name: 'browse_url',
         description: 'Browse any webpage and extract its content as clean text. Uses a real browser with JavaScript support for dynamic sites. Perfect for reading articles, documentation, news, checking websites, or any web research.',
         parameters: {
@@ -225,7 +232,13 @@ export function initWebBrowserTool(): void {
     });
 
     // Web search using DuckDuckGo (no API key needed)
-    registerTool({
+    registerSkill({
+        name: 'browser_search',
+        description: 'Search the internet for current information using a real browser. Returns real search results with titles, URLs, and snippets.',
+        version: '1.0.0',
+        source: 'bundled',
+        enabled: true,
+    }, {
         name: 'browser_search',
         description: 'Search the internet for current information using a real browser. Returns real search results with titles, URLs, and snippets. Works without any API key — truly set and forget.',
         parameters: {
@@ -256,7 +269,13 @@ export function initWebBrowserTool(): void {
     });
 
     // Ultra-Fast Bulk Web Navigation
-    registerTool({
+    registerSkill({
+        name: 'browser_auto_nav',
+        description: 'Navigate a website blazingly fast by executing a bulk sequence of actions in a single tool call.',
+        version: '1.0.0',
+        source: 'bundled',
+        enabled: true,
+    }, {
         name: 'browser_auto_nav',
         description: 'Navigate a website blazingly fast by executing a bulk sequence of actions (click, fill) in a single tool call, and then returning a Smart Extract DOM of the resulting page. Use this for instant form submissions, logins, and pagination.',
         parameters: {

@@ -11,6 +11,7 @@ import {
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { fetchWithRetry } from '../utils/helpers.js';
+import { resolveApiKey } from './authResolver.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Anthropic';
@@ -21,7 +22,7 @@ export class AnthropicProvider extends LLMProvider {
 
     private get apiKey(): string {
         const config = loadConfig();
-        return config.providers.anthropic.apiKey || process.env.ANTHROPIC_API_KEY || '';
+        return resolveApiKey('anthropic', config.providers.anthropic.authProfiles || [], config.providers.anthropic.apiKey || '', 'ANTHROPIC_API_KEY');
     }
 
     private get baseUrl(): string {
@@ -64,6 +65,13 @@ export class AnthropicProvider extends LLMProvider {
 
         if (options.temperature !== undefined) {
             body.temperature = options.temperature;
+        }
+
+        // Extended thinking support
+        if (options.thinking) {
+            const budgetMap: Record<string, number> = { low: 1024, medium: 4096, high: 16384 };
+            const budgetTokens = budgetMap[options.thinkingLevel || 'medium'] || 4096;
+            body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
         }
 
         const response = await fetchWithRetry(`${this.baseUrl}/v1/messages`, {
@@ -164,6 +172,13 @@ export class AnthropicProvider extends LLMProvider {
             }));
         }
         if (options.temperature !== undefined) body.temperature = options.temperature;
+
+        // Extended thinking support
+        if (options.thinking) {
+            const budgetMap: Record<string, number> = { low: 1024, medium: 4096, high: 16384 };
+            const budgetTokens = budgetMap[options.thinkingLevel || 'medium'] || 4096;
+            body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+        }
 
         try {
             const response = await fetch(`${this.baseUrl}/v1/messages`, {

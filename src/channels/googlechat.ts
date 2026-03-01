@@ -21,23 +21,19 @@ export class GoogleChatChannel extends ChannelAdapter {
             return;
         }
 
-        // Google Chat uses the Google Chat API with service account credentials
-        // This is a placeholder that can be expanded with the @google-cloud/chat library
-        logger.info(COMPONENT, 'Google Chat adapter ready (webhook mode)');
-        this.connected = true;
+        logger.warn(COMPONENT, 'Google Chat adapter is not yet implemented');
+        this.connected = false;
     }
 
     async disconnect(): Promise<void> {
         this.connected = false;
     }
 
-    async send(message: OutboundMessage): Promise<void> {
-        if (!this.connected) return;
-        // Google Chat sends responses via the webhook/API
-        logger.debug(COMPONENT, `Would send to ${message.userId || message.groupId}: ${message.content.slice(0, 100)}`);
+    async send(_message: OutboundMessage): Promise<void> {
+        throw new Error('Google Chat adapter is not yet implemented');
     }
 
     getStatus(): ChannelStatus {
-        return { name: this.displayName, connected: this.connected };
+        return { name: this.displayName, connected: this.connected, error: 'Google Chat adapter is not yet implemented (stub)' };
     }
 }

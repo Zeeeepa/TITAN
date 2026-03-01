@@ -11,6 +11,7 @@ import {
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
 import { fetchWithRetry } from '../utils/helpers.js';
+import { resolveApiKey } from './authResolver.js';
 import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Google';
@@ -21,7 +22,7 @@ export class GoogleProvider extends LLMProvider {
 
     private get apiKey(): string {
         const config = loadConfig();
-        return config.providers.google.apiKey || process.env.GOOGLE_API_KEY || '';
+        return resolveApiKey('google', config.providers.google.authProfiles || [], config.providers.google.apiKey || '', 'GOOGLE_API_KEY');
     }
 
     async chat(options: ChatOptions): Promise<ChatResponse> {

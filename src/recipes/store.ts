@@ -129,6 +129,20 @@ export function getBuiltinRecipes(): Recipe[] {
             tags: ['coding', 'debugging'],
             createdAt: now,
         },
+        {
+            id: 'morning-briefing',
+            name: 'Morning Briefing',
+            description: 'Get a personalised daily briefing — active projects, goals, monitors, and suggested tasks',
+            slashCommand: 'briefing',
+            steps: [
+                {
+                    prompt: 'Give me my morning briefing. Summarise: (1) my active projects and any recent progress, (2) my current goals and which are highest priority, (3) any active monitors that are watching for events, (4) suggested tasks I could work on today based on what I\'ve been doing, and (5) one motivational thought to start the day. Be concise and actionable.',
+                },
+            ],
+            author: 'Tony Elliott',
+            tags: ['productivity', 'daily', 'briefing'],
+            createdAt: now,
+        },
     ];
 }
 

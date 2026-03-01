@@ -1,13 +1,14 @@
 /**
  * TITAN — Webhook Skill (Built-in)
- * Create and manage HTTP webhook endpoints.
+ * Create and manage HTTP webhook endpoints with persistence.
  */
 import { registerSkill } from '../registry.js';
-import { getDb } from '../../memory/memory.js';
+import { getDb, rememberFact, recallFact, searchMemories } from '../../memory/memory.js';
 import { v4 as uuid } from 'uuid';
 import logger from '../../utils/logger.js';
 
 const COMPONENT = 'Webhook';
+const WEBHOOK_CATEGORY = 'webhook';
 
 /** In-memory webhook registry */
 const activeWebhooks: Map<string, {
@@ -20,6 +21,37 @@ const activeWebhooks: Map<string, {
 
 export function getActiveWebhooks() {
     return activeWebhooks;
+}
+
+/**
+ * Initialize persistent webhooks on startup.
+ * Load all webhooks from database into the activeWebhooks Map.
+ */
+export function initPersistentWebhooks(): void {
+    try {
+        const webhooks = searchMemories(WEBHOOK_CATEGORY);
+        let loaded = 0;
+        for (const entry of webhooks) {
+            try {
+                const webhook = JSON.parse(entry.value) as {
+                    id: string;
+                    path: string;
+                    name: string;
+                    method: string;
+                    handler: string;
+                };
+                activeWebhooks.set(webhook.id, webhook);
+                loaded++;
+            } catch {
+                logger.warn(COMPONENT, `Skipped corrupted webhook entry: ${entry.key}`);
+            }
+        }
+        if (loaded > 0) {
+            logger.info(COMPONENT, `Loaded ${loaded} persisted webhook(s) from database`);
+        }
+    } catch (e) {
+        logger.warn(COMPONENT, `Failed to initialize persistent webhooks: ${(e as Error).message}`);
+    }
 }
 
 export function registerWebhookSkill(): void {
@@ -50,7 +82,14 @@ export function registerWebhookSkill(): void {
                         const path = (args.path as string) || `/webhook/${id.slice(0, 8)}`;
                         const method = (args.method as string) || 'POST';
                         const handler = (args.handler as string) || '';
-                        activeWebhooks.set(id, { id, path, name, method, handler });
+                        const webhook = { id, path, name, method, handler };
+                        activeWebhooks.set(id, webhook);
+                        // Persist to database
+                        try {
+                            rememberFact(WEBHOOK_CATEGORY, id, JSON.stringify(webhook));
+                        } catch (e) {
+                            logger.warn(COMPONENT, `Failed to persist webhook to database: ${(e as Error).message}`);
+                        }
                         logger.info(COMPONENT, `Created webhook: ${name} at ${path}`);
                         return `Created webhook "${name}"\n  ID: ${id}\n  Path: ${path}\n  Method: ${method}\n  Handler: ${handler}`;
                     }
@@ -64,6 +103,16 @@ export function registerWebhookSkill(): void {
                         const wId = args.webhookId as string;
                         if (!wId) return 'Error: webhookId is required';
                         activeWebhooks.delete(wId);
+                        // Remove from database
+                        try {
+                            const db = getDb();
+                            const idx = db.memories.findIndex((m) => m.category === WEBHOOK_CATEGORY && m.key === wId);
+                            if (idx >= 0) {
+                                db.memories.splice(idx, 1);
+                            }
+                        } catch (e) {
+                            logger.warn(COMPONENT, `Failed to delete webhook from database: ${(e as Error).message}`);
+                        }
                         return `Deleted webhook: ${wId}`;
                     }
                     default:

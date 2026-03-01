@@ -181,33 +181,136 @@ tr:hover{background:rgba(6,182,212,.03)}
 .ob-btn-secondary:hover{background:var(--bg3);color:var(--text)}
 .ob-btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 15px rgba(6,182,212,0.3)}
 .ob-btn-primary:hover{opacity:0.9;transform:translateY(-1px);box-shadow:0 6px 20px rgba(6,182,212,0.4)}
-.ob-btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none}</style>
+.ob-btn-primary:disabled{opacity:0.6;cursor:not-allowed;transform:none}
+
+/* ── Premium Enhancements ─────────────────────────────────── */
+
+/* Light theme */
+[data-theme="light"]{
+  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#f8f9fa;--bg4:#e9ecef;
+  --text:#1a1a2e;--text-dim:#6c757d;--text-bright:#000;
+  --border:#dee2e6;--glow:0 0 20px rgba(6,182,212,.08);
+}
+[data-theme="light"] .msg.user{color:#fff}
+[data-theme="light"] .ob-header h2{background:linear-gradient(135deg,#1a1a2e,var(--text-dim));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+
+/* Glassmorphism cards */
+.card{background:rgba(17,24,39,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+[data-theme="light"] .card{background:rgba(255,255,255,.8)}
+.stat-card{background:rgba(26,31,54,.6);backdrop-filter:blur(8px)}
+[data-theme="light"] .stat-card{background:rgba(248,249,250,.7)}
+
+/* Panel transitions */
+.panel{opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease;pointer-events:none}
+.panel.active{display:block;opacity:1;transform:translateY(0);pointer-events:auto}
+
+/* Button micro-animations */
+.btn{transition:all .2s cubic-bezier(.4,0,.2,1)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(6,182,212,.2)}
+.btn:active{transform:translateY(0)}
+.nav-item{transition:all .2s cubic-bezier(.4,0,.2,1)}
+.nav-item:hover{transform:translateX(4px)}
+
+/* Card reveal stagger */
+@keyframes cardReveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.card{animation:cardReveal .4s ease backwards}
+.card:nth-child(2){animation-delay:.05s}
+.card:nth-child(3){animation-delay:.1s}
+.card-grid .stat-card{animation:cardReveal .4s ease backwards}
+.card-grid .stat-card:nth-child(1){animation-delay:0s}
+.card-grid .stat-card:nth-child(2){animation-delay:.06s}
+.card-grid .stat-card:nth-child(3){animation-delay:.12s}
+.card-grid .stat-card:nth-child(4){animation-delay:.18s}
+
+/* Status badge pulse */
+.badge.active{animation:badgePulse 2s ease-in-out infinite}
+@keyframes badgePulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.3)}50%{box-shadow:0 0 0 4px rgba(16,185,129,0)}}
+.badge.error{animation:badgeError 1.5s ease-in-out infinite}
+@keyframes badgeError{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.3)}50%{box-shadow:0 0 0 4px rgba(239,68,68,0)}}
+
+/* Skeleton loading */
+@keyframes skeleton{0%{background-position:-200px 0}100%{background-position:calc(200px + 100%) 0}}
+.skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200px 100%;animation:skeleton 1.5s ease-in-out infinite;border-radius:var(--radius-sm);height:20px;margin-bottom:8px}
+
+/* Toast upgrade — top-right slide-in */
+#toast{bottom:auto;top:24px;right:24px;transform:translateX(120%);opacity:1;transition:transform .4s cubic-bezier(.4,0,.2,1);pointer-events:auto;backdrop-filter:blur(8px);background:rgba(37,43,72,.95)}
+#toast.show{transform:translateX(0)}
+
+/* Typing indicator */
+.typing-dots{display:flex;gap:4px;padding:12px 16px;align-items:center}
+.typing-dots span{width:8px;height:8px;border-radius:50%;background:var(--text-dim);animation:typingBounce .6s ease-in-out infinite}
+.typing-dots span:nth-child(2){animation-delay:.15s}
+.typing-dots span:nth-child(3){animation-delay:.3s}
+@keyframes typingBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+
+/* Chat markdown */
+.msg.assistant code{background:rgba(6,182,212,.15);padding:1px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px}
+.msg.assistant pre{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin:8px 0;overflow-x:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5}
+.msg.assistant strong{color:var(--text-bright)}
+.msg.assistant ul,.msg.assistant ol{margin:4px 0 4px 16px}
+.msg.assistant li{margin:2px 0}
+
+/* Agent avatar */
+.msg.assistant{padding-left:44px;position:relative}
+.msg.assistant::before{content:'⚡';position:absolute;left:10px;top:10px;width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;line-height:26px;text-align:center}
+
+/* Responsive sidebar */
+.sidebar-toggle{display:none;position:fixed;top:12px;left:12px;z-index:100;width:40px;height:40px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;font-size:20px;color:var(--text);align-items:center;justify-content:center}
+@media(max-width:1024px){
+  .sidebar{position:fixed;left:-260px;top:0;bottom:0;z-index:99;transition:left .3s ease;box-shadow:4px 0 24px rgba(0,0,0,.3)}
+  .sidebar.open{left:0}
+  .sidebar-toggle{display:flex}
+  .main{margin-left:0}
+  .form-row{grid-template-columns:1fr}
+}
+
+/* Footer bar */
+.footer-bar{height:32px;background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:11px;color:var(--text-dim);flex-shrink:0}
+.footer-bar .footer-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px}
+.footer-bar .footer-dot.on{background:var(--accent3);box-shadow:0 0 6px var(--accent3)}
+.footer-bar .footer-dot.off{background:var(--error)}
+
+/* Theme + sound toggles in sidebar footer */
+.sidebar-toggles{display:flex;gap:6px;margin-bottom:8px}
+.sidebar-toggles button{flex:1;padding:6px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-dim);font-size:11px;cursor:pointer;transition:all .15s}
+.sidebar-toggles button:hover{background:var(--bg4);color:var(--text)}
+
+/* Scrollbar refinement */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:rgba(148,163,184,.25);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(148,163,184,.4)}
+*{scrollbar-width:thin;scrollbar-color:rgba(148,163,184,.25) transparent}</style>
 </head>
 <body>
-<aside class="sidebar">
+<button class="sidebar-toggle" data-action="toggle-sidebar">☰</button>
+<aside class="sidebar" id="sidebar">
   <div class="logo-area">
     <h1>⚡ TITAN</h1>
     <div class="version" id="ver-label">Mission Control</div>
   </div>
   <nav class="nav">
     <div class="nav-section">Core</div>
-    <div class="nav-item active" onclick="showPanel('overview',this)"><span class="icon">📊</span>Overview</div>
-    <div class="nav-item" onclick="showPanel('chat',this)"><span class="icon">💬</span>WebChat</div>
-    <div class="nav-item" onclick="showPanel('agents',this)"><span class="icon">🤖</span>Agents</div>
+    <div class="nav-item active" data-panel="overview"><span class="icon">📊</span>Overview</div>
+    <div class="nav-item" data-panel="chat"><span class="icon">💬</span>WebChat</div>
+    <div class="nav-item" data-panel="agents"><span class="icon">🤖</span>Agents</div>
     <div class="nav-section">Config</div>
-    <div class="nav-item" onclick="showPanel('config',this);loadConfig();populateModels();loadProfileTab()"><span class="icon">⚙️</span>Settings</div>
-    <div class="nav-item" onclick="showPanel('channels',this)"><span class="icon">📡</span>Channels</div>
+    <div class="nav-item" data-panel="config" data-load="config"><span class="icon">⚙️</span>Settings</div>
+    <div class="nav-item" data-panel="channels"><span class="icon">📡</span>Channels</div>
     <div class="nav-section">Tools & Data</div>
-    <div class="nav-item" onclick="showPanel('skills',this)"><span class="icon">🧩</span>Skills</div>
-    <div class="nav-item" onclick="showPanel('sessions',this)"><span class="icon">🔗</span>Sessions</div>
-    <div class="nav-item" onclick="showPanel('learning',this)"><span class="icon">🧠</span>Learning</div>
+    <div class="nav-item" data-panel="skills"><span class="icon">🧩</span>Skills</div>
+    <div class="nav-item" data-panel="sessions"><span class="icon">🔗</span>Sessions</div>
+    <div class="nav-item" data-panel="learning"><span class="icon">🧠</span>Learning</div>
     <div class="nav-section">System</div>
-    <div class="nav-item" onclick="showPanel('security',this)"><span class="icon">🔒</span>Security</div>
-    <div class="nav-item" onclick="showPanel('logs',this);startLogs()"><span class="icon">📜</span>Logs</div>
-    <div class="nav-item" onclick="showPanel('graphiti',this);loadGraphiti()"><span class="icon">🕸️</span>Memory Graph</div>
+    <div class="nav-item" data-panel="security"><span class="icon">🔒</span>Security</div>
+    <div class="nav-item" data-panel="logs" data-load="logs"><span class="icon">📜</span>Logs</div>
+    <div class="nav-item" data-panel="graphiti" data-load="graphiti"><span class="icon">🕸️</span>Memory Graph</div>
   </nav>
   <div class="sidebar-footer">
-    <button class="logout-btn" onclick="logout()">🔓 Logout</button>
+    <div class="sidebar-toggles">
+      <button data-action="toggle-theme" title="Toggle theme">🌓 Theme</button>
+      <button data-action="toggle-sound" title="Toggle sounds">🔇 Sound</button>
+    </div>
+    <button class="logout-btn" data-action="logout">🔓 Logout</button>
   </div>
 </aside>
 
@@ -216,7 +319,7 @@ tr:hover{background:rgba(6,182,212,.03)}
   <div class="sm-card">
     <div class="sm-header">
       <h3><span style="font-size:20px">📜</span> Session History <span id="sm-id" style="font-family:monospace;font-size:12px;color:var(--text-dim);font-weight:normal"></span></h3>
-      <button class="sm-close" onclick="closeSessionModal()">✕</button>
+      <button class="sm-close" data-action="close-session-modal">✕</button>
     </div>
     <div class="sm-body">
       <div id="sm-loading" style="text-align:center;padding:40px;color:var(--text-dim)">Fetching history...</div>
@@ -264,7 +367,7 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div class="ob-step-title">2. Choose Your Engine</div>
         <div class="ob-step-desc">Select where TITAN should run its core reasoning loop.</div>
         
-        <div class="provider-box selected" onclick="document.getElementById('ob-prov-local').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
+        <div class="provider-box selected" data-action="select-provider" data-radio="ob-prov-local">
           <div class="provider-icon">🦙</div>
           <div style="flex:1">
             <strong>Local (Ollama)</strong>
@@ -273,7 +376,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <input type="radio" name="ob_provider" id="ob-prov-local" value="local" checked style="display:none" />
         </div>
 
-        <div class="provider-box" onclick="document.getElementById('ob-prov-cloud').checked=true; document.querySelectorAll('.provider-box').forEach(b=>b.classList.remove('selected')); this.classList.add('selected')">
+        <div class="provider-box" data-action="select-provider" data-radio="ob-prov-cloud">
           <div class="provider-icon">☁️</div>
           <div style="flex:1">
             <strong>Cloud (Anthropic / OpenAI)</strong>
@@ -298,8 +401,8 @@ tr:hover{background:rgba(6,182,212,.03)}
       </div>
     </div>
     <div class="ob-footer">
-      <button class="ob-btn ob-btn-secondary" id="ob-btn-back" onclick="obPrevStep()" style="visibility:hidden">Back</button>
-      <button class="ob-btn ob-btn-primary" id="ob-btn-next" onclick="obNextStep()">Continue ⚡</button>
+      <button class="ob-btn ob-btn-secondary" id="ob-btn-back" data-action="ob-prev" style="visibility:hidden">Back</button>
+      <button class="ob-btn ob-btn-primary" id="ob-btn-next" data-action="ob-next">Continue ⚡</button>
     </div>
   </div>
 </div>
@@ -339,7 +442,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <h3 style="color:var(--accent);margin:0"><span style="font-size:18px">🚀</span> Update Available</h3>
           <p style="color:var(--text);font-size:13px;margin:4px 0 0 0">TITAN <span id="update-latest-version" style="font-weight:bold"></span> is available! Currently running <span id="update-current-version" style="font-weight:bold"></span>.</p>
         </div>
-        <button class="btn" style="background:var(--accent);color:#fff" onclick="triggerUpdate()">Update Now</button>
+        <button class="btn" style="background:var(--accent);color:#fff" data-action="trigger-update">Update Now</button>
       </div>
     </div>
 
@@ -353,13 +456,13 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="msg assistant">👋 Hello! I'm TITAN. How can I help you today?</div>
         </div>
         <div class="chat-input-area">
-          <input type="text" id="chat-input" placeholder="Type a message and press Enter…" onkeydown="if(event.key==='Enter'&&!event.shiftKey)sendChat()"/>
-          <button id="send-btn" onclick="sendChat()">Send ⚡</button>
+          <input type="text" id="chat-input" placeholder="Type a message and press Enter…"/>
+          <button id="send-btn" data-action="send-chat">Send ⚡</button>
         </div>
         <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg2);display:flex;gap:8px;flex-shrink:0">
-          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="document.getElementById('chat-input').value='/status';sendChat()">📊 Status</button>
-          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="if(confirm('Reset the current chat session?')) {document.getElementById('chat-input').value='/reset';sendChat()}">🔄 Reset Session</button>
-          <button class="btn" style="font-size:11px;padding:4px 8px" onclick="document.getElementById('chat-input').value='/compact';sendChat()">📦 Compact Context</button>
+          <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-status">📊 Status</button>
+          <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-reset">🔄 Reset Session</button>
+          <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-compact">📦 Compact Context</button>
         </div>
       </div>
     </div>
@@ -372,7 +475,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="form-group"><label>Agent Name</label><input type="text" id="agent-name" placeholder="e.g. Code Reviewer"/></div>
           <div class="form-group"><label>Model (optional)</label><input type="text" id="agent-model" placeholder="e.g. anthropic/claude-sonnet-4-20250514"/></div>
         </div>
-        <button class="btn primary" onclick="spawnAgent()">⚡ Spawn Agent</button>
+        <button class="btn primary" data-action="spawn-agent">⚡ Spawn Agent</button>
       </div>
       <div class="card">
         <h3>Agent Instances <span style="color:var(--text-dim);font-weight:400" id="agent-cap"></span></h3>
@@ -384,12 +487,12 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div id="panel-config" class="panel">
       <div class="card" style="padding:0;overflow:hidden">
         <div class="settings-tabs-nav" style="display:flex;gap:4px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap">
-          <button class="stab-btn active" onclick="showStab('model')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--accent);color:#fff;transition:all .15s">🤖 AI &amp; Model</button>
-          <button class="stab-btn" onclick="showStab('providers')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔑 Providers</button>
-          <button class="stab-btn" onclick="showStab('channels-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">📡 Channels</button>
-          <button class="stab-btn" onclick="showStab('security-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔒 Security</button>
-          <button class="stab-btn" onclick="showStab('gateway-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🌐 Gateway</button>
-          <button class="stab-btn" onclick="showStab('profile-cfg')" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">👤 Profile</button>
+          <button class="stab-btn active" data-stab="model" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--accent);color:#fff;transition:all .15s">🤖 AI &amp; Model</button>
+          <button class="stab-btn" data-stab="providers" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔑 Providers</button>
+          <button class="stab-btn" data-stab="channels-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">📡 Channels</button>
+          <button class="stab-btn" data-stab="security-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔒 Security</button>
+          <button class="stab-btn" data-stab="gateway-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🌐 Gateway</button>
+          <button class="stab-btn" data-stab="profile-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">👤 Profile</button>
         </div>
 
         <!-- Tab 1: AI & Model -->
@@ -398,7 +501,7 @@ tr:hover{background:rgba(6,182,212,.03)}
             <label>Active Model</label>
             <select id="cfg-model" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"><option>Loading models...</option></select>
             <input type="text" id="cfg-model-manual" placeholder="Or type a custom model ID (e.g. ollama/my-model)" style="width:100%;margin-top:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"/>
-            <button class="btn" onclick="refreshOllamaModels()" style="margin-top:8px;font-size:12px">🔄 Refresh Ollama Models</button>
+            <button class="btn" data-action="refresh-ollama" style="margin-top:8px;font-size:12px">🔄 Refresh Ollama Models</button>
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -445,8 +548,8 @@ tr:hover{background:rgba(6,182,212,.03)}
             <textarea id="cfg-systemprompt" rows="5" placeholder="Add extra instructions for TITAN (e.g. 'Always respond in Spanish')" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:inherit"></textarea>
           </div>
           <div class="form-actions">
-            <button class="btn primary" onclick="saveAIConfig()">💾 Save AI Settings</button>
-            <button class="btn" onclick="loadConfig()">↺ Reset</button>
+            <button class="btn primary" data-action="save-ai">💾 Save AI Settings</button>
+            <button class="btn" data-action="reload-config">↺ Reset</button>
           </div>
         </div>
 
@@ -478,12 +581,12 @@ tr:hover{background:rgba(6,182,212,.03)}
             <label>Ollama Base URL</label>
             <div style="display:flex;gap:8px">
               <input type="text" id="cfg-ollama-url" placeholder="http://localhost:11434" style="flex:1"/>
-              <button class="btn" onclick="testOllamaConnection()">Test ⚡</button>
+              <button class="btn" data-action="test-ollama">Test ⚡</button>
             </div>
             <span id="cfg-ollama-status" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:block"></span>
           </div>
           <div class="form-actions">
-            <button class="btn primary" onclick="saveProviderSettings()">💾 Save Provider Settings</button>
+            <button class="btn primary" data-action="save-providers">💾 Save Provider Settings</button>
           </div>
         </div>
 
@@ -509,7 +612,7 @@ tr:hover{background:rgba(6,182,212,.03)}
                 <option value="closed">Closed (no DMs)</option>
               </select>
             </div>
-            <button class="btn" onclick="saveChannelSettings('${ch}')" style="font-size:12px">Save ${ch}</button>
+            <button class="btn" data-action="save-channel" data-channel="${ch}" style="font-size:12px">Save ${ch}</button>
           </div>`).join('')}
         </div>
 
@@ -547,7 +650,7 @@ tr:hover{background:rgba(6,182,212,.03)}
             <input type="text" id="cfg-network-allowlist" placeholder="e.g. api.github.com, *.anthropic.com"/>
           </div>
           <div class="form-actions">
-            <button class="btn primary" onclick="saveSecuritySettings()">💾 Save Security Settings</button>
+            <button class="btn primary" data-action="save-security">💾 Save Security Settings</button>
           </div>
         </div>
 
@@ -593,7 +696,7 @@ tr:hover{background:rgba(6,182,212,.03)}
             </div>
           </div>
           <div class="form-actions">
-            <button class="btn primary" onclick="saveGatewaySettings()">💾 Save Gateway Settings</button>
+            <button class="btn primary" data-action="save-gateway">💾 Save Gateway Settings</button>
           </div>
         </div>
 
@@ -619,7 +722,7 @@ tr:hover{background:rgba(6,182,212,.03)}
             <span id="cfg-profile-stats">Loading profile stats...</span>
           </div>
           <div class="form-actions">
-            <button class="btn primary" onclick="saveProfileSettings()">💾 Save Profile</button>
+            <button class="btn primary" data-action="save-profile">💾 Save Profile</button>
           </div>
         </div>
       </div>
@@ -679,7 +782,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <h3 style="margin:0">📜 Live Logs</h3>
           <div style="display:flex;gap:8px;align-items:center;flex:1;max-width:400px">
             <input id="log-filter" type="text" placeholder="Filter logs…" oninput="filterLogs()" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;color:var(--text);font-size:13px;outline:none"/>
-            <button class="btn" onclick="loadLogs()" style="padding:6px 14px;font-size:12px">↻ Refresh</button>
+            <button class="btn" data-action="refresh-logs" style="padding:6px 14px;font-size:12px">↻ Refresh</button>
           </div>
         </div>
         <div id="logs-container" style="font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;max-height:calc(100vh - 280px);overflow-y:auto;white-space:pre-wrap;word-break:break-all">Loading...</div>
@@ -697,7 +800,7 @@ tr:hover{background:rgba(6,182,212,.03)}
       <div class="card" style="margin-top:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <h3 style="margin:0">🕸️ Memory Graph</h3>
-          <button class="btn" onclick="loadGraphiti()" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+          <button class="btn" data-action="refresh-graphiti" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
         </div>
         <div id="graphiti-status" style="display:none;color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
           Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan graphiti --init</code> to initialize the native graph memory.
@@ -718,6 +821,10 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div id="graphiti-node-list" style="display:none;margin-top:16px"></div>
       </div>
     </div>
+  </div>
+  <div class="footer-bar">
+    <span><span class="footer-dot on" id="footer-ws-dot"></span><span id="footer-status">Connected</span> · v<span id="footer-ver">—</span></span>
+    <span>Up <span id="footer-uptime">0m</span> · <span id="footer-skills">0</span> skills · <span id="footer-nodes">0</span> nodes</span>
   </div>
 </main>
 
@@ -741,8 +848,114 @@ function toast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'show ' + type;
-  setTimeout(() => el.className = '', 2500);
+  setTimeout(() => el.className = '', 3000);
 }
+
+// ── Theme toggle ──────────────────────────────────────────────
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('titan_theme', next);
+}
+(function initTheme(){const t=localStorage.getItem('titan_theme');if(t)document.documentElement.setAttribute('data-theme',t);})();
+
+// ── Sound toggle ──────────────────────────────────────────────
+let soundEnabled = localStorage.getItem('titan_sound') === 'true';
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('titan_sound', String(soundEnabled));
+  const btn = document.querySelector('[data-action="toggle-sound"]');
+  if (btn) btn.textContent = soundEnabled ? '🔊 Sound' : '🔇 Sound';
+}
+(function initSound(){const btn=document.querySelector('[data-action="toggle-sound"]');if(btn)btn.textContent=soundEnabled?'🔊 Sound':'🔇 Sound';})();
+
+// ── Simple markdown renderer for assistant messages ──────────
+function renderMarkdown(text) {
+  let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Code blocks
+  s = s.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre>$1</pre>');
+  // Inline code
+  s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
+  // Bold
+  s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+  // Lists
+  s = s.replace(/^- (.+)$/gm, '<li>$1</li>');
+  s = s.replace(/(<li>.*<\\/li>\\n?)+/g, '<ul>$&</ul>');
+  return s;
+}
+
+// ── Animated counter ──────────────────────────────────────────
+function animateValue(el, end) {
+  if (!el) return;
+  const start = parseInt(el.textContent) || 0;
+  if (start === end || isNaN(end)) { el.textContent = end; return; }
+  const duration = 600;
+  const startTime = performance.now();
+  function step(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(start + (end - start) * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// ── Event delegation ──────────────────────────────────────────
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('[data-panel]');
+  if (target) {
+    showPanel(target.dataset.panel, target);
+    if (target.dataset.load === 'config') { loadConfig(); populateModels(); loadProfileTab(); }
+    if (target.dataset.load === 'logs') startLogs();
+    if (target.dataset.load === 'graphiti') loadGraphiti();
+    // Close sidebar on mobile
+    document.getElementById('sidebar')?.classList.remove('open');
+  }
+  // Settings tab buttons
+  const stab = e.target.closest('[data-stab]');
+  if (stab) {
+    showStab(stab.dataset.stab);
+    return;
+  }
+  const action = e.target.closest('[data-action]');
+  if (action) {
+    const a = action.dataset.action;
+    if (a === 'logout') logout();
+    if (a === 'toggle-theme') toggleTheme();
+    if (a === 'toggle-sound') toggleSound();
+    if (a === 'toggle-sidebar') document.getElementById('sidebar')?.classList.toggle('open');
+    if (a === 'send-chat') sendChat();
+    if (a === 'chat-status') { document.getElementById('chat-input').value='/status'; sendChat(); }
+    if (a === 'chat-reset') { if(confirm('Reset the current chat session?')) { document.getElementById('chat-input').value='/reset'; sendChat(); } }
+    if (a === 'chat-compact') { document.getElementById('chat-input').value='/compact'; sendChat(); }
+    if (a === 'spawn-agent') spawnAgent();
+    if (a === 'save-ai') saveAIConfig();
+    if (a === 'save-providers') saveProviderSettings();
+    if (a === 'save-security') saveSecuritySettings();
+    if (a === 'save-gateway') saveGatewaySettings();
+    if (a === 'save-profile') saveProfileSettings();
+    if (a === 'reload-config') loadConfig();
+    if (a === 'refresh-ollama') refreshOllamaModels();
+    if (a === 'test-ollama') testOllamaConnection();
+    if (a === 'refresh-logs') loadLogs();
+    if (a === 'refresh-graphiti') loadGraphiti();
+    if (a === 'trigger-update') triggerUpdate();
+    if (a === 'close-session-modal') closeSessionModal();
+    if (a === 'save-channel') saveChannelSettings(action.dataset.channel);
+    if (a === 'ob-prev') obPrevStep();
+    if (a === 'ob-next') obNextStep();
+    if (a === 'select-provider') {
+      const radioId = action.dataset.radio;
+      if (radioId) document.getElementById(radioId).checked = true;
+      document.querySelectorAll('.provider-box').forEach(b => b.classList.remove('selected'));
+      action.classList.add('selected');
+    }
+    if (a === 'stop-agent') stopAgent(action.dataset.id);
+    if (a === 'show-session') { e.preventDefault(); showSessionModal(action.dataset.id); }
+    if (a === 'stop-session') stopSession(action.dataset.id);
+  }
+});
 
 // ── Panel navigation ──────────────────────────────────────────────
 const panelTitles = {
@@ -801,7 +1014,11 @@ function appendMsg(role, content, meta) {
   const messages = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = 'msg ' + role;
-  div.textContent = content;
+  if (role === 'assistant') {
+    div.innerHTML = renderMarkdown(content);
+  } else {
+    div.textContent = content;
+  }
   if (meta && meta.durationMs) {
     const m = document.createElement('div');
     m.className = 'meta';
@@ -812,6 +1029,10 @@ function appendMsg(role, content, meta) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+document.getElementById('chat-input')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) sendChat();
+});
+
 function sendChat() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
@@ -820,12 +1041,12 @@ function sendChat() {
   input.value = '';
   document.getElementById('send-btn').disabled = true;
 
-  // Add a typing indicator
+  // Add a typing indicator with bouncing dots
   const typing = document.createElement('div');
   typing.className = 'msg assistant';
   typing.id = 'typing-indicator';
-  typing.textContent = '⏳ Thinking…';
-  typing.style.opacity = '.6';
+  typing.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  typing.style.opacity = '.8';
   document.getElementById('chat-messages').appendChild(typing);
   document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
 
@@ -1166,7 +1387,7 @@ async function fetchData() {
     if (agents.agents && agents.agents.length > 0) {
       document.getElementById('agents-list').innerHTML =
         '<table><tr><th>Name</th><th>ID</th><th>Model</th><th>Messages</th><th>Status</th><th>Action</th></tr>' +
-        agents.agents.map(a=>'<tr><td><strong>'+escHtml(a.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+escHtml(a.id.slice(0,8))+'</td><td style="font-size:12px">'+escHtml(a.model)+'</td><td>'+escHtml(a.messageCount)+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+escHtml(a.status)+'</span></td><td><button class="btn danger" data-id="'+escHtml(a.id)+'" onclick="stopAgent(this.dataset.id)">Stop</button></td></tr>').join('')+'</table>';
+        agents.agents.map(a=>'<tr><td><strong>'+escHtml(a.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px;color:var(--text-dim)">'+escHtml(a.id.slice(0,8))+'</td><td style="font-size:12px">'+escHtml(a.model)+'</td><td>'+escHtml(a.messageCount)+'</td><td><span class="badge '+(a.status==='running'?'active':'idle')+'">'+escHtml(a.status)+'</span></td><td><button class="btn danger" data-action="stop-agent" data-id="'+escHtml(a.id)+'">Stop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('agents-list').innerHTML = '<div class="empty-state"><div class="icon">🤖</div><p>No agents running. Spawn one above.</p></div>';
     }
@@ -1186,7 +1407,7 @@ async function fetchData() {
     if (Array.isArray(sessions) && sessions.length > 0) {
       document.getElementById('sessions-list').innerHTML =
         '<table><tr><th>ID</th><th>Channel</th><th>User</th><th>Messages</th><th>Last Active</th><th>Action</th></tr>' +
-        sessions.map(s=>'<tr><td><a href="#" data-id="'+escHtml(s.id)+'" onclick="showSessionModal(this.dataset.id)" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+escHtml(s.id.slice(0,8))+'</a></td><td>'+escHtml(s.channel)+'</td><td>'+escHtml(s.userId||s.user_id||'—')+'</td><td>'+escHtml(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+escHtml(s.lastActive||'—')+'</td><td><button class="btn danger" data-id="'+escHtml(s.id)+'" onclick="stopSession(this.dataset.id)">Drop</button></td></tr>').join('')+'</table>';
+        sessions.map(s=>'<tr><td><a href="#" data-action="show-session" data-id="'+escHtml(s.id)+'" style="font-family:JetBrains Mono;font-size:12px;color:var(--accent);text-decoration:none">#'+escHtml(s.id.slice(0,8))+'</a></td><td>'+escHtml(s.channel)+'</td><td>'+escHtml(s.userId||s.user_id||'—')+'</td><td>'+escHtml(s.messageCount||s.message_count||0)+'</td><td style="font-size:12px;color:var(--text-dim)">'+escHtml(s.lastActive||'—')+'</td><td><button class="btn danger" data-action="stop-session" data-id="'+escHtml(s.id)+'">Drop</button></td></tr>').join('')+'</table>';
     } else {
       document.getElementById('sessions-list').innerHTML = '<div class="empty-state"><div class="icon">🔗</div><p>No active sessions yet. Start a conversation in WebChat.</p></div>';
     }

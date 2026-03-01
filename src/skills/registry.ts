@@ -111,6 +111,14 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerVoiceSkills } = await import('./builtin/voice.js');
     const { registerMemoryGraphSkill } = await import('./builtin/memory_graph.js');
     const { initWebBrowserTool } = await import('./builtin/web_browser.js');
+    const { registerGitHubSkill } = await import('./builtin/github.js');
+    const { registerEmailSkill } = await import('./builtin/email.js');
+    const { registerComputerUseSkill } = await import('./builtin/computer_use.js');
+    const { registerImageGenSkill } = await import('./builtin/image_gen.js');
+    const { registerPdfSkill } = await import('./builtin/pdf.js');
+    const { registerCalendarSkill } = await import('./builtin/calendar.js');
+    const { registerSmartHomeSkill } = await import('./builtin/smart_home.js');
+    const { registerDataAnalysisSkill } = await import('./builtin/data_analysis.js');
 
     registerShellSkill();
     registerFilesystemSkill();
@@ -128,6 +136,14 @@ export async function initBuiltinSkills(): Promise<void> {
     registerVoiceSkills();
     registerMemoryGraphSkill();
     initWebBrowserTool();
+    registerGitHubSkill();
+    registerEmailSkill();
+    registerComputerUseSkill();
+    registerImageGenSkill();
+    registerPdfSkill();
+    registerCalendarSkill();
+    registerSmartHomeSkill();
+    registerDataAnalysisSkill();
 
     // Register planner as an LLM-invocable tool
     const { registerPlannerTool } = await import('../agent/planner.js');

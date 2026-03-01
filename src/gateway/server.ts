@@ -24,6 +24,10 @@ import { DiscordChannel } from '../channels/discord.js';
 import { TelegramChannel } from '../channels/telegram.js';
 import { SlackChannel } from '../channels/slack.js';
 import { GoogleChatChannel } from '../channels/googlechat.js';
+import { WhatsAppChannel } from '../channels/whatsapp.js';
+import { MatrixChannel } from '../channels/matrix.js';
+import { SignalChannel } from '../channels/signal.js';
+import { MSTeamsChannel } from '../channels/msteams.js';
 import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity } from '../agent/multiAgent.js';
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger, { initFileLogger } from '../utils/logger.js';
@@ -41,6 +45,9 @@ import { getLearningStats } from '../memory/learning.js';
 import { initGraph, getGraphData, getGraphStats } from '../memory/graph.js';
 import { getLogFilePath } from '../utils/logger.js';
 import { closeSession } from '../agent/session.js';
+import { initCronScheduler } from '../skills/builtin/cron.js';
+import { checkAndSendBriefing } from '../memory/briefing.js';
+import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 
 const COMPONENT = 'Gateway';
 
@@ -836,6 +843,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     ['telegram', new TelegramChannel()],
     ['slack', new SlackChannel()],
     ['googlechat', new GoogleChatChannel()],
+    ['whatsapp', new WhatsAppChannel()],
+    ['matrix', new MatrixChannel()],
+    ['signal', new SignalChannel()],
+    ['msteams', new MSTeamsChannel()],
   ];
 
   for (const [name, adapter] of channelAdapters) {
@@ -853,6 +864,24 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   initModelSwitchTool();
   seedBuiltinRecipes();
   initMcpServers().catch((e) => logger.warn(COMPONENT, `MCP init error: ${e.message}`));
+
+  // ── Persistent webhooks — reload saved webhooks ─────────────
+  initPersistentWebhooks();
+
+  // ── Cron scheduler — re-activate all persisted jobs ──────────
+  initCronScheduler();
+
+  // ── Morning Briefing — send once per day in 6am–12pm window ──
+  checkAndSendBriefing(async (msg) => {
+    broadcast({
+      type: 'message',
+      direction: 'outbound',
+      channel: 'system',
+      userId: 'titan',
+      content: msg,
+      timestamp: new Date().toISOString(),
+    });
+  }).catch((e: Error) => logger.warn(COMPONENT, `Briefing error: ${e.message}`));
 
   // Wire monitor triggers to agent
   setMonitorTriggerHandler(async (monitor, event) => {

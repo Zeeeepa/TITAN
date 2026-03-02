@@ -424,7 +424,9 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div class="stat-card cyan"><div class="stat-label">Active Agents</div><div class="stat-value" id="s-agents">—</div><div class="stat-sub">of 5 max</div></div>
         <div class="stat-card purple"><div class="stat-label">Sessions</div><div class="stat-value" id="s-sessions">—</div><div class="stat-sub">active</div></div>
         <div class="stat-card green"><div class="stat-label">Skills Loaded</div><div class="stat-value" id="s-skills">—</div><div class="stat-sub">built-in + custom</div></div>
-        <div class="stat-card amber"><div class="stat-label">Total Requests</div><div class="stat-value" id="s-requests">—</div><div class="stat-sub">this session</div></div>
+        <div class="stat-card amber"><div class="stat-label">Total Requests</div><div class="stat-value" id="s-requests">—</div><div class="stat-sub">this session</div><div id="spark-tokens" style="margin-top:4px"></div></div>
+        <div class="stat-card" style="border-color:#10b981"><div class="stat-label">Avg Response</div><div class="stat-value" id="s-resp-time">—</div><div class="stat-sub">ms</div><div id="spark-resp"></div></div>
+        <div class="stat-card" style="border-color:#f59e0b"><div class="stat-label">Est. Cost</div><div class="stat-value" id="s-cost">—</div><div class="stat-sub">USD</div><div id="spark-cost"></div></div>
       </div>
       <div class="card">
         <h3>System Health</h3>
@@ -881,7 +883,7 @@ function renderMarkdown(text) {
   s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
   // Lists
   s = s.replace(/^- (.+)$/gm, '<li>$1</li>');
-  s = s.replace(/(<li>.*<\\/li>\\n?)+/g, '<ul>$&</ul>');
+  s = s.replace(new RegExp('(<li>.*</li>[\\n]?)+', 'g'), '<ul>$&</ul>');
   return s;
 }
 
@@ -956,6 +958,24 @@ document.addEventListener('click', (e) => {
     if (a === 'stop-session') stopSession(action.dataset.id);
   }
 });
+
+// ── Sparkline data & renderer ─────────────────────────────────────
+const sparkTokens = [], sparkCost = [], sparkRespTime = [];
+const SPARK_MAX = 20;
+
+function renderSparkline(data, color) {
+  if (data.length < 2) return '';
+  const w = 120, h = 32, pad = 2;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data, 0);
+  const range = max - min || 1;
+  const points = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (w - pad * 2);
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return x + ',' + y;
+  }).join(' ');
+  return '<svg width="'+w+'" height="'+h+'" style="display:block;margin-top:4px"><polyline fill="none" stroke="'+color+'" stroke-width="1.5" points="'+points+'"/></svg>';
+}
 
 // ── Panel navigation ──────────────────────────────────────────────
 const panelTitles = {
@@ -1373,6 +1393,29 @@ async function fetchData() {
     document.getElementById('s-requests').textContent = stats.totalRequests ?? '—';
     document.getElementById('agent-cap').textContent = '(' + (agents.capacity?.current||0) + '/' + (agents.capacity?.max||5) + ')';
 
+    // Sparkline data
+    if (stats.totalTokens !== undefined) {
+      sparkTokens.push(stats.avgTokensPerRequest || (stats.totalTokens / Math.max(stats.totalRequests || 1, 1)));
+      if (sparkTokens.length > SPARK_MAX) sparkTokens.shift();
+    }
+    sparkCost.push(stats.totalCost || 0);
+    if (sparkCost.length > SPARK_MAX) sparkCost.shift();
+    sparkRespTime.push(stats.avgResponseTime || 0);
+    if (sparkRespTime.length > SPARK_MAX) sparkRespTime.shift();
+
+    const stEl = document.getElementById('spark-tokens');
+    if (stEl) stEl.innerHTML = renderSparkline(sparkTokens, '#06b6d4');
+    const srEl = document.getElementById('spark-resp');
+    if (srEl) srEl.innerHTML = renderSparkline(sparkRespTime, '#10b981');
+    const scEl = document.getElementById('spark-cost');
+    if (scEl) scEl.innerHTML = renderSparkline(sparkCost, '#f59e0b');
+
+    // Update the new stat values
+    const rtEl = document.getElementById('s-resp-time');
+    if (rtEl) rtEl.textContent = stats.avgResponseTime ? Math.round(stats.avgResponseTime) : '—';
+    const costEl = document.getElementById('s-cost');
+    if (costEl) costEl.textContent = stats.totalCost !== undefined ? '$' + stats.totalCost.toFixed(4) : '—';
+
     // Health
     document.getElementById('h-version').textContent = stats.version || '—';
     const up = stats.uptime || 0;
@@ -1455,6 +1498,25 @@ async function fetchData() {
     } else if (updateCard) {
       updateCard.style.display = 'none';
     }
+
+    // Footer bar
+    const fVer = document.getElementById('footer-ver');
+    if (fVer) fVer.textContent = stats.version || '—';
+    const fUp = document.getElementById('footer-uptime');
+    if (fUp) {
+      const u = stats.uptime || 0;
+      fUp.textContent = u > 3600 ? Math.floor(u/3600)+'h '+Math.floor((u%3600)/60)+'m' : Math.floor(u/60)+'m '+Math.floor(u%60)+'s';
+    }
+    const fSkills = document.getElementById('footer-skills');
+    if (fSkills) fSkills.textContent = Array.isArray(skills) ? skills.length : '0';
+    const fNodes = document.getElementById('footer-nodes');
+    try {
+      const meshR = await fetch('/api/mesh/peers', {headers:authHeaders()});
+      const meshData = await meshR.json();
+      if (fNodes) fNodes.textContent = Array.isArray(meshData.peers) ? meshData.peers.length : '0';
+    } catch(e) { if (fNodes) fNodes.textContent = '0'; }
+    const wsDot = document.getElementById('footer-ws-dot');
+    if (wsDot) wsDot.className = 'footer-dot ' + (ws && ws.readyState === 1 ? 'on' : 'off');
 
   } catch(e) { console.error('Fetch error:', e); }
 }
@@ -1639,6 +1701,65 @@ async function loadGraphiti() {
   } catch(e) { toast('Failed to load Memory Graph', 'error'); console.error('Graph load error', e); }
 }
 
+// ── Graph zoom/pan state ──────────────────────────────────────────
+let graphZoom = 1, graphPanX = 0, graphPanY = 0;
+let graphDragging = false, graphDragStartX = 0, graphDragStartY = 0;
+let graphHoverNode = null;
+let graphLastNodes = null, graphLastEdges = null;
+
+function initGraphInteraction(canvas) {
+  if (canvas._interactionBound) return;
+  canvas._interactionBound = true;
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    graphZoom = Math.max(0.3, Math.min(3, graphZoom * delta));
+    if (graphLastNodes && graphLastEdges) drawGraphitiGraph(canvas, graphLastNodes, graphLastEdges);
+  }, {passive:false});
+
+  canvas.addEventListener('mousedown', (e) => {
+    graphDragging = true;
+    graphDragStartX = e.clientX - graphPanX;
+    graphDragStartY = e.clientY - graphPanY;
+    canvas.style.cursor = 'grabbing';
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (graphDragging) {
+      graphPanX = e.clientX - graphDragStartX;
+      graphPanY = e.clientY - graphDragStartY;
+      if (graphLastNodes && graphLastEdges) drawGraphitiGraph(canvas, graphLastNodes, graphLastEdges);
+      return;
+    }
+    // Hover detection
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleX;
+    const positions = canvas._positions;
+    if (!positions || !graphLastNodes) return;
+    let found = null;
+    for (const n of graphLastNodes) {
+      const p = positions[n.id];
+      if (!p) continue;
+      const tx = p.x * graphZoom + graphPanX;
+      const ty = p.y * graphZoom + graphPanY;
+      const r = (n.size || 18) * graphZoom;
+      if (Math.sqrt((mx - tx) ** 2 + (my - ty) ** 2) <= r + 4) { found = n.id; break; }
+    }
+    if (found !== graphHoverNode) {
+      graphHoverNode = found;
+      canvas.style.cursor = found ? 'pointer' : 'grab';
+      if (graphLastNodes && graphLastEdges) drawGraphitiGraph(canvas, graphLastNodes, graphLastEdges);
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => { graphDragging = false; canvas.style.cursor = 'grab'; });
+  canvas.addEventListener('mouseleave', () => { graphDragging = false; canvas.style.cursor = 'grab'; });
+  canvas.style.cursor = 'grab';
+}
+
 function drawGraphitiGraph(canvas, nodes, edges) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -1648,14 +1769,23 @@ function drawGraphitiGraph(canvas, nodes, edges) {
 
   if (nodes.length === 0) return;
 
+  graphLastNodes = nodes;
+  graphLastEdges = edges;
+  initGraphInteraction(canvas);
+
   const typeColors = {
     person:'#06b6d4', topic:'#8b5cf6', project:'#10b981', place:'#f59e0b', fact:'#94a3b8',
     Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
   };
 
-  // Use force-directed layout
-  const positions = initForceLayout(nodes, W, H);
-  canvas._positions = positions;
+  // Use force-directed layout (only recalculate if nodes changed)
+  if (!canvas._positions || canvas._posNodeCount !== nodes.length) {
+    canvas._positions = initForceLayout(nodes, W, H);
+    canvas._posNodeCount = nodes.length;
+  }
+  const positions = canvas._positions;
+
+  ctx.save();
 
   // Draw edges
   ctx.strokeStyle = 'rgba(100,116,139,0.4)';
@@ -1664,14 +1794,14 @@ function drawGraphitiGraph(canvas, nodes, edges) {
     const a = positions[e.from], b = positions[e.to];
     if (!a || !b) return;
     ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
+    ctx.moveTo(a.x * graphZoom + graphPanX, a.y * graphZoom + graphPanY);
+    ctx.lineTo(b.x * graphZoom + graphPanX, b.y * graphZoom + graphPanY);
     ctx.stroke();
     if (e.label) {
       ctx.save();
-      ctx.font = '9px sans-serif';
+      ctx.font = Math.max(7, 9 * graphZoom) + 'px sans-serif';
       ctx.fillStyle = 'rgba(148,163,184,0.8)';
-      ctx.fillText(e.label, (a.x+b.x)/2, (a.y+b.y)/2);
+      ctx.fillText(e.label, (a.x+b.x)/2 * graphZoom + graphPanX, (a.y+b.y)/2 * graphZoom + graphPanY);
       ctx.restore();
     }
   });
@@ -1681,23 +1811,40 @@ function drawGraphitiGraph(canvas, nodes, edges) {
     const pos = positions[n.id];
     if (!pos) return;
     const color = typeColors[n.type] || '#64748b';
-    const radius = n.size || 18;
+    const radius = (n.size || 18) * graphZoom;
+    const tx = pos.x * graphZoom + graphPanX;
+    const ty = pos.y * graphZoom + graphPanY;
+
+    // Hover glow
+    if (graphHoverNode === n.id) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(tx, ty, radius + 6, 0, Math.PI * 2);
+      ctx.fillStyle = color + '44';
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 16;
+      ctx.fill();
+      ctx.restore();
+    }
+
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    ctx.arc(tx, ty, radius, 0, Math.PI * 2);
     ctx.fillStyle = color + '33';
     ctx.fill();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = graphHoverNode === n.id ? 3 : 2;
     ctx.stroke();
     ctx.save();
-    ctx.font = 'bold 10px sans-serif';
+    ctx.font = 'bold ' + Math.max(7, 10 * graphZoom) + 'px sans-serif';
     ctx.fillStyle = '#f1f5f9';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const label = n.label.length > 10 ? n.label.slice(0,9)+'…' : n.label;
-    ctx.fillText(label, pos.x, pos.y);
+    ctx.fillText(label, tx, ty);
     ctx.restore();
   });
+
+  ctx.restore();
 }
 
 // ── Force-directed graph layout init ─────────────────────────────
@@ -1751,8 +1898,10 @@ function showEntityDetail(nodes, edges, canvas, evt) {
   for (const n of nodes) {
     const p = positions[n.id];
     if (!p) continue;
-    const r = n.size || 18;
-    if (Math.sqrt((mx - p.x) ** 2 + (my - p.y) ** 2) <= r + 4) {
+    const r = (n.size || 18) * graphZoom;
+    const tx = p.x * graphZoom + graphPanX;
+    const ty = p.y * graphZoom + graphPanY;
+    if (Math.sqrt((mx - tx) ** 2 + (my - ty) ** 2) <= r + 4) {
       document.getElementById('ged-name').textContent = n.label;
       document.getElementById('ged-type').textContent = n.type;
       document.getElementById('ged-aliases').textContent = '';

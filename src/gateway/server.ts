@@ -111,15 +111,21 @@ function getLoginHTML(): string {
 <title>TITAN — Login</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.box{background:#111827;border:1px solid #2a3050;border-radius:16px;padding:40px;width:380px;box-shadow:0 0 40px rgba(6,182,212,.1)}
-h1{font-size:28px;font-weight:700;background:linear-gradient(135deg,#06b6d4,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-align:center;letter-spacing:3px;margin-bottom:4px}
+@keyframes gradientBg{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+@keyframes shake{0%,100%{transform:translateX(0)}10%,30%,50%,70%,90%{transform:translateX(-4px)}20%,40%,60%,80%{transform:translateX(4px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:linear-gradient(135deg,#0a0e1a 0%,#0f172a 25%,#1a1040 50%,#0f172a 75%,#0a0e1a 100%);background-size:400% 400%;animation:gradientBg 15s ease infinite;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{background:rgba(17,24,39,0.85);backdrop-filter:blur(20px);border:1px solid rgba(42,48,80,0.6);border-radius:16px;padding:40px;width:380px;box-shadow:0 0 40px rgba(6,182,212,.1),0 0 80px rgba(139,92,246,.05);animation:fadeIn .6s ease-out}
+.box.shake{animation:shake .5s ease}
+h1{font-size:28px;font-weight:700;background:linear-gradient(90deg,#06b6d4,#8b5cf6,#06b6d4);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 3s linear infinite;text-align:center;letter-spacing:3px;margin-bottom:4px}
 .sub{text-align:center;color:#94a3b8;font-size:13px;margin-bottom:32px}
 label{font-size:12px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:8px}
-input{width:100%;background:#1a1f36;border:1px solid #2a3050;border-radius:10px;padding:12px 16px;color:#e2e8f0;font-size:15px;outline:none;transition:border .2s}
-input:focus{border-color:#06b6d4}
-button{width:100%;margin-top:20px;background:linear-gradient(135deg,#06b6d4,#8b5cf6);border:none;border-radius:10px;padding:14px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s}
-button:hover{opacity:.9}
+input{width:100%;background:rgba(26,31,54,0.8);border:1px solid #2a3050;border-radius:10px;padding:12px 16px;color:#e2e8f0;font-size:15px;outline:none;transition:border .2s,box-shadow .2s}
+input:focus{border-color:#06b6d4;box-shadow:0 0 12px rgba(6,182,212,.2)}
+button{width:100%;margin-top:20px;background:linear-gradient(135deg,#06b6d4,#8b5cf6);border:none;border-radius:10px;padding:14px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s,transform .1s}
+button:hover{opacity:.9;transform:translateY(-1px)}
+button:active{transform:translateY(0)}
 .error{color:#ef4444;font-size:13px;margin-top:12px;text-align:center;display:none}
 </style>
 </head>
@@ -144,6 +150,10 @@ async function login() {
     document.getElementById('err').style.display = 'block';
     document.getElementById('pw').value = '';
     document.getElementById('pw').focus();
+    const box = document.querySelector('.box');
+    box.classList.remove('shake');
+    void box.offsetWidth;
+    box.classList.add('shake');
   }
 }
 document.getElementById('pw').focus();
@@ -759,6 +769,170 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
+  });
+
+  // ── API Documentation ────────────────────────────────────
+  app.get('/api/docs', (_req, res) => {
+    const spec = {
+      openapi: '3.0.0',
+      info: {
+        title: 'TITAN Gateway API',
+        version: TITAN_VERSION,
+        description: 'REST API for the TITAN autonomous AI agent framework.',
+      },
+      paths: {
+        '/login':                  { get:  { summary: 'Login page',                             tags: ['Auth'] } },
+        '/api/login':              { post: { summary: 'Authenticate with password',             tags: ['Auth'],     requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { password: { type: 'string' } } } } } } } },
+        '/':                       { get:  { summary: 'Dashboard UI',                           tags: ['System'] } },
+        '/api/stats':              { get:  { summary: 'System stats (version, uptime, memory)', tags: ['System'] } },
+        '/api/health':             { get:  { summary: 'Provider health check',                  tags: ['System'] } },
+        '/api/update':             { get:  { summary: 'Check for updates',                      tags: ['System'] },
+                                     post: { summary: 'Trigger update',                         tags: ['System'] } },
+        '/api/costs':              { get:  { summary: 'Cost optimizer status',                  tags: ['System'] } },
+        '/api/sessions':           { get:  { summary: 'List active sessions',                   tags: ['Sessions'] } },
+        '/api/sessions/{id}':      { get:  { summary: 'Get session history by ID',              tags: ['Sessions'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }] } },
+        '/api/sessions/{id}/close':{ post: { summary: 'Close/drop a session',                   tags: ['Sessions'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }] } },
+        '/api/agents':             { get:  { summary: 'List agents and capacity',               tags: ['Agents'] } },
+        '/api/agents/spawn':       { post: { summary: 'Spawn new agent',                        tags: ['Agents'],   requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' }, model: { type: 'string' } } } } } } } },
+        '/api/agents/stop':        { post: { summary: 'Stop an agent',                          tags: ['Agents'],   requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { id: { type: 'string' } } } } } } } },
+        '/api/skills':             { get:  { summary: 'List loaded skills',                     tags: ['Skills'] } },
+        '/api/tools':              { get:  { summary: 'List registered tools',                  tags: ['Skills'] } },
+        '/api/channels':           { get:  { summary: 'List channel statuses',                  tags: ['Channels'] } },
+        '/api/message':            { post: { summary: 'Send a message',                         tags: ['Channels'], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, channel: { type: 'string' }, userId: { type: 'string' } } } } } } } },
+        '/api/chat/stream':        { post: { summary: 'Stream chat via SSE',                    tags: ['Channels'], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, model: { type: 'string' } } } } } } } },
+        '/api/config':             { get:  { summary: 'Get current config',                     tags: ['Config'] },
+                                     post: { summary: 'Update config',                          tags: ['Config'] } },
+        '/api/security':           { get:  { summary: 'Security audit results',                 tags: ['Config'] } },
+        '/api/providers':          { get:  { summary: 'List configured providers',              tags: ['Config'] } },
+        '/api/models':             { get:  { summary: 'List available models',                  tags: ['Models'] } },
+        '/api/models/discover':    { get:  { summary: 'Discover models from all providers',     tags: ['Models'] } },
+        '/api/model/switch':       { post: { summary: 'Switch active model',                    tags: ['Models'],   requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { model: { type: 'string' } } } } } } } },
+        '/api/profile':            { get:  { summary: 'Get personal profile',                   tags: ['Memory'] },
+                                     post: { summary: 'Update personal profile',                tags: ['Memory'] } },
+        '/api/learning':           { get:  { summary: 'Learning engine stats',                  tags: ['Memory'] } },
+        '/api/graphiti':           { get:  { summary: 'Memory graph data',                      tags: ['Memory'] } },
+        '/api/mesh/hello':         { get:  { summary: 'Mesh hello/handshake',                   tags: ['Mesh'] } },
+        '/api/mesh/peers':         { get:  { summary: 'List mesh peers',                        tags: ['Mesh'] } },
+        '/api/mesh/models':        { get:  { summary: 'List mesh models',                       tags: ['Mesh'] } },
+        '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
+        '/api/docs':               { get:  { summary: 'OpenAPI spec (JSON)',                    tags: ['Docs'] } },
+        '/docs':                   { get:  { summary: 'API documentation page',                 tags: ['Docs'] } },
+      },
+    };
+    res.json(spec);
+  });
+
+  app.get('/docs', (_req, res) => {
+    const endpoints = [
+      { cat: 'Auth',     routes: [
+        { method: 'GET',  path: '/login',               desc: 'Login page' },
+        { method: 'POST', path: '/api/login',            desc: 'Authenticate (body: {password})' },
+      ]},
+      { cat: 'System',   routes: [
+        { method: 'GET',  path: '/',                     desc: 'Dashboard UI' },
+        { method: 'GET',  path: '/api/stats',            desc: 'System stats (version, uptime, memory, tokens, requests)' },
+        { method: 'GET',  path: '/api/health',           desc: 'Provider health check' },
+        { method: 'GET',  path: '/api/costs',            desc: 'Cost optimizer status' },
+        { method: 'GET',  path: '/api/update',           desc: 'Check for updates' },
+        { method: 'POST', path: '/api/update',           desc: 'Trigger update' },
+      ]},
+      { cat: 'Sessions', routes: [
+        { method: 'GET',  path: '/api/sessions',         desc: 'List active sessions' },
+        { method: 'GET',  path: '/api/sessions/:id',     desc: 'Get session history by ID' },
+        { method: 'POST', path: '/api/sessions/:id/close', desc: 'Close/drop a session' },
+      ]},
+      { cat: 'Agents',   routes: [
+        { method: 'GET',  path: '/api/agents',           desc: 'List agents + capacity' },
+        { method: 'POST', path: '/api/agents/spawn',     desc: 'Spawn new agent (body: {name, model?})' },
+        { method: 'POST', path: '/api/agents/stop',      desc: 'Stop agent (body: {id})' },
+      ]},
+      { cat: 'Skills',   routes: [
+        { method: 'GET',  path: '/api/skills',           desc: 'List loaded skills' },
+        { method: 'GET',  path: '/api/tools',            desc: 'List registered tools' },
+      ]},
+      { cat: 'Channels', routes: [
+        { method: 'GET',  path: '/api/channels',         desc: 'List channel statuses' },
+        { method: 'POST', path: '/api/message',          desc: 'Send message (body: {message, channel?, userId?})' },
+        { method: 'POST', path: '/api/chat/stream',      desc: 'Stream chat (SSE, body: {message, model?})' },
+      ]},
+      { cat: 'Config',   routes: [
+        { method: 'GET',  path: '/api/config',           desc: 'Get config' },
+        { method: 'POST', path: '/api/config',           desc: 'Update config' },
+        { method: 'GET',  path: '/api/security',         desc: 'Security audit results' },
+        { method: 'GET',  path: '/api/providers',        desc: 'List configured providers' },
+      ]},
+      { cat: 'Models',   routes: [
+        { method: 'GET',  path: '/api/models',           desc: 'List available models' },
+        { method: 'GET',  path: '/api/models/discover',  desc: 'Discover models from all providers' },
+        { method: 'POST', path: '/api/model/switch',     desc: 'Switch model (body: {model})' },
+      ]},
+      { cat: 'Mesh',     routes: [
+        { method: 'GET',  path: '/api/mesh/hello',       desc: 'Mesh hello/handshake' },
+        { method: 'GET',  path: '/api/mesh/peers',       desc: 'List mesh peers' },
+        { method: 'GET',  path: '/api/mesh/models',      desc: 'List mesh models' },
+      ]},
+      { cat: 'Memory',   routes: [
+        { method: 'GET',  path: '/api/profile',          desc: 'Get personal profile' },
+        { method: 'POST', path: '/api/profile',          desc: 'Update profile' },
+        { method: 'GET',  path: '/api/learning',         desc: 'Learning engine stats' },
+        { method: 'GET',  path: '/api/graphiti',         desc: 'Memory graph data' },
+      ]},
+      { cat: 'Logs',     routes: [
+        { method: 'GET',  path: '/api/logs',             desc: 'Read log file (query: lines)' },
+      ]},
+      { cat: 'Docs',     routes: [
+        { method: 'GET',  path: '/api/docs',             desc: 'OpenAPI spec (JSON)' },
+        { method: 'GET',  path: '/docs',                 desc: 'API documentation page (this page)' },
+      ]},
+    ];
+
+    let rows = '';
+    for (const group of endpoints) {
+      rows += `<tr class="cat-row"><td colspan="3">${group.cat}</td></tr>\n`;
+      for (const r of group.routes) {
+        const badge = r.method === 'GET'
+          ? '<span class="badge get">GET</span>'
+          : '<span class="badge post">POST</span>';
+        rows += `<tr><td>${badge}</td><td class="path">${r.path}</td><td>${r.desc}</td></tr>\n`;
+      }
+    }
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TITAN API Docs</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:40px 20px;line-height:1.6}
+.wrap{max-width:900px;margin:0 auto}
+h1{font-size:28px;font-weight:700;color:#06b6d4;margin-bottom:4px;letter-spacing:2px}
+.sub{color:#94a3b8;font-size:14px;margin-bottom:32px}
+.sub a{color:#06b6d4;text-decoration:none}
+.sub a:hover{text-decoration:underline}
+table{width:100%;border-collapse:collapse}
+tr{border-bottom:1px solid rgba(42,48,80,0.4)}
+tr:hover:not(.cat-row){background:rgba(6,182,212,0.04)}
+td{padding:10px 12px;font-size:14px;vertical-align:middle}
+.cat-row td{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:#06b6d4;padding-top:28px;padding-bottom:8px;border-bottom:1px solid rgba(6,182,212,0.15)}
+.badge{display:inline-block;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:0.5px;min-width:52px;text-align:center}
+.badge.get{background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.3)}
+.badge.post{background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)}
+.path{font-family:'Fira Code','SF Mono',monospace;color:#e2e8f0;font-size:13px}
+.footer{margin-top:40px;text-align:center;color:#475569;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TITAN API</h1>
+  <div class="sub">v${TITAN_VERSION} &mdash; <a href="/api/docs">OpenAPI JSON</a></div>
+  <table>${rows}</table>
+  <div class="footer">All /api/* routes require authentication (Bearer token) unless noted.</div>
+</div>
+</body>
+</html>`);
   });
 
   // Create HTTP server

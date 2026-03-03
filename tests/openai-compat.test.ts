@@ -454,11 +454,11 @@ describe('OpenAICompatProvider', () => {
     // ── PROVIDER_PRESETS ──────────────────────────────────────────────
 
     describe('PROVIDER_PRESETS', () => {
-        it('should contain 10 provider presets', () => {
-            expect(PROVIDER_PRESETS).toHaveLength(10);
+        it('should contain 13 provider presets', () => {
+            expect(PROVIDER_PRESETS).toHaveLength(13);
         });
 
-        it('should include groq, mistral, openrouter, fireworks, xai, together, deepseek, cerebras, cohere, perplexity', () => {
+        it('should include groq, mistral, openrouter, fireworks, xai, together, deepseek, cerebras, cohere, perplexity, venice, bedrock, litellm', () => {
             const names = PROVIDER_PRESETS.map(p => p.name);
             expect(names).toContain('groq');
             expect(names).toContain('mistral');
@@ -470,11 +470,14 @@ describe('OpenAICompatProvider', () => {
             expect(names).toContain('cerebras');
             expect(names).toContain('cohere');
             expect(names).toContain('perplexity');
+            expect(names).toContain('venice');
+            expect(names).toContain('bedrock');
+            expect(names).toContain('litellm');
         });
 
-        it('every preset should have HTTPS URLs and non-empty known models', () => {
+        it('every preset should have valid URLs and non-empty known models', () => {
             for (const p of PROVIDER_PRESETS) {
-                expect(p.defaultBaseUrl).toMatch(/^https:\/\//);
+                expect(p.defaultBaseUrl).toMatch(/^https?:\/\//);
                 expect(p.knownModels.length).toBeGreaterThan(0);
                 expect(p.envKey).toBeTruthy();
                 expect(p.configKey).toBeTruthy();

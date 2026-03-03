@@ -24,6 +24,9 @@ const PROVIDER_ALIASES: Record<string, string> = {
     'vertex-ai': 'google',
     'azure': 'openai',
     'azure-openai': 'openai',
+    'aws': 'bedrock',
+    'amazon': 'bedrock',
+    'litellm-proxy': 'litellm',
 };
 
 /** Normalize provider names for consistency (e.g. "grok" → "xai", "local" → "ollama") */

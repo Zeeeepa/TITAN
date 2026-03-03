@@ -32,9 +32,17 @@ vi.mock('../src/utils/constants.js', () => ({
     TITAN_SKILLS_DIR: '/tmp/titan-test-cli/workspace/skills',
     TITAN_LOGS_DIR: '/tmp/titan-test-cli/logs',
     TITAN_MEMORY_DIR: '/tmp/titan-test-cli/memory',
+    AGENTS_MD: '/tmp/titan-test-cli/workspace/AGENTS.md',
+    SOUL_MD: '/tmp/titan-test-cli/workspace/SOUL.md',
+    TOOLS_MD: '/tmp/titan-test-cli/workspace/TOOLS.md',
     DEFAULT_GATEWAY_HOST: '127.0.0.1',
     DEFAULT_GATEWAY_PORT: 48420,
+    DEFAULT_WEB_PORT: 48421,
     DEFAULT_MODEL: 'anthropic/claude-sonnet-4-20250514',
+    DEFAULT_MAX_TOKENS: 8192,
+    DEFAULT_TEMPERATURE: 0.7,
+    DEFAULT_SANDBOX_MODE: 'host',
+    ALLOWED_TOOLS_DEFAULT: ['shell', 'read_file', 'write_file'],
 }));
 
 const mockLoadConfig = vi.fn().mockReturnValue({

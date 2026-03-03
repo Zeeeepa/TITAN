@@ -213,9 +213,10 @@ program
 program
     .command('doctor')
     .description('Diagnose TITAN configuration and connectivity')
-    .action(async () => {
+    .option('--fix', 'Auto-fix detected issues')
+    .action(async (options) => {
         console.log(chalk.cyan(TITAN_ASCII_LOGO));
-        await runDoctor();
+        await runDoctor({ fix: options.fix });
         process.exit(0);
     });
 
@@ -476,7 +477,7 @@ program
             }
             console.log(chalk.gray('\n  Switch model: titan model --set <model-id>'));
         } else if (options.list) {
-            console.log(chalk.cyan('\n🧠 Known Models (14 Providers)\n'));
+            console.log(chalk.cyan('\n🧠 Known Models (17 Providers)\n'));
             const models = [
                 { provider: 'Anthropic', models: ['anthropic/claude-opus-4-0', 'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-haiku-4-20250414'] },
                 { provider: 'OpenAI', models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'] },
@@ -491,6 +492,9 @@ program
                 { provider: 'Cerebras (Ultra-Fast)', models: ['cerebras/llama-3.3-70b', 'cerebras/qwen-3-32b'] },
                 { provider: 'Cohere', models: ['cohere/command-r-plus', 'cohere/command-r'] },
                 { provider: 'Perplexity (Search)', models: ['perplexity/sonar', 'perplexity/sonar-pro'] },
+                { provider: 'Venice AI (Privacy)', models: ['venice/llama-3.3-70b', 'venice/deepseek-r1-671b', 'venice/qwen-2.5-vl-72b'] },
+                { provider: 'AWS Bedrock (Proxy)', models: ['bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0', 'bedrock/amazon.titan-text-premier-v1:0'] },
+                { provider: 'LiteLLM (Universal)', models: ['litellm/gpt-4o', 'litellm/claude-sonnet-4-20250514'] },
                 { provider: 'Ollama (local)', models: ['ollama/<your-models>'] },
             ];
             for (const group of models) {
@@ -754,6 +758,60 @@ program
             console.log(chalk.gray('\nNo Docker or external API key required — uses your configured LLM provider.'));
         } else {
             console.log(chalk.gray('Usage: titan graphiti --init | --stats | --clear'));
+        }
+        process.exit(0);
+    });
+
+// ─── VAULT ──────────────────────────────────────────────────────
+program
+    .command('vault')
+    .description('Manage encrypted secrets vault')
+    .option('--init', 'Initialize a new vault (prompts for passphrase)')
+    .option('--unlock', 'Unlock the vault (prompts for passphrase)')
+    .option('--lock', 'Lock the vault (clear secrets from memory)')
+    .option('--set <name>', 'Set a secret value')
+    .option('--get <name>', 'Get a secret value')
+    .option('--delete <name>', 'Delete a secret')
+    .option('--list', 'List all secret names')
+    .action(async (options) => {
+        const { initVault, unlockVault, lockVault, setSecret, getSecret, deleteSecret, listSecretNames, isVaultUnlocked } = await import('../security/secrets.js');
+        const { password: promptPassword } = await import('@inquirer/prompts');
+
+        if (options.init) {
+            const pass = await promptPassword({ message: 'Set vault passphrase:', mask: '*' });
+            const confirmPass = await promptPassword({ message: 'Confirm passphrase:', mask: '*' });
+            if (pass !== confirmPass) { console.log(chalk.red('Passphrases do not match.')); process.exit(1); }
+            initVault(pass);
+            console.log(chalk.green('Vault initialized at ~/.titan/vault.enc'));
+        } else if (options.unlock) {
+            const pass = await promptPassword({ message: 'Vault passphrase:', mask: '*' });
+            try {
+                unlockVault(pass);
+                console.log(chalk.green('Vault unlocked.'));
+            } catch { console.log(chalk.red('Failed to unlock vault. Wrong passphrase?')); }
+        } else if (options.lock) {
+            lockVault();
+            console.log(chalk.green('Vault locked.'));
+        } else if (options.set) {
+            if (!isVaultUnlocked()) { console.log(chalk.red('Vault is locked. Run: titan vault --unlock')); process.exit(1); }
+            const value = await promptPassword({ message: `Value for "${options.set}":`, mask: '*' });
+            setSecret(options.set, value);
+            console.log(chalk.green(`Secret "${options.set}" saved.`));
+        } else if (options.get) {
+            if (!isVaultUnlocked()) { console.log(chalk.red('Vault is locked. Run: titan vault --unlock')); process.exit(1); }
+            const val = getSecret(options.get);
+            console.log(val ? chalk.white(val) : chalk.yellow('Secret not found.'));
+        } else if (options.delete) {
+            if (!isVaultUnlocked()) { console.log(chalk.red('Vault is locked. Run: titan vault --unlock')); process.exit(1); }
+            deleteSecret(options.delete);
+            console.log(chalk.green(`Secret "${options.delete}" deleted.`));
+        } else if (options.list) {
+            if (!isVaultUnlocked()) { console.log(chalk.red('Vault is locked. Run: titan vault --unlock')); process.exit(1); }
+            const names = listSecretNames();
+            if (names.length === 0) { console.log(chalk.gray('Vault is empty.')); }
+            else { names.forEach(n => console.log(`  ${chalk.white(n)}`)); }
+        } else {
+            console.log(chalk.gray('Usage: titan vault --init | --unlock | --lock | --set <name> | --get <name> | --list'));
         }
         process.exit(0);
     });

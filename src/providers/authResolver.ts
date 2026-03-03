@@ -4,6 +4,7 @@
  * Priority chain: auth profiles (sorted by priority, skip cooled-down) > config apiKey > env var
  */
 import logger from '../utils/logger.js';
+import { getSecret, isVaultUnlocked } from '../security/secrets.js';
 
 const COMPONENT = 'AuthResolver';
 
@@ -49,6 +50,19 @@ export function resolveApiKey(
                 return profile.apiKey;
             }
         }
+    }
+
+    // Resolve vault references
+    if (configKey && configKey.startsWith('$VAULT:')) {
+        const secretName = configKey.slice(7);
+        if (isVaultUnlocked()) {
+            const vaultValue = getSecret(secretName);
+            if (vaultValue) {
+                logger.debug(COMPONENT, `Resolved vault reference: $VAULT:${secretName}`);
+                return vaultValue;
+            }
+        }
+        logger.warn(COMPONENT, `Vault reference $VAULT:${secretName} could not be resolved (vault locked or secret not found)`);
     }
 
     // Fallback to config key

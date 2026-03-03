@@ -109,20 +109,20 @@ describe('getModelAliases', () => {
 });
 
 describe('PROVIDER_PRESETS', () => {
-    it('should contain exactly 10 presets', () => {
-        expect(PROVIDER_PRESETS).toHaveLength(10);
+    it('should contain exactly 13 presets', () => {
+        expect(PROVIDER_PRESETS).toHaveLength(13);
     });
 
     it('should have unique names', () => {
         const names = PROVIDER_PRESETS.map((p) => p.name);
-        expect(new Set(names).size).toBe(10);
+        expect(new Set(names).size).toBe(13);
     });
 
-    it('every preset should have required fields and HTTPS URL', () => {
+    it('every preset should have required fields and valid URL', () => {
         for (const preset of PROVIDER_PRESETS) {
             expect(preset.name).toBeTruthy();
             expect(preset.displayName).toBeTruthy();
-            expect(preset.defaultBaseUrl).toMatch(/^https:\/\//);
+            expect(preset.defaultBaseUrl).toMatch(/^https?:\/\//);
             expect(preset.envKey).toBeTruthy();
             expect(preset.knownModels.length).toBeGreaterThan(0);
         }

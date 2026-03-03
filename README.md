@@ -5,13 +5,13 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework. 14 providers. 30+ tools. 1,200+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework. 17 providers. 30+ tools. 2,100+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
-  <a href="#providers"><img src="https://img.shields.io/badge/providers-14-purple" alt="14 Providers"/></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-17-purple" alt="17 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-30-orange" alt="30 Tools"/></a>
 </p>
 
@@ -56,8 +56,8 @@ npm run dev:gateway        # Start in dev mode
 |---|---|---|
 | **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation |
 | **Native compilation** | None — all pure JS deps | Often require node-gyp, system libraries |
-| **Providers** | 14 (50+ preconfigured models) with automatic failover | 1-4 providers, no failover |
-| **Security** | Prompt injection shield, DM pairing, E2E encryption, tool sandboxing | Minimal or none |
+| **Providers** | 17 (60+ preconfigured models) with automatic failover | 1-4 providers, no failover |
+| **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | Minimal or none |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
 | **Skills** | 30 built-in + drop-in YAML/JS creation | Fixed tool set |
@@ -69,7 +69,7 @@ npm run dev:gateway        # Start in dev mode
 
 ## Features
 
-### 14 AI Providers, 50+ Models
+### 17 AI Providers, 60+ Models
 
 Connect any combination of cloud and local models. TITAN routes, fails over, and load-balances automatically.
 
@@ -165,6 +165,24 @@ TITAN gets smarter the more you use it:
 - Remembers your name, preferences, work context
 - Personal continuity across all sessions
 
+### Encrypted Secrets Vault
+
+Store API keys and credentials securely in an AES-256-GCM encrypted vault with PBKDF2 key derivation. Reference secrets in config via `$VAULT:secret_name`.
+
+```bash
+titan vault --init              # Create vault with passphrase
+titan vault --set OPENAI_KEY    # Store a secret
+titan vault --list              # List stored secrets
+```
+
+### Tamper-Evident Audit Log
+
+HMAC-SHA256 chained JSONL audit trail at `~/.titan/audit.jsonl`. Tracks tool executions, config changes, auth events, and security alerts with cryptographic tamper detection.
+
+### Self-Healing Doctor
+
+`titan doctor --fix` automatically diagnoses and repairs common issues: missing directories, invalid configs, broken channels, stale logs, orphaned sessions, and file permissions.
+
 ### E2E Encrypted Sessions
 
 AES-256-GCM encryption for sensitive conversations. Keys generated per-session, held in memory only.
@@ -173,7 +191,7 @@ AES-256-GCM encryption for sensitive conversations. Keys generated per-session, 
 
 ## Providers
 
-TITAN supports 14 AI providers out of the box. Add your API key and go.
+TITAN supports 17 AI providers out of the box. Add your API key and go.
 
 | Provider | Models | Type |
 |----------|--------|------|
@@ -191,6 +209,9 @@ TITAN supports 14 AI providers out of the box. Add your API key and go.
 | **Cerebras** | LLaMA 3.3, LLaMA 3.1, Qwen 3 | Cloud (Fast inference) |
 | **Cohere** | Command-R+, Command-R, Command-R 7B | Cloud |
 | **Perplexity** | Sonar, Sonar Pro, Sonar Reasoning | Cloud (Search-augmented) |
+| **Venice AI** | LLaMA 3.3 70B, DeepSeek-R1 671B, Qwen 2.5 VL | Cloud (Privacy-first) |
+| **AWS Bedrock** | Claude, Titan Text, LLaMA 3 (via proxy) | Cloud (Enterprise) |
+| **LiteLLM** | Any model via universal proxy | Self-hosted (Proxy) |
 
 All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider.
 
@@ -377,6 +398,8 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 | `titan skills --create "..."` | Generate a skill with AI |
 | `titan pairing` | Manage DM access control |
 | `titan doctor` | System diagnostics |
+| `titan doctor --fix` | Auto-fix detected issues |
+| `titan vault` | Manage encrypted secrets vault |
 | `titan config` | View/edit configuration |
 | `titan graphiti --init` | Initialize knowledge graph |
 | `titan graphiti --stats` | Graph statistics |
@@ -398,6 +421,8 @@ All state lives in `~/.titan/`:
 | `graph.json` | Temporal knowledge graph |
 | `knowledge.json` | Learning engine knowledge base |
 | `profile.json` | User profile and preferences |
+| `vault.enc` | Encrypted secrets vault |
+| `audit.jsonl` | Tamper-evident audit trail |
 | `node-id` | Mesh networking node identity |
 | `logs/` | Daily log files |
 | `plans/` | Persistent task planner state |
@@ -410,11 +435,11 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (1,213 tests, 37 files)
+npm run test           # vitest (2,100+ tests, 57 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
-npm run test:coverage  # Coverage report (56%+ with 55% threshold)
+npm run test:coverage  # Coverage report (68%+ with 55% threshold)
 ```
 
 ### Architecture
@@ -423,16 +448,16 @@ npm run test:coverage  # Coverage report (56%+ with 55% threshold)
 src/
   agent/        Core agent loop, multi-agent, swarm, planner, autonomy
   channels/     Discord, Telegram, Slack, Google Chat, WebChat
-  providers/    Anthropic, OpenAI, Google, Ollama + 10 OpenAI-compatible
+  providers/    Anthropic, OpenAI, Google, Ollama + 13 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
   skills/       30 built-in tools + user skill loader
-  security/     Shield, sandbox, encryption, pairing
+  security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
   recipes/      Workflow engine + persistence
   mcp/          Model Context Protocol client
   config/       Zod schema + loader
-  cli/          Commander.js CLI (15 commands)
+  cli/          Commander.js CLI (16 commands), self-healing doctor
   utils/        Constants, logger, helpers
 ```
 
@@ -455,6 +480,8 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
 
 ### Recently Shipped (v2026.5.x)
+- **v2026.5.4**: Encrypted secrets vault, tamper-evident audit log, self-healing doctor (`--fix`), 3 new providers (Venice AI, AWS Bedrock, LiteLLM), resource limits, 2,100+ tests
+- **v2026.5.3**: 20 runtime bug fixes (Batches 1-2), 1,523 tests, 66.88% coverage
 - Email skill (IMAP/SMTP via Nodemailer)
 - PDF parsing skill (pdf-parse)
 - Computer use (screenshots, mouse, keyboard via nut.js)

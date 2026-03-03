@@ -49,6 +49,18 @@ export const SecurityConfigSchema = z.object({
         enabled: z.boolean().default(true),
         mode: z.enum(['standard', 'strict']).default('strict'),
     }).default({}),
+    maxMemoryMB: z.number().default(2048),
+    maxSubprocesses: z.number().default(10),
+    maxDiskWriteMB: z.number().default(1024),
+    vault: z.object({
+        enabled: z.boolean().default(false),
+        path: z.string().optional(),
+    }).default({}),
+    auditLog: z.object({
+        enabled: z.boolean().default(true),
+        path: z.string().optional(),
+        retentionDays: z.number().default(90),
+    }).default({}),
 });
 
 export const GatewayConfigSchema = z.object({
@@ -118,6 +130,9 @@ export const TitanConfigSchema = z.object({
         cerebras: ProviderConfigSchema.default({}),
         cohere: ProviderConfigSchema.default({}),
         perplexity: ProviderConfigSchema.default({}),
+        venice: ProviderConfigSchema.default({}),
+        bedrock: ProviderConfigSchema.default({}),
+        litellm: ProviderConfigSchema.default({}),
     }).default({}),
     channels: z.object({
         discord: ChannelConfigSchema.default({}),

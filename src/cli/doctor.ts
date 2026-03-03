@@ -1,26 +1,44 @@
 /**
- * TITAN — Doctor Diagnostic Tool
+ * TITAN -- Doctor Diagnostic Tool
  * Checks system health, configuration, connectivity, and dependencies.
+ * Supports --fix flag to auto-heal detected issues via selfHeal.ts.
  */
 import chalk from 'chalk';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
+import { join } from 'path';
 import { loadConfig, configExists } from '../config/config.js';
-import { TITAN_HOME, TITAN_CONFIG_PATH, TITAN_DB_PATH, TITAN_WORKSPACE, TITAN_VERSION } from '../utils/constants.js';
+import { TITAN_HOME, TITAN_CONFIG_PATH, TITAN_DB_PATH, TITAN_WORKSPACE, TITAN_VERSION, TITAN_LOGS_DIR } from '../utils/constants.js';
 import { healthCheckAll } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { getStallStats } from '../agent/stallDetector.js';
+import {
+    fixMissingTitanHome,
+    fixMissingConfig,
+    fixInvalidConfig,
+    fixMissingWorkspace,
+    fixBrokenChannelConfig,
+    fixPermissions,
+    fixStaleLogFiles,
+    fixOrphanedSessions,
+    type HealResult,
+} from './selfHeal.js';
 
 interface CheckResult {
     name: string;
     status: 'pass' | 'warn' | 'fail';
     message: string;
+    /** Key used to map to an auto-fix function */
+    fixKey?: string;
 }
 
-export async function runDoctor(): Promise<void> {
+export async function runDoctor(options?: { fix?: boolean }): Promise<void> {
+    const autoFix = options?.fix ?? false;
+
     console.log(chalk.cyan(`\n🩺 TITAN Doctor v${TITAN_VERSION}\n`));
     console.log(chalk.gray('Running diagnostics...\n'));
 
     const checks: CheckResult[] = [];
+    const healResults: HealResult[] = [];
 
     // 1. Node.js version
     const nodeVersion = process.versions.node;
@@ -36,6 +54,7 @@ export async function runDoctor(): Promise<void> {
         name: 'TITAN home directory',
         status: existsSync(TITAN_HOME) ? 'pass' : 'warn',
         message: existsSync(TITAN_HOME) ? TITAN_HOME : `Not found: ${TITAN_HOME} (run: titan onboard)`,
+        fixKey: 'titanHome',
     });
 
     // 3. Configuration file
@@ -43,6 +62,7 @@ export async function runDoctor(): Promise<void> {
         name: 'Configuration file',
         status: configExists() ? 'pass' : 'warn',
         message: configExists() ? TITAN_CONFIG_PATH : `Not found (run: titan onboard)`,
+        fixKey: 'config',
     });
 
     // 4. Database
@@ -57,6 +77,7 @@ export async function runDoctor(): Promise<void> {
         name: 'Workspace directory',
         status: existsSync(TITAN_WORKSPACE) ? 'pass' : 'warn',
         message: existsSync(TITAN_WORKSPACE) ? TITAN_WORKSPACE : `Not found (run: titan onboard)`,
+        fixKey: 'workspace',
     });
 
     // 6. AI Provider connectivity
@@ -98,6 +119,7 @@ export async function runDoctor(): Promise<void> {
                         name: `Channel: ${channelName}`,
                         status: hasToken ? 'pass' : 'fail',
                         message: hasToken ? 'Configured' : 'Enabled but no token set',
+                        fixKey: 'channels',
                     });
                 }
             }
@@ -106,6 +128,7 @@ export async function runDoctor(): Promise<void> {
                 name: 'Config validation',
                 status: 'fail',
                 message: (error as Error).message,
+                fixKey: 'invalidConfig',
             });
         }
     }
@@ -164,11 +187,115 @@ export async function runDoctor(): Promise<void> {
         message: stallMessage,
     });
 
+    // 12. Stale sessions check
+    const sessionsDir = join(TITAN_HOME, 'sessions');
+    if (existsSync(sessionsDir)) {
+        try {
+            const sessionFiles = readdirSync(sessionsDir);
+            const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+            let staleCount = 0;
+            for (const file of sessionFiles) {
+                const fullPath = join(sessionsDir, file);
+                try {
+                    const stat = statSync(fullPath);
+                    if (stat.isFile() && stat.mtimeMs < oneDayAgo) {
+                        staleCount++;
+                    }
+                } catch {
+                    // skip unreadable files
+                }
+            }
+            checks.push({
+                name: 'Stale sessions',
+                status: staleCount > 0 ? 'warn' : 'pass',
+                message: staleCount > 0 ? `${staleCount} session file(s) older than 24 hours` : 'No stale sessions',
+                fixKey: 'staleSessions',
+            });
+        } catch {
+            checks.push({ name: 'Stale sessions', status: 'warn', message: 'Could not read sessions directory' });
+        }
+    } else {
+        checks.push({ name: 'Stale sessions', status: 'pass', message: 'No sessions directory' });
+    }
+
+    // 13. Log directory size check
+    if (existsSync(TITAN_LOGS_DIR)) {
+        try {
+            const logFiles = readdirSync(TITAN_LOGS_DIR);
+            let totalBytes = 0;
+            for (const file of logFiles) {
+                const fullPath = join(TITAN_LOGS_DIR, file);
+                try {
+                    const stat = statSync(fullPath);
+                    if (stat.isFile()) {
+                        totalBytes += stat.size;
+                    }
+                } catch {
+                    // skip unreadable files
+                }
+            }
+            const totalMB = totalBytes / (1024 * 1024);
+            checks.push({
+                name: 'Log directory size',
+                status: totalMB > 100 ? 'warn' : 'pass',
+                message: totalMB > 100
+                    ? `${totalMB.toFixed(1)} MB (consider rotating logs)`
+                    : `${totalMB.toFixed(1)} MB`,
+                fixKey: totalMB > 100 ? 'staleLogs' : undefined,
+            });
+        } catch {
+            checks.push({ name: 'Log directory size', status: 'warn', message: 'Could not check log directory' });
+        }
+    } else {
+        checks.push({ name: 'Log directory size', status: 'pass', message: 'No logs directory' });
+    }
+
+    // 14. Permissions check
+    checks.push({
+        name: 'TITAN home permissions',
+        status: existsSync(TITAN_HOME) ? 'pass' : 'warn',
+        message: existsSync(TITAN_HOME) ? 'Exists' : 'Cannot check (TITAN_HOME missing)',
+        fixKey: 'permissions',
+    });
+
     // Print results
     console.log('');
     const statusIcons = { pass: chalk.green('✅'), warn: chalk.yellow('⚠️ '), fail: chalk.red('❌') };
     for (const check of checks) {
         console.log(`  ${statusIcons[check.status]} ${chalk.white(check.name)}: ${chalk.gray(check.message)}`);
+    }
+
+    // Auto-fix pass if --fix was specified
+    if (autoFix) {
+        console.log(chalk.cyan('\n  🔧 Running auto-fix...\n'));
+
+        const issueChecks = checks.filter((c) => (c.status === 'warn' || c.status === 'fail') && c.fixKey);
+        const fixKeysNeeded = new Set(issueChecks.map((c) => c.fixKey!));
+
+        const fixMap: Record<string, () => HealResult> = {
+            titanHome: fixMissingTitanHome,
+            config: fixMissingConfig,
+            invalidConfig: fixInvalidConfig,
+            workspace: fixMissingWorkspace,
+            channels: fixBrokenChannelConfig,
+            permissions: fixPermissions,
+            staleLogs: fixStaleLogFiles,
+            staleSessions: fixOrphanedSessions,
+        };
+
+        for (const key of fixKeysNeeded) {
+            const fixFn = fixMap[key];
+            if (fixFn) {
+                const result = fixFn();
+                healResults.push(result);
+                const icon = result.success ? chalk.green('✅') : chalk.red('❌');
+                console.log(`  ${icon} ${result.action}: ${chalk.gray(result.message)}`);
+            }
+        }
+
+        const fixedCount = healResults.filter((r) => r.success).length;
+        const remainingCount = healResults.filter((r) => !r.success).length;
+        console.log(chalk.cyan(`\n  🔧 ${fixedCount} issues auto-fixed, ${remainingCount} remaining`));
     }
 
     const passCount = checks.filter((c) => c.status === 'pass').length;
@@ -178,9 +305,9 @@ export async function runDoctor(): Promise<void> {
     console.log(`\n  ${chalk.green(`${passCount} passed`)} | ${chalk.yellow(`${warnCount} warnings`)} | ${chalk.red(`${failCount} failed`)}`);
 
     if (failCount > 0) {
-        console.log(chalk.red('\n  ⚠️  Some checks failed. Run `titan onboard` to fix common issues.\n'));
+        console.log(chalk.red('\n  ⚠️  Some checks failed. Run `titan doctor --fix` or `titan onboard` to fix common issues.\n'));
     } else if (warnCount > 0) {
-        console.log(chalk.yellow('\n  ℹ️  Some warnings found. Review the items above.\n'));
+        console.log(chalk.yellow('\n  ℹ️  Some warnings found. Run `titan doctor --fix` to auto-fix or review the items above.\n'));
     } else {
         console.log(chalk.green('\n  🎉 All checks passed! TITAN is healthy.\n'));
     }

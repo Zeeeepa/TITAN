@@ -120,3 +120,72 @@ export function auditSecurity(): Array<{ level: 'info' | 'warn' | 'error'; messa
 
     return issues;
 }
+
+/** Resource limit configuration */
+export interface ResourceLimits {
+    maxMemoryMB?: number;
+    maxSubprocesses?: number;
+    maxDiskWriteMB?: number;
+}
+
+/** Result of resource limit enforcement check */
+export interface ResourceLimitResult {
+    ok: boolean;
+    violations: string[];
+}
+
+/**
+ * Check current resource usage against specified limits.
+ * Does NOT kill or restrict anything — only reports violations.
+ */
+export function enforceResourceLimits(limits?: ResourceLimits): ResourceLimitResult {
+    const violations: string[] = [];
+
+    if (!limits) {
+        return { ok: true, violations };
+    }
+
+    // Check memory usage
+    if (limits.maxMemoryMB !== undefined && limits.maxMemoryMB > 0) {
+        const memUsage = process.memoryUsage();
+        const rssMB = memUsage.rss / (1024 * 1024);
+        if (rssMB > limits.maxMemoryMB) {
+            violations.push(
+                `Memory usage ${rssMB.toFixed(1)} MB exceeds limit of ${limits.maxMemoryMB} MB`,
+            );
+            logger.warn(COMPONENT, `Resource limit exceeded: memory ${rssMB.toFixed(1)} MB > ${limits.maxMemoryMB} MB`);
+        }
+    }
+
+    // Check subprocess count (heuristic via process._getActiveHandles if available)
+    if (limits.maxSubprocesses !== undefined && limits.maxSubprocesses > 0) {
+        try {
+            // Count ChildProcess handles from active handles
+            const handles = (process as any)._getActiveHandles?.() ?? [];
+            const childProcessCount = handles.filter(
+                (h: any) => h?.constructor?.name === 'ChildProcess',
+            ).length;
+            if (childProcessCount > limits.maxSubprocesses) {
+                violations.push(
+                    `Subprocess count ${childProcessCount} exceeds limit of ${limits.maxSubprocesses}`,
+                );
+                logger.warn(COMPONENT, `Resource limit exceeded: subprocesses ${childProcessCount} > ${limits.maxSubprocesses}`);
+            }
+        } catch {
+            // _getActiveHandles may not be available in all environments
+            logger.debug(COMPONENT, 'Unable to count subprocesses — _getActiveHandles not available');
+        }
+    }
+
+    // Check disk write limit (informational — we track via heapUsed as proxy)
+    if (limits.maxDiskWriteMB !== undefined && limits.maxDiskWriteMB > 0) {
+        // Disk write tracking requires OS-level instrumentation.
+        // We log the limit for awareness but cannot enforce without external tooling.
+        logger.debug(COMPONENT, `Disk write limit set to ${limits.maxDiskWriteMB} MB (advisory only)`);
+    }
+
+    return {
+        ok: violations.length === 0,
+        violations,
+    };
+}

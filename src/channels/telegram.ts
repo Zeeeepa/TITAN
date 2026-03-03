@@ -33,18 +33,27 @@ export class TelegramChannel extends ChannelAdapter {
             const { Bot } = await import('grammy');
             const bot = new Bot(token);
 
+            bot.catch((err: any) => {
+                logger.error(COMPONENT, `Grammy error: ${err.message ?? err}`);
+            });
+
             bot.on('message:text', (ctx: any) => {
-                const inbound: InboundMessage = {
-                    id: String(ctx.message.message_id),
-                    channel: 'telegram',
-                    userId: String(ctx.from.id),
-                    userName: ctx.from.username || ctx.from.first_name,
-                    content: ctx.message.text,
-                    groupId: ctx.chat.type !== 'private' ? String(ctx.chat.id) : undefined,
-                    timestamp: new Date(ctx.message.date * 1000),
-                    raw: ctx,
-                };
-                this.emit('message', inbound);
+                if (!ctx.from) return;
+                try {
+                    const inbound: InboundMessage = {
+                        id: String(ctx.message.message_id),
+                        channel: 'telegram',
+                        userId: String(ctx.from.id),
+                        userName: ctx.from.username || ctx.from.first_name,
+                        content: ctx.message.text,
+                        groupId: ctx.chat.type !== 'private' ? String(ctx.chat.id) : undefined,
+                        timestamp: new Date(ctx.message.date * 1000),
+                        raw: ctx,
+                    };
+                    this.emit('message', inbound);
+                } catch (error) {
+                    logger.error(COMPONENT, `Message handler error: ${(error as Error).message}`);
+                }
             });
 
             bot.start();

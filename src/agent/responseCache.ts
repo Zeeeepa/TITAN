@@ -23,15 +23,17 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
 let totalHits = 0;
 let totalMisses = 0;
 
-/** Generate a cache key from the prompt + model */
+/** Generate a cache key from the last 3 user messages + model (B2-2: reduce collisions) */
 function makeCacheKey(messages: Array<{ role: string; content?: string }>, model: string): string {
     if (!Array.isArray(messages)) return '';
-    // Hash the last user message + model (most common cache scenario)
-    const lastUser = messages.filter((m) => m.role === 'user').pop();
-    if (!lastUser?.content) return '';
+    // Use last 3 user messages for better collision resistance
+    const userMessages = messages.filter((m) => m.role === 'user' && m.content);
+    if (userMessages.length === 0) return '';
+
+    const last3 = userMessages.slice(-3);
+    const str = model + ':' + last3.map((m) => m.content).join('|');
 
     let hash = 0;
-    const str = model + ':' + lastUser.content;
     for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
         hash = ((hash << 5) - hash) + char;
@@ -114,6 +116,20 @@ export function getCacheStats(): {
         hitRate: total > 0 ? `${((totalHits / total) * 100).toFixed(1)}%` : '0%',
         ttlMinutes: DEFAULT_TTL_MS / 60000,
     };
+}
+
+/** Invalidate all cache entries for a specific model (B2-2: call on model switch) */
+export function invalidateCacheForModel(model: string): void {
+    let removed = 0;
+    for (const [key, entry] of cache) {
+        if (entry.model === model) {
+            cache.delete(key);
+            removed++;
+        }
+    }
+    if (removed > 0) {
+        logger.info(COMPONENT, `Invalidated ${removed} cache entries for model: ${model}`);
+    }
 }
 
 /** Clear all cached responses */

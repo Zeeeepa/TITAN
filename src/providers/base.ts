@@ -60,10 +60,14 @@ export interface ChatResponse {
 
 /** Streaming chunk from a chat completion */
 export interface ChatStreamChunk {
-    type: 'text' | 'tool_call' | 'done' | 'error';
+    type: 'text' | 'tool_call' | 'done' | 'error' | 'failover';
     content?: string;
     toolCall?: ToolCall;
     error?: string;
+    /** Present on 'failover' chunks — the original provider that failed */
+    originalProvider?: string;
+    /** Present on 'failover' chunks — the original model that failed */
+    originalModel?: string;
 }
 
 /** Abstract LLM Provider interface */

@@ -48,8 +48,12 @@ import { closeSession } from '../agent/session.js';
 import { initCronScheduler } from '../skills/builtin/cron.js';
 import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
+import { invalidateCacheForModel } from '../agent/responseCache.js';
 
 const COMPONENT = 'Gateway';
+
+/** Fields that require a gateway restart to take effect */
+const RESTART_REQUIRED_PATTERNS = ['channels.*', 'gateway.auth.*', 'logging.level'];
 
 /** Module-level HTTP server reference (allows stopGateway to close it) */
 let httpServer: ReturnType<typeof createServer> | null = null;
@@ -593,39 +597,55 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     try {
       const body = req.body as Record<string, unknown>;
       const cfg = loadConfig();
-      if (body.model) cfg.agent.model = body.model as string;
-      if (body.autonomyMode) cfg.autonomy.mode = body.autonomyMode as 'supervised' | 'autonomous' | 'locked';
-      if (body.sandboxMode) cfg.security.sandboxMode = body.sandboxMode as 'host' | 'docker' | 'none';
-      if (body.logLevel) cfg.logging.level = body.logLevel as 'info' | 'debug' | 'warn' | 'silent';
+
+      // Track which config fields are being changed for restart detection
+      const changedFields: string[] = [];
+
+      if (body.model) { cfg.agent.model = body.model as string; changedFields.push('agent.model'); }
+      if (body.autonomyMode) { cfg.autonomy.mode = body.autonomyMode as 'supervised' | 'autonomous' | 'locked'; changedFields.push('autonomy.mode'); }
+      if (body.sandboxMode) { cfg.security.sandboxMode = body.sandboxMode as 'host' | 'docker' | 'none'; changedFields.push('security.sandboxMode'); }
+      if (body.logLevel) { cfg.logging.level = body.logLevel as 'info' | 'debug' | 'warn' | 'silent'; changedFields.push('logging.level'); }
       // Provider API keys
-      if (body.anthropicKey !== undefined) cfg.providers.anthropic.apiKey = body.anthropicKey as string;
-      if (body.openaiKey !== undefined) cfg.providers.openai.apiKey = body.openaiKey as string;
-      if (body.googleKey !== undefined) cfg.providers.google.apiKey = body.googleKey as string;
-      if (body.ollamaUrl !== undefined) cfg.providers.ollama.baseUrl = body.ollamaUrl as string;
+      if (body.anthropicKey !== undefined) { cfg.providers.anthropic.apiKey = body.anthropicKey as string; changedFields.push('providers.anthropic.apiKey'); }
+      if (body.openaiKey !== undefined) { cfg.providers.openai.apiKey = body.openaiKey as string; changedFields.push('providers.openai.apiKey'); }
+      if (body.googleKey !== undefined) { cfg.providers.google.apiKey = body.googleKey as string; changedFields.push('providers.google.apiKey'); }
+      if (body.ollamaUrl !== undefined) { cfg.providers.ollama.baseUrl = body.ollamaUrl as string; changedFields.push('providers.ollama.baseUrl'); }
       // Agent settings
-      if (body.maxTokens !== undefined) cfg.agent.maxTokens = Number(body.maxTokens);
-      if (body.temperature !== undefined) cfg.agent.temperature = Number(body.temperature);
-      if (body.systemPrompt !== undefined) cfg.agent.systemPrompt = body.systemPrompt as string;
+      if (body.maxTokens !== undefined) { cfg.agent.maxTokens = Number(body.maxTokens); changedFields.push('agent.maxTokens'); }
+      if (body.temperature !== undefined) { cfg.agent.temperature = Number(body.temperature); changedFields.push('agent.temperature'); }
+      if (body.systemPrompt !== undefined) { cfg.agent.systemPrompt = body.systemPrompt as string; changedFields.push('agent.systemPrompt'); }
       // Security shield
-      if (body.shieldEnabled !== undefined) cfg.security.shield.enabled = Boolean(body.shieldEnabled);
-      if (body.shieldMode !== undefined) cfg.security.shield.mode = body.shieldMode as 'strict' | 'standard';
-      if (body.deniedTools !== undefined) cfg.security.deniedTools = body.deniedTools as string[];
-      if (body.networkAllowlist !== undefined) cfg.security.networkAllowlist = body.networkAllowlist as string[];
+      if (body.shieldEnabled !== undefined) { cfg.security.shield.enabled = Boolean(body.shieldEnabled); changedFields.push('security.shield.enabled'); }
+      if (body.shieldMode !== undefined) { cfg.security.shield.mode = body.shieldMode as 'strict' | 'standard'; changedFields.push('security.shield.mode'); }
+      if (body.deniedTools !== undefined) { cfg.security.deniedTools = body.deniedTools as string[]; changedFields.push('security.deniedTools'); }
+      if (body.networkAllowlist !== undefined) { cfg.security.networkAllowlist = body.networkAllowlist as string[]; changedFields.push('security.networkAllowlist'); }
       // Gateway
-      if (body.gatewayPort !== undefined) cfg.gateway.port = Number(body.gatewayPort);
-      if (body.gatewayAuthMode !== undefined) cfg.gateway.auth.mode = body.gatewayAuthMode as 'none' | 'token' | 'password';
-      if (body.gatewayPassword !== undefined) cfg.gateway.auth.password = body.gatewayPassword as string;
-      if (body.gatewayToken !== undefined) cfg.gateway.auth.token = body.gatewayToken as string;
+      if (body.gatewayPort !== undefined) { cfg.gateway.port = Number(body.gatewayPort); changedFields.push('gateway.port'); }
+      if (body.gatewayAuthMode !== undefined) { cfg.gateway.auth.mode = body.gatewayAuthMode as 'none' | 'token' | 'password'; changedFields.push('gateway.auth.mode'); }
+      if (body.gatewayPassword !== undefined) { cfg.gateway.auth.password = body.gatewayPassword as string; changedFields.push('gateway.auth.password'); }
+      if (body.gatewayToken !== undefined) { cfg.gateway.auth.token = body.gatewayToken as string; changedFields.push('gateway.auth.token'); }
       // Channels
       if (body.channels !== undefined && typeof body.channels === 'object') {
         for (const [ch, val] of Object.entries(body.channels as Record<string, unknown>)) {
           if (cfg.channels[ch as keyof typeof cfg.channels]) {
             Object.assign(cfg.channels[ch as keyof typeof cfg.channels], val);
+            changedFields.push(`channels.${ch}`);
           }
         }
       }
       updateConfig(cfg);
-      res.json({ ok: true });
+
+      // Determine which changed fields require a restart
+      const restartFields = changedFields.filter(field =>
+        RESTART_REQUIRED_PATTERNS.some(pattern => {
+          if (pattern.endsWith('.*')) {
+            return field.startsWith(pattern.slice(0, -1));
+          }
+          return field === pattern;
+        })
+      );
+
+      res.json({ ok: true, restartRequired: restartFields.length > 0, restartFields });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }
@@ -668,6 +688,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       const aliases = cfg.agent.modelAliases || {};
       const resolved = aliases[model] || model;
       updateConfig({ agent: { ...cfg.agent, model: resolved } });
+      // Invalidate cached responses for the old model so stale results aren't served
+      invalidateCacheForModel(cfg.agent.model);
       logger.info(COMPONENT, `Model switched to: ${resolved}${resolved !== model ? ` (alias: ${model})` : ''}`);
       res.json({ success: true, model: resolved, alias: resolved !== model ? model : undefined });
     } catch (err) {

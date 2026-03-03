@@ -4,6 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import vm from 'vm';
 import { TITAN_HOME, TITAN_SKILLS_DIR } from '../utils/constants.js';
 import { registerTool, type ToolHandler } from '../agent/toolRunner.js';
 import { ensureDir } from '../utils/helpers.js';
@@ -296,14 +297,33 @@ function loadYamlSkill(filePath: string): ToolHandler | null {
         },
         execute: async (args: Record<string, unknown>) => {
             try {
-                // Create a sandboxed function from the script
-                const fn = new Function('args', 'require', script);
-                const result = await fn(args, (mod: string) => {
-                    // Only allow built-in modules
+                // Run in a restricted VM context — no access to globalThis, process, eval, or Function
+                const safeRequire = (mod: string) => {
                     const allowed = ['fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'url', 'util'];
                     if (!allowed.includes(mod)) throw new Error(`Module "${mod}" not allowed in YAML skills`);
-                    return globalThis.require(mod); // eslint-disable-line @typescript-eslint/no-require-imports
-                });
+                    return require(mod); // eslint-disable-line @typescript-eslint/no-require-imports
+                };
+                const sandbox: Record<string, unknown> = {
+                    args,
+                    require: safeRequire,
+                    console: { log: console.log },
+                    JSON,
+                    Math,
+                    Date,
+                    String,
+                    Number,
+                    Array,
+                    Object,
+                    RegExp,
+                    Map,
+                    Set,
+                    Promise,
+                    setTimeout,
+                    Buffer,
+                };
+                // Wrap the user script in an async IIFE so `return` works and we can await it
+                const wrapped = `(async function() { ${script} })()`;
+                const result = await vm.runInNewContext(wrapped, sandbox, { timeout: 10000 });
                 return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
             } catch (err) {
                 return `Error: ${(err as Error).message}`;

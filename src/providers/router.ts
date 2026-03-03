@@ -199,7 +199,8 @@ export async function chat(options: ChatOptions): Promise<ChatResponse> {
 
                 logger.warn(COMPONENT, `Failing over from ${provider.name}/${model} → ${fallback.name}/${preferred}`);
                 return await fallback.chat({ ...options, model: preferred });
-            } catch {
+            } catch (fallbackErr) {
+                logger.warn(COMPONENT, `Fallback ${fallbackName} also failed: ${fallbackErr}`);
                 continue;
             }
         }
@@ -218,6 +219,15 @@ export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStre
         yield* provider.chatStream({ ...options, model });
     } catch (error) {
         logger.error(COMPONENT, `Stream provider ${provider.name} failed: ${(error as Error).message}`);
+
+        // Notify consumer that a failover is happening
+        yield {
+            type: 'failover' as const,
+            originalProvider: provider.name,
+            originalModel: model,
+            error: (error as Error).message,
+        };
+
         // Attempt failover to other providers
         const failoverOrder = ['anthropic', 'openai', 'google', 'ollama'];
         let failedOver = false;
@@ -241,7 +251,8 @@ export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStre
                 yield* fallback.chatStream({ ...options, model: preferred });
                 failedOver = true;
                 break;
-            } catch {
+            } catch (fallbackErr) {
+                logger.warn(COMPONENT, `Fallback ${fallbackName} also failed: ${fallbackErr}`);
                 continue;
             }
         }

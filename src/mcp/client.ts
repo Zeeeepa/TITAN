@@ -45,6 +45,47 @@ export interface McpConnection {
 const activeConnections: Map<string, McpConnection> = new Map();
 let messageId = 1;
 
+// ─── Pending stdio requests (B2-1: single persistent handler) ────
+interface PendingRequest {
+    resolve: (value: string) => void;
+    reject: (reason: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+}
+const pendingRequests: Map<number, PendingRequest> = new Map();
+const STDIO_TIMEOUT_MS = 30_000;
+
+// Per-process buffers so the single persistent handler can parse across chunks
+const processBuffers: Map<ChildProcess, string> = new Map();
+
+/** Attach a single persistent stdout handler to an MCP stdio process */
+function setupStdoutHandler(proc: ChildProcess): void {
+    if (!proc.stdout) return;
+    proc.stdout.on('data', (data: Buffer) => {
+        let buffer = (processBuffers.get(proc) || '') + data.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        processBuffers.set(proc, buffer);
+
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const msg = JSON.parse(line);
+                if (msg.id != null && pendingRequests.has(msg.id)) {
+                    const pending = pendingRequests.get(msg.id)!;
+                    clearTimeout(pending.timer);
+                    pendingRequests.delete(msg.id);
+                    if (msg.error) {
+                        pending.resolve(msg.error.message || 'MCP error');
+                    } else {
+                        const content = msg.result?.content as { text?: string }[] | undefined;
+                        pending.resolve(content?.map((c) => c.text || '').join('\n') || 'No output');
+                    }
+                }
+            } catch { /* not JSON, ignore */ }
+        }
+    });
+}
+
 // ─── JSON-RPC helpers ─────────────────────────────────────────────
 function makeRequest(method: string, params?: unknown): string {
     return JSON.stringify({
@@ -86,7 +127,7 @@ async function connectStdio(server: McpServer): Promise<McpConnection> {
         let buffer = '';
         let initialized = false;
 
-        proc.stdout?.on('data', (data: Buffer) => {
+        const onInitData = (data: Buffer) => {
             buffer += data.toString();
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
@@ -102,13 +143,18 @@ async function connectStdio(server: McpServer): Promise<McpConnection> {
                     } else if (msg.result?.tools) {
                         connection.tools = msg.result.tools as McpTool[];
                         connection.status = 'connected';
+                        // Remove init handler and install persistent handler for tool calls (B2-1)
+                        proc.stdout!.off('data', onInitData);
+                        setupStdoutHandler(proc);
                         resolve(connection);
                     }
                 } catch {
                     // not JSON, ignore
                 }
             }
-        });
+        };
+
+        proc.stdout?.on('data', onInitData);
 
         proc.on('error', (err) => {
             connection.status = 'error';
@@ -184,42 +230,26 @@ async function callMcpTool(connection: McpConnection, toolName: string, args: Re
         return data.result?.content?.map((c) => c.text || '').join('\n') || 'No output';
     }
 
-    // stdio call
-    return new Promise((resolve, reject) => {
-        if (!connection.process?.stdin) {
-            reject(new Error('MCP process not running'));
-            return;
-        }
+    // stdio call — uses single persistent handler + pending request map (B2-1)
+    if (!connection.process?.stdin) {
+        throw new Error('MCP process not running');
+    }
 
-        const reqId = messageId;
-        const request = makeRequest('tools/call', { name: toolName, arguments: args });
-        let buffer = '';
+    const reqId = messageId; // capture before makeRequest increments
+    const request = makeRequest('tools/call', { name: toolName, arguments: args });
 
-        const onData = (data: Buffer) => {
-            buffer += data.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const msg = JSON.parse(line);
-                    if (msg.id === reqId) {
-                        connection.process!.stdout!.off('data', onData);
-                        const content = msg.result?.content as { text?: string }[] | undefined;
-                        resolve(content?.map((c) => c.text || '').join('\n') || msg.error?.message || 'No output');
-                    }
-                } catch { /* ignore */ }
-            }
-        };
+    const promise = new Promise<string>((resolve, reject) => {
+        const timeoutMs = Math.min(connection.server.timeoutMs, STDIO_TIMEOUT_MS) || STDIO_TIMEOUT_MS;
+        const timer = setTimeout(() => {
+            pendingRequests.delete(reqId);
+            reject(new Error(`MCP tool call timed out after ${timeoutMs}ms (request #${reqId})`));
+        }, timeoutMs);
 
-        connection.process.stdout!.on('data', onData);
-        connection.process.stdin.write(request);
-
-        setTimeout(() => {
-            connection.process!.stdout!.off('data', onData);
-            reject(new Error(`MCP tool call timed out`));
-        }, connection.server.timeoutMs);
+        pendingRequests.set(reqId, { resolve, reject, timer });
     });
+
+    connection.process.stdin.write(request);
+    return promise;
 }
 
 // ─── Public API ───────────────────────────────────────────────────
@@ -264,6 +294,10 @@ export function disconnectMcpServer(serverId: string): void {
         unregisterTool(prefixedName);
     }
 
+    // Clean up process buffer for this connection (B2-1)
+    if (connection.process) {
+        processBuffers.delete(connection.process);
+    }
     connection.process?.kill();
     activeConnections.delete(serverId);
     logger.info(COMPONENT, `Disconnected MCP server: ${serverId}`);

@@ -15,6 +15,8 @@ export class WhatsAppChannel extends ChannelAdapter {
     readonly displayName = 'WhatsApp';
     private connected = false;
     private socket: unknown = null;
+    private reconnectAttempts = 0;
+    private reconnecting = false;
 
     async connect(): Promise<void> {
         const config = loadConfig();
@@ -53,8 +55,25 @@ export class WhatsAppChannel extends ChannelAdapter {
                     this.connected = false;
                     const reason = (lastDisconnect?.error as any)?.output?.statusCode;
                     if (reason !== DisconnectReason.loggedOut) {
-                        logger.info(COMPONENT, 'Disconnected, reconnecting...');
-                        this.connect(); // Auto-reconnect
+                        const MAX_RETRIES = 10;
+                        if (this.reconnecting) return;
+                        if (this.reconnectAttempts >= MAX_RETRIES) {
+                            logger.error(COMPONENT, `Max reconnect attempts (${MAX_RETRIES}) reached, giving up`);
+                            return;
+                        }
+                        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 60000);
+                        this.reconnectAttempts++;
+                        this.reconnecting = true;
+                        logger.info(COMPONENT, `Disconnected, reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${MAX_RETRIES})...`);
+                        setTimeout(() => {
+                            this.reconnecting = false;
+                            // Clean up old socket before reconnecting
+                            if (this.socket) {
+                                try { (this.socket as any).end?.(); } catch { /* ignore */ }
+                                this.socket = null;
+                            }
+                            this.connect();
+                        }, delay);
                     } else {
                         logger.warn(COMPONENT, 'Logged out. Run titan pairing --whatsapp to re-pair');
                     }
@@ -62,6 +81,8 @@ export class WhatsAppChannel extends ChannelAdapter {
 
                 if (connection === 'open') {
                     this.connected = true;
+                    this.reconnectAttempts = 0;
+                    this.reconnecting = false;
                     logger.info(COMPONENT, 'Connected to WhatsApp');
                 }
             });

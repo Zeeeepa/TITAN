@@ -9,7 +9,7 @@ import { loadConfig } from '../config/config.js';
 import { chat } from '../providers/router.js';
 import type { ChatMessage } from '../providers/base.js';
 import { TITAN_HOME } from '../utils/constants.js';
-import { loadAutoSkills } from '../skills/registry.js';
+import { loadAutoSkills, getSkill } from '../skills/registry.js';
 import logger from '../utils/logger.js';
 import { execFileSync } from 'child_process';
 
@@ -149,7 +149,28 @@ export async function generateAndInstallSkill(
         // By calling loadAutoSkills, it will pick up the new .js file if we ensure it scans the auto dir
         await loadAutoSkills();
 
-        logger.info(COMPONENT, `✨ Successfully generated and installed new skill: ${finalName}`);
+        // 6. Verify the skill was actually registered (B2-5)
+        const registered = getSkill(finalName);
+        if (!registered) {
+            logger.error(COMPONENT, `Skill "${finalName}" compiled but failed to register`);
+            return { success: false, error: 'Skill compiled but failed to register' };
+        }
+
+        // 7. Basic smoke test — import and call execute({}) to catch immediate errors (B2-5)
+        try {
+            const modulePath = `file://${jsFilePath}?t=${Date.now()}`;
+            const mod = await import(modulePath);
+            if (mod.default?.execute) {
+                await mod.default.execute({}, config);
+            }
+            logger.debug(COMPONENT, `Smoke test passed for ${finalName}`);
+        } catch (smokeErr: unknown) {
+            const smokeMsg = smokeErr instanceof Error ? smokeErr.message : String(smokeErr);
+            logger.warn(COMPONENT, `Smoke test warning for ${finalName}: ${smokeMsg} (skill still registered)`);
+            // Don't fail here — the skill is registered and may work with proper args
+        }
+
+        logger.info(COMPONENT, `Successfully generated and installed new skill: ${finalName}`);
 
         return {
             success: true,

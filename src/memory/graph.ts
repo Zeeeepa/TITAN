@@ -135,7 +135,8 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         const parsed = JSON.parse(match[0]);
         if (!Array.isArray(parsed)) return [];
         return parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
-    } catch {
+    } catch (err) {
+        logger.warn(COMPONENT, `Entity extraction failed: ${(err as Error).message}`);
         return [];
     }
 }
@@ -229,7 +230,7 @@ export async function addEpisode(content: string, source: string): Promise<Episo
         }
         saveGraph();
         logger.debug(COMPONENT, `Episode ${episode.id.slice(0, 8)}: extracted ${extracted.length} entities, ${graph.edges.length} edges`);
-    }).catch(() => {});
+    }).catch((err) => logger.warn(COMPONENT, `Background entity extraction failed: ${(err as Error).message}`));
 
     return episode;
 }

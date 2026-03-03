@@ -43,7 +43,8 @@ export class MatrixChannel extends ChannelAdapter {
                 userId: userId,
             });
 
-            client.on('Room.timeline', (event: any, room: any) => {
+            // @ts-ignore — matrix-js-sdk event name typing issue
+            client.on('Room.timeline' as any, (event: any, room: any) => {
                 if (event.getType() !== 'm.room.message') return;
                 if (event.getSender() === client.getUserId()) return;
 

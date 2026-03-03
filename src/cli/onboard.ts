@@ -11,6 +11,7 @@ import { ensureDir } from '../utils/helpers.js';
 import { initMemory } from '../memory/memory.js';
 import { loadProfile, saveProfile } from '../memory/relationship.js';
 
+
 // ─── Ollama helpers ───────────────────────────────────────────────
 async function fetchOllamaModels(baseUrl: string): Promise<string[]> {
     try {

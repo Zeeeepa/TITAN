@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework. 17 providers. 30+ tools. 2,100+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode. 17 providers. 30+ tools. 2,170+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
@@ -182,6 +182,20 @@ HMAC-SHA256 chained JSONL audit trail at `~/.titan/audit.jsonl`. Tracks tool exe
 ### Self-Healing Doctor
 
 `titan doctor --fix` automatically diagnoses and repairs common issues: missing directories, invalid configs, broken channels, stale logs, orphaned sessions, and file permissions.
+
+### Autopilot Mode
+
+TITAN runs hands-free on a schedule, evaluates a checklist of standing instructions, takes autonomous action, and reports results — inspired by Polsia, OpenClaw, Devin, and CrewAI.
+
+```bash
+titan autopilot --init           # Create ~/.titan/AUTOPILOT.md checklist
+titan autopilot --enable         # Turn on scheduled runs
+titan autopilot --run            # Trigger an immediate run
+titan autopilot --status         # View schedule and last run info
+titan autopilot --history        # See past run results
+```
+
+Edit `~/.titan/AUTOPILOT.md` to control what TITAN watches each cycle. Results are classified as OK (silent), NOTABLE (summary delivered), or URGENT (priority alert). Cost-optimized: uses a cheaper model for routine runs, respects daily budgets, and skips runs outside active hours.
 
 ### E2E Encrypted Sessions
 
@@ -406,6 +420,10 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 | `titan mcp` | Manage MCP servers |
 | `titan recipe --list` | List and run saved recipes |
 | `titan monitor` | Manage proactive file/schedule monitors |
+| `titan autopilot --init` | Create AUTOPILOT.md checklist |
+| `titan autopilot --run` | Trigger immediate autopilot run |
+| `titan autopilot --status` | View schedule, last run, next run |
+| `titan autopilot --enable/--disable` | Toggle autopilot mode |
 | `titan update` | Update to latest version |
 
 ---

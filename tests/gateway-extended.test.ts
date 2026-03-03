@@ -31,6 +31,7 @@ function makeMockConfig() {
         mesh: { enabled: false, secret: '', staticPeers: [], mdns: false, tailscale: false },
         memory: { enabled: true, maxHistoryMessages: 50, vectorSearchEnabled: false },
         logging: { level: 'info', file: true },
+        autopilot: { enabled: false, schedule: '0 2 * * *', model: 'anthropic/claude-haiku', maxTokensPerRun: 4000, maxToolRounds: 5, reportChannel: 'cli', maxRunHistory: 30, skipIfEmpty: true },
         autonomy: { mode: 'supervised' },
     };
 }
@@ -129,6 +130,14 @@ vi.mock('../src/skills/builtin/model_switch.js', () => ({
 vi.mock('../src/skills/builtin/cron.js', () => ({
     registerCronSkill: vi.fn(),
     initCronScheduler: vi.fn(),
+}));
+
+vi.mock('../src/agent/autopilot.js', () => ({
+    initAutopilot: vi.fn(),
+    stopAutopilot: vi.fn(),
+    runAutopilotNow: vi.fn().mockResolvedValue({ run: { classification: 'ok' }, delivered: false }),
+    getAutopilotStatus: vi.fn().mockReturnValue({ enabled: false, schedule: '0 2 * * *', lastRun: null, nextRunEstimate: null, totalRuns: 0, isRunning: false }),
+    getRunHistory: vi.fn().mockReturnValue([]),
 }));
 
 vi.mock('../src/skills/builtin/webhook.js', () => ({

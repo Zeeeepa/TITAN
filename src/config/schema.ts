@@ -163,6 +163,31 @@ export const TitanConfigSchema = z.object({
         level: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
         file: z.boolean().default(true),
     }).default({}),
+    autopilot: z.object({
+        /** Enable autopilot scheduled runs */
+        enabled: z.boolean().default(false),
+        /** Cron expression for scheduled runs (default: nightly 2am) */
+        schedule: z.string().default('0 2 * * *'),
+        /** Model override for autopilot runs (cheaper model for routine tasks) */
+        model: z.string().default('anthropic/claude-haiku'),
+        /** Path to checklist file (default: ~/.titan/AUTOPILOT.md) */
+        checklistPath: z.string().optional(),
+        /** Maximum tokens per autopilot run */
+        maxTokensPerRun: z.number().default(4000),
+        /** Maximum tool rounds per run */
+        maxToolRounds: z.number().default(5),
+        /** Where to deliver notable/urgent results */
+        reportChannel: z.string().default('cli'),
+        /** Run history retention count */
+        maxRunHistory: z.number().default(30),
+        /** Skip run if checklist is empty */
+        skipIfEmpty: z.boolean().default(true),
+        /** Active hours (only run during these hours, 24h format) */
+        activeHours: z.object({
+            start: z.number().min(0).max(23).default(0),
+            end: z.number().min(0).max(23).default(23),
+        }).optional(),
+    }).default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
         mode: z.enum(['autonomous', 'supervised', 'locked']).default('supervised'),
@@ -182,3 +207,4 @@ export type SecurityConfig = z.infer<typeof SecurityConfigSchema>;
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type MeshConfig = z.infer<typeof MeshConfigSchema>;
+export type AutopilotConfig = TitanConfig['autopilot'];

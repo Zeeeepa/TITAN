@@ -816,6 +816,95 @@ program
         process.exit(0);
     });
 
+// ─── AUTOPILOT ──────────────────────────────────────────────────
+program
+    .command('autopilot')
+    .description('Manage TITAN autopilot — hands-free scheduled agent runs')
+    .option('--init', 'Create default AUTOPILOT.md checklist')
+    .option('--run', 'Trigger an autopilot run immediately')
+    .option('--status', 'Show autopilot schedule, last run, next run')
+    .option('--history', 'Show recent autopilot run history')
+    .option('--limit <n>', 'Number of history entries to show', '10')
+    .option('--enable', 'Enable autopilot in config')
+    .option('--disable', 'Disable autopilot in config')
+    .action(async (options) => {
+        if (options.init) {
+            const { initChecklist } = await import('../agent/autopilot.js');
+            const path = initChecklist();
+            console.log(chalk.green(`Created autopilot checklist at: ${path}`));
+            console.log(chalk.gray('Edit this file to control what TITAN checks each cycle.'));
+            console.log(chalk.gray('Then enable autopilot: titan autopilot --enable'));
+        } else if (options.run) {
+            console.log(chalk.cyan('Starting autopilot run...\n'));
+            initMemory();
+            initLearning();
+            await initBuiltinSkills();
+            const { runAutopilotNow } = await import('../agent/autopilot.js');
+            try {
+                const result = await runAutopilotNow();
+                const r = result.run;
+                const icon = r.classification === 'ok' ? chalk.green('OK') :
+                    r.classification === 'notable' ? chalk.yellow('NOTABLE') :
+                    chalk.red('URGENT');
+                console.log(chalk.white(`\nResult: ${icon}`));
+                if (r.skipped) {
+                    console.log(chalk.gray(`  Skipped: ${r.skipReason}`));
+                } else {
+                    console.log(chalk.gray(`  Duration: ${r.duration}ms | Tokens: ${r.tokensUsed} | Tools: ${r.toolsUsed.join(', ') || 'none'}`));
+                    console.log(chalk.white(`\n${r.summary}`));
+                }
+            } catch (error) {
+                console.error(chalk.red(`Autopilot run failed: ${(error as Error).message}`));
+            }
+        } else if (options.status) {
+            const { getAutopilotStatus } = await import('../agent/autopilot.js');
+            const s = getAutopilotStatus();
+            console.log(chalk.cyan('\nAutopilot Status\n'));
+            console.log(chalk.gray(`  Enabled:    ${s.enabled ? chalk.green('Yes') : chalk.red('No')}`));
+            console.log(chalk.gray(`  Schedule:   ${s.schedule}`));
+            console.log(chalk.gray(`  Running:    ${s.isRunning ? chalk.yellow('Yes') : 'No'}`));
+            console.log(chalk.gray(`  Total runs: ${s.totalRuns}`));
+            if (s.lastRun) {
+                const icon = s.lastRun.classification === 'ok' ? 'OK' :
+                    s.lastRun.classification === 'notable' ? 'NOTABLE' : 'URGENT';
+                console.log(chalk.gray(`  Last run:   ${s.lastRun.timestamp} (${icon})`));
+            } else {
+                console.log(chalk.gray('  Last run:   never'));
+            }
+            console.log(chalk.gray(`  Next:       ${s.nextRunEstimate || 'not scheduled'}`));
+        } else if (options.history) {
+            const { getRunHistory } = await import('../agent/autopilot.js');
+            const limit = parseInt(options.limit, 10) || 10;
+            const runs = getRunHistory(limit);
+            console.log(chalk.cyan(`\nAutopilot History (last ${runs.length} runs)\n`));
+            if (runs.length === 0) {
+                console.log(chalk.gray('  No runs yet. Start one: titan autopilot --run'));
+            }
+            for (const r of runs) {
+                const icon = r.classification === 'ok' ? chalk.green('OK') :
+                    r.classification === 'notable' ? chalk.yellow('NOTABLE') :
+                    chalk.red('URGENT');
+                const skipped = r.skipped ? chalk.gray(` [skipped: ${r.skipReason}]`) : '';
+                console.log(`  ${chalk.gray(r.timestamp)} ${icon}${skipped}`);
+                if (!r.skipped) {
+                    console.log(chalk.gray(`    ${r.duration}ms | ${r.tokensUsed} tokens | ${r.summary.slice(0, 80)}...`));
+                }
+            }
+        } else if (options.enable) {
+            const config = loadConfig();
+            updateConfig({ autopilot: { ...config.autopilot, enabled: true } } as any);
+            console.log(chalk.green('Autopilot enabled. Runs will start on next gateway boot.'));
+            console.log(chalk.gray(`  Schedule: ${config.autopilot.schedule}`));
+        } else if (options.disable) {
+            const config = loadConfig();
+            updateConfig({ autopilot: { ...config.autopilot, enabled: false } } as any);
+            console.log(chalk.green('Autopilot disabled.'));
+        } else {
+            console.log(chalk.gray('Usage: titan autopilot --init | --run | --status | --history | --enable | --disable'));
+        }
+        process.exit(0);
+    });
+
 // Parse and execute
 (async () => {
     initFileLogger(TITAN_LOGS_DIR);

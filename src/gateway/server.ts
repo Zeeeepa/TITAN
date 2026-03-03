@@ -49,6 +49,7 @@ import { initCronScheduler } from '../skills/builtin/cron.js';
 import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 import { invalidateCacheForModel } from '../agent/responseCache.js';
+import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
 
 const COMPONENT = 'Gateway';
 
@@ -803,6 +804,25 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // ── Autopilot ───────────────────────────────────────────────
+  app.get('/api/autopilot/status', (_req, res) => {
+    res.json(getAutopilotStatus());
+  });
+
+  app.get('/api/autopilot/history', (req, res) => {
+    const limit = parseInt(req.query.limit as string, 10) || 30;
+    res.json(getRunHistory(limit));
+  });
+
+  app.post('/api/autopilot/run', async (_req, res) => {
+    try {
+      const result = await runAutopilotNow();
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   // ── API Documentation ────────────────────────────────────
   app.get('/api/docs', (_req, res) => {
     const spec = {
@@ -1077,6 +1097,9 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // ── Cron scheduler — re-activate all persisted jobs ──────────
   initCronScheduler();
 
+  // ── Autopilot — scheduled autonomous agent runs ─────────────
+  initAutopilot(config);
+
   // ── Morning Briefing — send once per day in 6am–12pm window ──
   checkAndSendBriefing(async (msg) => {
     broadcast({
@@ -1138,6 +1161,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // ── Graceful Shutdown ───────────────────────────────────────────
   const gracefulShutdown = async (signal: string) => {
     logger.info(COMPONENT, `Received ${signal} — shutting down gracefully...`);
+    stopAutopilot();
     await stopGateway();
     logger.info(COMPONENT, 'Gateway stopped. Goodbye.');
     process.exit(0);

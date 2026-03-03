@@ -4,7 +4,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 
-export const TITAN_VERSION = '2026.5.4';
+export const TITAN_VERSION = '2026.5.5';
 export const TITAN_NAME = 'TITAN';
 export const TITAN_FULL_NAME = 'The Intelligent Task Automation Network';
 export const TITAN_ASCII_LOGO = `
@@ -34,6 +34,8 @@ export const TITAN_MEMORY_DIR = join(TITAN_HOME, 'memory');
 export const AGENTS_MD = join(TITAN_WORKSPACE, 'AGENTS.md');
 export const SOUL_MD = join(TITAN_WORKSPACE, 'SOUL.md');
 export const TOOLS_MD = join(TITAN_WORKSPACE, 'TOOLS.md');
+export const AUTOPILOT_MD = join(TITAN_HOME, 'AUTOPILOT.md');
+export const AUTOPILOT_RUNS_PATH = join(TITAN_HOME, 'autopilot-runs.jsonl');
 
 // Gateway defaults
 export const DEFAULT_GATEWAY_HOST = '127.0.0.1';

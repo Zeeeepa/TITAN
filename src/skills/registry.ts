@@ -120,34 +120,40 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerSmartHomeSkill } = await import('./builtin/smart_home.js');
     const { registerDataAnalysisSkill } = await import('./builtin/data_analysis.js');
 
-    registerShellSkill();
-    registerFilesystemSkill();
-    registerWebSearchSkill();
-    registerCronSkill();
-    registerWebhookSkill();
-    registerMemorySkill();
-    registerBrowserSkill();
-    registerSessionsSkill();
-    registerProcessSkill();
-    registerWebFetchSkill();
-    registerApplyPatchSkill();
-    registerAutoGenerateSkill();
-    registerVisionSkill();
-    registerVoiceSkills();
-    registerMemoryGraphSkill();
-    initWebBrowserTool();
-    registerGitHubSkill();
-    registerEmailSkill();
-    registerComputerUseSkill();
-    registerImageGenSkill();
-    registerPdfSkill();
-    registerCalendarSkill();
-    registerSmartHomeSkill();
-    registerDataAnalysisSkill();
+    const registrations: [string, () => void][] = [
+        ['shell', registerShellSkill],
+        ['filesystem', registerFilesystemSkill],
+        ['web_search', registerWebSearchSkill],
+        ['cron', registerCronSkill],
+        ['webhook', registerWebhookSkill],
+        ['memory', registerMemorySkill],
+        ['browser', registerBrowserSkill],
+        ['sessions', registerSessionsSkill],
+        ['process', registerProcessSkill],
+        ['web_fetch', registerWebFetchSkill],
+        ['apply_patch', registerApplyPatchSkill],
+        ['auto_generate', registerAutoGenerateSkill],
+        ['vision', registerVisionSkill],
+        ['voice', registerVoiceSkills],
+        ['memory_graph', registerMemoryGraphSkill],
+        ['web_browser', initWebBrowserTool],
+        ['github', registerGitHubSkill],
+        ['email', registerEmailSkill],
+        ['computer_use', registerComputerUseSkill],
+        ['image_gen', registerImageGenSkill],
+        ['pdf', registerPdfSkill],
+        ['calendar', registerCalendarSkill],
+        ['smart_home', registerSmartHomeSkill],
+        ['data_analysis', registerDataAnalysisSkill],
+    ];
+
+    for (const [name, fn] of registrations) {
+        try { fn(); } catch (e) { logger.warn(COMPONENT, `Failed to register skill "${name}": ${(e as Error).message}`); }
+    }
 
     // Register planner as an LLM-invocable tool
     const { registerPlannerTool } = await import('../agent/planner.js');
-    registerPlannerTool();
+    try { registerPlannerTool(); } catch (e) { logger.warn(COMPONENT, `Failed to register planner: ${(e as Error).message}`); }
 
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
 }

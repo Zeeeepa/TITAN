@@ -66,6 +66,7 @@ vi.mock('../src/memory/relationship.js', () => ({
 }));
 
 vi.mock('../src/memory/learning.js', () => ({
+    initLearning: vi.fn(),
     getLearningStats: vi.fn().mockReturnValue({ totalLessons: 42, categories: {} }),
 }));
 

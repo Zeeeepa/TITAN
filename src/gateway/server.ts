@@ -41,7 +41,7 @@ import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
-import { getLearningStats } from '../memory/learning.js';
+import { initLearning, getLearningStats } from '../memory/learning.js';
 import { initGraph, getGraphData, getGraphStats } from '../memory/graph.js';
 import { getLogFilePath } from '../utils/logger.js';
 import { closeSession } from '../agent/session.js';
@@ -54,8 +54,16 @@ const COMPONENT = 'Gateway';
 /** Module-level HTTP server reference (allows stopGateway to close it) */
 let httpServer: ReturnType<typeof createServer> | null = null;
 
+/** Interval IDs for cleanup on shutdown */
+let tokenCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let rateLimitCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
 export function stopGateway(): Promise<void> {
     return new Promise((resolve) => {
+        // Clear intervals to release the event loop
+        if (tokenCleanupInterval) { clearInterval(tokenCleanupInterval); tokenCleanupInterval = null; }
+        if (rateLimitCleanupInterval) { clearInterval(rateLimitCleanupInterval); rateLimitCleanupInterval = null; }
+
         if (httpServer) {
             httpServer.close(() => { httpServer = null; resolve(); });
         } else {
@@ -68,13 +76,14 @@ export function stopGateway(): Promise<void> {
 const authTokens = new Map<string, { createdAt: number }>();
 
 // Clean expired tokens every 10 minutes
-setInterval(() => {
+tokenCleanupInterval = setInterval(() => {
     const now = Date.now();
     const ttlMs = 24 * 60 * 60 * 1000;
     for (const [tok, entry] of authTokens) {
         if (now - entry.createdAt > ttlMs) authTokens.delete(tok);
     }
 }, 600_000);
+tokenCleanupInterval.unref();
 
 /** Constant-time string comparison to prevent timing attacks */
 function safeCompare(a: string, b: string): boolean {
@@ -271,6 +280,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   // Initialize subsystems
   initMemory();
+  initLearning();
   initGraph();
   await initBuiltinSkills();
   initAgents();
@@ -297,7 +307,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   }
 
   // Clean rate limit store every 60 seconds
-  setInterval(() => {
+  rateLimitCleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [key, entry] of rateLimitStore) {
           if (now > entry.resetAt) rateLimitStore.delete(key);
@@ -1097,10 +1107,21 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
     if (err.code === 'EADDRINUSE') {
       logger.warn(COMPONENT, `Port ${port} is already in use. Mission Control is likely already running in the background.`);
       logger.info(COMPONENT, `You can access it at http://${host}:${port}`);
+      process.exit(1);
     } else {
       logger.error(COMPONENT, `Server error: ${err.message}`);
     }
   });
+
+  // ── Graceful Shutdown ───────────────────────────────────────────
+  const gracefulShutdown = async (signal: string) => {
+    logger.info(COMPONENT, `Received ${signal} — shutting down gracefully...`);
+    await stopGateway();
+    logger.info(COMPONENT, 'Gateway stopped. Goodbye.');
+    process.exit(0);
+  };
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   httpServer.listen(port, host, () => {
     logger.info(COMPONENT, `Gateway listening on http://${host}:${port}`);

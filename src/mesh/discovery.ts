@@ -47,6 +47,7 @@ const peers = new Map<string, MeshPeer>();
 let bonjourInstance: BonjourInstance | null = null;
 let bonjourBrowser: BonjourBrowser | null = null;
 let tailscaleInterval: ReturnType<typeof setInterval> | null = null;
+let peerPruneInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getPeers(): MeshPeer[] {
     return Array.from(peers.values());
@@ -249,7 +250,7 @@ export async function startDiscovery(
     }
 
     // Prune stale peers every 2 minutes (remove if not seen for 5 minutes)
-    setInterval(() => {
+    peerPruneInterval = setInterval(() => {
         const cutoff = Date.now() - 300_000;
         for (const [id, peer] of peers) {
             if (peer.lastSeen < cutoff) {
@@ -264,6 +265,7 @@ export function stopDiscovery(): void {
     if (bonjourBrowser) { bonjourBrowser.stop(); bonjourBrowser = null; }
     if (bonjourInstance) { bonjourInstance.destroy(); bonjourInstance = null; }
     if (tailscaleInterval) { clearInterval(tailscaleInterval); tailscaleInterval = null; }
+    if (peerPruneInterval) { clearInterval(peerPruneInterval); peerPruneInterval = null; }
     peers.clear();
     logger.info(COMPONENT, 'Discovery stopped');
 }

@@ -10,6 +10,7 @@ import { setLogLevel, LogLevel, initFileLogger } from '../utils/logger.js';
 import { loadConfig, updateConfig } from '../config/config.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory } from '../memory/memory.js';
+import { initLearning } from '../memory/learning.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
 import { existsSync, unlinkSync } from 'fs';
@@ -78,6 +79,7 @@ program
         }
 
         initMemory();
+        initLearning();
         await initBuiltinSkills();
 
         const config = loadConfig();
@@ -96,6 +98,7 @@ program
             console.error(chalk.red(`Error: ${(error as Error).message}`));
             process.exit(1);
         }
+        process.exit(0);
     });
 
 // ─── SEND (like openclaw message send) ──────────────────────────
@@ -111,6 +114,7 @@ program
         }
         console.log(chalk.gray(`Sending to ${options.to}: ${options.message}`));
         console.log(chalk.green('Message queued for delivery'));
+        process.exit(0);
     });
 
 // ─── PAIRING (DM access control) ────────────────────────────────
@@ -159,6 +163,7 @@ program
                 console.log(chalk.gray('\n  Approve: titan pairing --approve <channel> <code>'));
             }
         }
+        process.exit(0);
     });
 
 // ─── AGENTS (Multi-agent management) ────────────────────────────
@@ -201,6 +206,7 @@ program
                 }
             }
         }
+        process.exit(0);
     });
 
 // ─── DOCTOR ──────────────────────────────────────────────────────
@@ -210,6 +216,7 @@ program
     .action(async () => {
         console.log(chalk.cyan(TITAN_ASCII_LOGO));
         await runDoctor();
+        process.exit(0);
     });
 
 // ─── SKILLS ──────────────────────────────────────────────────────
@@ -289,6 +296,7 @@ program
             console.log(chalk.gray('\n  Search marketplace: titan skills --search <query>'));
             console.log(chalk.gray('  Install from ClaWHub: titan skills --install <name>'));
         }
+        process.exit(0);
     });
 
 // ─── MCP ─────────────────────────────────────────────────────────
@@ -343,6 +351,7 @@ program
                 console.log(`     Type: ${server.type} | Tools: ${live?.toolCount ?? '–'} | Enabled: ${server.enabled}`);
             }
         }
+        process.exit(0);
     });
 
 // ─── RECIPE ──────────────────────────────────────────────────────
@@ -389,6 +398,7 @@ program
             console.log(chalk.gray('\n  Run a recipe: titan recipe --run <id>'));
             console.log(chalk.gray('  Or use slash commands in WebChat: /code-review, /standup, /debug'));
         }
+        process.exit(0);
     });
 
 // ─── MODEL ───────────────────────────────────────────────────────
@@ -501,6 +511,7 @@ program
             console.log(chalk.gray('  Aliases: titan model --set fast  (use titan model --aliases to see all)'));
             console.log(chalk.gray('  Discover: titan model --discover  (finds local Ollama models)'));
         }
+        process.exit(0);
     });
 
 // ─── MONITOR ─────────────────────────────────────────────────────
@@ -546,6 +557,7 @@ program
                 console.log(`     Prompt: ${chalk.gray(m.prompt.slice(0, 60))}...`);
             }
         }
+        process.exit(0);
     });
 
 
@@ -627,6 +639,7 @@ program
         } else {
             console.log(chalk.gray('Usage: titan mesh --init | --join <secret> | --status | --add <host:port> | --leave'));
         }
+        process.exit(0);
     });
 
 // ─── CONFIG ──────────────────────────────────────────────────────
@@ -675,6 +688,7 @@ program
             console.log(chalk.cyan('\n⚙️  TITAN Configuration\n'));
             console.log(JSON.stringify(config, null, 2));
         }
+        process.exit(0);
     });
 
 // ─── UPDATE ──────────────────────────────────────────────────────
@@ -685,6 +699,7 @@ program
     .action((options) => {
         console.log(chalk.cyan(`Updating TITAN to latest ${options.channel} release...`));
         console.log(chalk.gray('Run: npm install -g titan-agent@latest'));
+        process.exit(0);
     });
 
 // ─── MEMORY GRAPH ─────────────────────────────────────────────────
@@ -740,6 +755,7 @@ program
         } else {
             console.log(chalk.gray('Usage: titan graphiti --init | --stats | --clear'));
         }
+        process.exit(0);
     });
 
 // Parse and execute

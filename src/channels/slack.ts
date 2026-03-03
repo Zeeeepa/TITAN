@@ -32,8 +32,19 @@ export class SlackChannel extends ChannelAdapter {
 
             app.message(async ({ message }: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
                 if (message.subtype) return;
+                // Attempt to resolve user display name from Slack user info
+                let userName: string | undefined;
+                try {
+                    if (app.client && message.user) {
+                        const info = await app.client.users.info({ user: message.user });
+                        userName = (info as any)?.user?.profile?.display_name
+                            || (info as any)?.user?.real_name
+                            || (info as any)?.user?.name;
+                    }
+                } catch { /* Fallback: userName stays undefined */ }
                 const inbound: InboundMessage = {
                     id: message.ts, channel: 'slack', userId: message.user,
+                    userName,
                     content: message.text || '', groupId: message.channel,
                     timestamp: new Date(parseFloat(message.ts) * 1000), raw: message,
                 };

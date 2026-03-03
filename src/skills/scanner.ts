@@ -238,14 +238,22 @@ export function scanAllUserSkills(autoQuarantine = false): {
             if (result.recommendation === 'block') {
                 blocked++;
                 if (autoQuarantine) {
-                    quarantineSkill(entryPath, 'Critical/High findings detected');
-                    quarantined.push(entry);
+                    try {
+                        quarantineSkill(entryPath, 'Critical/High findings detected');
+                        quarantined.push(entry);
+                    } catch (e) {
+                        logger.warn(SCANNER_COMPONENT, `Failed to quarantine "${entry}": ${(e as Error).message}`);
+                    }
                 }
             } else if (result.recommendation === 'warn') {
                 warned++;
                 if (autoQuarantine) {
-                    quarantineSkill(entryPath, 'High severity findings detected');
-                    quarantined.push(entry);
+                    try {
+                        quarantineSkill(entryPath, 'High severity findings detected');
+                        quarantined.push(entry);
+                    } catch (e) {
+                        logger.warn(SCANNER_COMPONENT, `Failed to quarantine "${entry}": ${(e as Error).message}`);
+                    }
                 }
             } else {
                 safe++;
@@ -265,8 +273,12 @@ export function scanAllUserSkills(autoQuarantine = false): {
                     if (result.recommendation === 'block') {
                         blocked++;
                         if (autoQuarantine) {
-                            quarantineSkill(entryPath, 'Critical/High findings in directory skill');
-                            quarantined.push(entry);
+                            try {
+                                quarantineSkill(entryPath, 'Critical/High findings in directory skill');
+                                quarantined.push(entry);
+                            } catch (e) {
+                                logger.warn(SCANNER_COMPONENT, `Failed to quarantine "${entry}": ${(e as Error).message}`);
+                            }
                         }
                     } else if (result.recommendation === 'warn') {
                         warned++;

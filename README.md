@@ -528,6 +528,16 @@ Thank you to all the maintainers and contributors of these projects.
 
 ---
 
+## Support / Fund
+
+If TITAN saves you time, consider supporting its development:
+
+[![Fund with thanks.dev](https://img.shields.io/badge/Fund%20with-thanks.dev-brightgreen)](https://thanks.dev/Djtony707/TITAN)
+
+Every contribution — large or small — helps keep TITAN free, maintained, and moving forward.
+
+---
+
 ## License
 
 MIT License — Copyright (c) 2026 Tony Elliott

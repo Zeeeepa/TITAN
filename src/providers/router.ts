@@ -193,8 +193,12 @@ export async function chat(options: ChatOptions): Promise<ChatResponse> {
                 const models = await fallback.listModels();
                 if (models.length === 0) continue;
 
-                logger.warn(COMPONENT, `Failing over to ${fallback.displayName} (model: ${models[0]})`);
-                return await fallback.chat({ ...options, model: models[0] });
+                // Prefer a model with a similar name prefix (e.g. claude-* → claude-*)
+                const originalPrefix = model.split('-')[0];
+                const preferred = models.find(m => m.startsWith(originalPrefix)) || models[0];
+
+                logger.warn(COMPONENT, `Failing over from ${provider.name}/${model} → ${fallback.name}/${preferred}`);
+                return await fallback.chat({ ...options, model: preferred });
             } catch {
                 continue;
             }
@@ -229,8 +233,12 @@ export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStre
                 const models = await fallback.listModels();
                 if (models.length === 0) continue;
 
-                logger.warn(COMPONENT, `Stream failing over to ${fallback.displayName} (model: ${models[0]})`);
-                yield* fallback.chatStream({ ...options, model: models[0] });
+                // Prefer a model with a similar name prefix (e.g. claude-* → claude-*)
+                const originalPrefix = model.split('-')[0];
+                const preferred = models.find(m => m.startsWith(originalPrefix)) || models[0];
+
+                logger.warn(COMPONENT, `Stream failing over from ${provider.name}/${model} → ${fallback.name}/${preferred}`);
+                yield* fallback.chatStream({ ...options, model: preferred });
                 failedOver = true;
                 break;
             } catch {

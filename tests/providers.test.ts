@@ -109,20 +109,23 @@ describe('getModelAliases', () => {
 });
 
 describe('PROVIDER_PRESETS', () => {
-    it('should contain exactly 13 presets', () => {
-        expect(PROVIDER_PRESETS).toHaveLength(13);
+    it('should contain exactly 16 presets', () => {
+        expect(PROVIDER_PRESETS).toHaveLength(16);
     });
 
     it('should have unique names', () => {
         const names = PROVIDER_PRESETS.map((p) => p.name);
-        expect(new Set(names).size).toBe(13);
+        expect(new Set(names).size).toBe(16);
     });
 
     it('every preset should have required fields and valid URL', () => {
         for (const preset of PROVIDER_PRESETS) {
             expect(preset.name).toBeTruthy();
             expect(preset.displayName).toBeTruthy();
-            expect(preset.defaultBaseUrl).toMatch(/^https?:\/\//);
+            // Azure has empty baseUrl (user must configure their endpoint)
+            if (preset.name !== 'azure') {
+                expect(preset.defaultBaseUrl).toMatch(/^https?:\/\//);
+            }
             expect(preset.envKey).toBeTruthy();
             expect(preset.knownModels.length).toBeGreaterThan(0);
         }

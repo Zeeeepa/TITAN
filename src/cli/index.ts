@@ -477,7 +477,7 @@ program
             }
             console.log(chalk.gray('\n  Switch model: titan model --set <model-id>'));
         } else if (options.list) {
-            console.log(chalk.cyan('\n🧠 Known Models (17 Providers)\n'));
+            console.log(chalk.cyan('\n🧠 Known Models (20 Providers)\n'));
             const models = [
                 { provider: 'Anthropic', models: ['anthropic/claude-opus-4-0', 'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-haiku-4-20250414'] },
                 { provider: 'OpenAI', models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'openai/o3', 'openai/o4-mini'] },
@@ -495,6 +495,9 @@ program
                 { provider: 'Venice AI (Privacy)', models: ['venice/llama-3.3-70b', 'venice/deepseek-r1-671b', 'venice/qwen-2.5-vl-72b'] },
                 { provider: 'AWS Bedrock (Proxy)', models: ['bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0', 'bedrock/amazon.titan-text-premier-v1:0'] },
                 { provider: 'LiteLLM (Universal)', models: ['litellm/gpt-4o', 'litellm/claude-sonnet-4-20250514'] },
+                { provider: 'Azure OpenAI', models: ['azure/gpt-4o', 'azure/gpt-4o-mini', 'azure/gpt-4-turbo'] },
+                { provider: 'DeepInfra', models: ['deepinfra/meta-llama/Llama-3.3-70B-Instruct', 'deepinfra/Qwen/Qwen2.5-72B-Instruct'] },
+                { provider: 'SambaNova', models: ['sambanova/Meta-Llama-3.3-70B-Instruct', 'sambanova/DeepSeek-R1-Distill-Llama-70B'] },
                 { provider: 'Ollama (local)', models: ['ollama/<your-models>'] },
             ];
             for (const group of models) {

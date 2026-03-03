@@ -133,6 +133,9 @@ export const TitanConfigSchema = z.object({
         venice: ProviderConfigSchema.default({}),
         bedrock: ProviderConfigSchema.default({}),
         litellm: ProviderConfigSchema.default({}),
+        azure: ProviderConfigSchema.default({}),
+        deepinfra: ProviderConfigSchema.default({}),
+        sambanova: ProviderConfigSchema.default({}),
     }).default({}),
     channels: z.object({
         discord: ChannelConfigSchema.default({}),

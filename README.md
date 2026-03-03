@@ -5,13 +5,13 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode. 17 providers. 30+ tools. 2,170+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 30+ tools. 2,170+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
-  <a href="#providers"><img src="https://img.shields.io/badge/providers-17-purple" alt="17 Providers"/></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-20-purple" alt="20 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-30-orange" alt="30 Tools"/></a>
 </p>
 
@@ -56,7 +56,7 @@ npm run dev:gateway        # Start in dev mode
 |---|---|---|
 | **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation |
 | **Native compilation** | None — all pure JS deps | Often require node-gyp, system libraries |
-| **Providers** | 17 (60+ preconfigured models) with automatic failover | 1-4 providers, no failover |
+| **Providers** | 20 (70+ preconfigured models) with automatic failover | 1-4 providers, no failover |
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | Minimal or none |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
@@ -69,7 +69,7 @@ npm run dev:gateway        # Start in dev mode
 
 ## Features
 
-### 17 AI Providers, 60+ Models
+### 20 AI Providers, 70+ Models
 
 Connect any combination of cloud and local models. TITAN routes, fails over, and load-balances automatically.
 
@@ -201,11 +201,25 @@ Edit `~/.titan/AUTOPILOT.md` to control what TITAN watches each cycle. Results a
 
 AES-256-GCM encryption for sensitive conversations. Keys generated per-session, held in memory only.
 
+### Skyvern Browser AI (Optional)
+
+TITAN integrates with [Skyvern](https://github.com/Skyvern-AI/skyvern) for AI-powered browser automation. Instead of brittle CSS selectors, Skyvern uses vision + LLMs to interact with web pages using natural language.
+
+```bash
+pip install skyvern && skyvern init    # Install Skyvern (Python)
+skyvern run server                      # Start the Skyvern backend
+titan mcp --add skyvern                 # Register as MCP server in TITAN
+```
+
+Once connected, TITAN gains 35 browser automation tools including `skyvern_act`, `skyvern_extract`, `skyvern_validate`, credential management, and self-healing script compilation.
+
+> Skyvern is AGPL-3.0 licensed and runs as a separate service. TITAN's MIT license is not affected.
+
 ---
 
 ## Providers
 
-TITAN supports 17 AI providers out of the box. Add your API key and go.
+TITAN supports 20 AI providers out of the box. Add your API key and go.
 
 | Provider | Models | Type |
 |----------|--------|------|
@@ -226,6 +240,9 @@ TITAN supports 17 AI providers out of the box. Add your API key and go.
 | **Venice AI** | LLaMA 3.3 70B, DeepSeek-R1 671B, Qwen 2.5 VL | Cloud (Privacy-first) |
 | **AWS Bedrock** | Claude, Titan Text, LLaMA 3 (via proxy) | Cloud (Enterprise) |
 | **LiteLLM** | Any model via universal proxy | Self-hosted (Proxy) |
+| **Azure OpenAI** | GPT-4o, GPT-4o-mini, GPT-4 Turbo, o1 | Cloud (Enterprise) |
+| **DeepInfra** | LLaMA 3.3, Mixtral 8x22B, Qwen 2.5, DeepSeek-R1 | Cloud (Fast inference) |
+| **SambaNova** | LLaMA 3.3, DeepSeek-R1 Distill, Qwen 2.5 | Cloud (Fast inference) |
 
 All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider.
 
@@ -466,7 +483,7 @@ npm run test:coverage  # Coverage report (68%+ with 55% threshold)
 src/
   agent/        Core agent loop, multi-agent, swarm, planner, autonomy
   channels/     Discord, Telegram, Slack, Google Chat, WebChat
-  providers/    Anthropic, OpenAI, Google, Ollama + 13 OpenAI-compatible
+  providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
   skills/       30 built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
@@ -511,10 +528,12 @@ See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are comp
 - MCP (Model Context Protocol) client support
 
 ### Upcoming
-- GitHub skill (PR review, issues, repos)
-- Image generation skill
-- Plugin marketplace
-- Voice mode (real-time audio transcription/synthesis)
+- **Vector Search & RAG Pipeline** — SQLite FTS5 + embeddings for semantic memory search
+- **Code Interpreter** — Sandboxed JavaScript/Python execution for data analysis
+- **Skyvern Browser AI** — AI-powered browser automation via MCP (natural language + self-healing selectors)
+- **Plugin Marketplace** — Community skill sharing and discovery
+- **Tunnel Support** — Cloudflare Tunnel / ngrok for remote access
+- **Team Mode & RBAC** — Role-based access control for multi-user deployments
 
 ---
 
@@ -530,7 +549,7 @@ See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are comp
 
 ## The Future of TITAN
 
-TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes computer use, GitHub/email integration, a plugin marketplace, WhatsApp and more channel adapters, image generation, and much more.
+TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, Skyvern browser AI, tunnel support, team mode with RBAC, and much more.
 
 This is just the beginning. If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
 

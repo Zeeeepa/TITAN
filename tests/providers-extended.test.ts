@@ -1501,12 +1501,12 @@ describe('Router (extended)', () => {
             expect(router.normalizeProvider('vertex-ai')).toBe('google');
         });
 
-        it('should normalize azure to openai', () => {
-            expect(router.normalizeProvider('azure')).toBe('openai');
+        it('should pass through azure as its own provider', () => {
+            expect(router.normalizeProvider('azure')).toBe('azure');
         });
 
-        it('should normalize azure-openai to openai', () => {
-            expect(router.normalizeProvider('azure-openai')).toBe('openai');
+        it('should normalize azure-openai to azure', () => {
+            expect(router.normalizeProvider('azure-openai')).toBe('azure');
         });
 
         it('should pass through unknown providers lowercase', () => {
@@ -1530,9 +1530,9 @@ describe('Router (extended)', () => {
             expect(result.provider.name).toBe('xai');
         });
 
-        it('should resolve azure alias to openai provider', () => {
+        it('should resolve azure to its own provider', () => {
             const result = router.resolveModel('azure/gpt-4o');
-            expect(result.provider.name).toBe('openai');
+            expect(result.provider.name).toBe('azure');
             expect(result.model).toBe('gpt-4o');
         });
 

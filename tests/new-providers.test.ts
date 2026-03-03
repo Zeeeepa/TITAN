@@ -1,9 +1,9 @@
 /**
- * TITAN — New Providers Tests (Venice, Bedrock, LiteLLM)
+ * TITAN — New Providers Tests (Venice, Bedrock, LiteLLM, Azure, DeepInfra, SambaNova)
  * Phase 5 Batch 3 Agent 3 — Tests for:
- *   - PROVIDER_PRESETS verification (venice, bedrock, litellm)
+ *   - PROVIDER_PRESETS verification (venice, bedrock, litellm, azure, deepinfra, sambanova)
  *   - OpenAICompatProvider instantiation for new providers
- *   - Router alias normalization (aws, amazon, litellm-proxy)
+ *   - Router alias normalization (aws, amazon, litellm-proxy, azure-openai)
  *   - Config schema validation (new provider entries)
  *   - Edge cases (custom baseUrl, env keys, supportsModelList)
  */
@@ -69,8 +69,8 @@ function makeJsonResponse(data: unknown, status = 200): Response {
 // ════════════════════════════════════════════════════════════════════════
 
 describe('PROVIDER_PRESETS — New Providers', () => {
-    it('should contain 13 total provider presets (10 original + 3 new)', () => {
-        expect(PROVIDER_PRESETS).toHaveLength(13);
+    it('should contain 16 total provider presets (10 original + 6 new)', () => {
+        expect(PROVIDER_PRESETS).toHaveLength(16);
     });
 
     it('should include venice in the presets', () => {
@@ -86,6 +86,21 @@ describe('PROVIDER_PRESETS — New Providers', () => {
     it('should include litellm in the presets', () => {
         const names = PROVIDER_PRESETS.map(p => p.name);
         expect(names).toContain('litellm');
+    });
+
+    it('should include azure in the presets', () => {
+        const names = PROVIDER_PRESETS.map(p => p.name);
+        expect(names).toContain('azure');
+    });
+
+    it('should include deepinfra in the presets', () => {
+        const names = PROVIDER_PRESETS.map(p => p.name);
+        expect(names).toContain('deepinfra');
+    });
+
+    it('should include sambanova in the presets', () => {
+        const names = PROVIDER_PRESETS.map(p => p.name);
+        expect(names).toContain('sambanova');
     });
 
     // ── Venice preset details ────────────────────────────────────────
@@ -207,6 +222,128 @@ describe('PROVIDER_PRESETS — New Providers', () => {
             expect(litellm.supportsModelList).toBe(true);
         });
     });
+
+    // ── Azure preset details ────────────────────────────────────────
+
+    describe('Azure preset', () => {
+        it('should have correct name and displayName', () => {
+            const azure = getPreset('azure');
+            expect(azure.name).toBe('azure');
+            expect(azure.displayName).toBe('Azure OpenAI (Enterprise)');
+        });
+
+        it('should have empty defaultBaseUrl (user must configure)', () => {
+            const azure = getPreset('azure');
+            expect(azure.defaultBaseUrl).toBe('');
+        });
+
+        it('should have correct envKey and configKey', () => {
+            const azure = getPreset('azure');
+            expect(azure.envKey).toBe('AZURE_OPENAI_API_KEY');
+            expect(azure.configKey).toBe('azure');
+        });
+
+        it('should have correct defaultModel', () => {
+            const azure = getPreset('azure');
+            expect(azure.defaultModel).toBe('gpt-4o');
+        });
+
+        it('should have non-empty knownModels array', () => {
+            const azure = getPreset('azure');
+            expect(azure.knownModels).toBeInstanceOf(Array);
+            expect(azure.knownModels.length).toBeGreaterThan(0);
+            expect(azure.knownModels).toContain('gpt-4o');
+            expect(azure.knownModels).toContain('gpt-4o-mini');
+            expect(azure.knownModels).toContain('gpt-4-turbo');
+            expect(azure.knownModels).toContain('o1-preview');
+        });
+
+        it('should NOT support model list', () => {
+            const azure = getPreset('azure');
+            expect(azure.supportsModelList).toBe(false);
+        });
+    });
+
+    // ── DeepInfra preset details ────────────────────────────────────
+
+    describe('DeepInfra preset', () => {
+        it('should have correct name and displayName', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.name).toBe('deepinfra');
+            expect(deepinfra.displayName).toBe('DeepInfra (Fast Inference)');
+        });
+
+        it('should have correct defaultBaseUrl', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.defaultBaseUrl).toBe('https://api.deepinfra.com/v1/openai');
+        });
+
+        it('should have correct envKey and configKey', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.envKey).toBe('DEEPINFRA_API_KEY');
+            expect(deepinfra.configKey).toBe('deepinfra');
+        });
+
+        it('should have correct defaultModel', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.defaultModel).toBe('meta-llama/Llama-3.3-70B-Instruct');
+        });
+
+        it('should have non-empty knownModels array', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.knownModels).toBeInstanceOf(Array);
+            expect(deepinfra.knownModels.length).toBeGreaterThan(0);
+            expect(deepinfra.knownModels).toContain('meta-llama/Llama-3.3-70B-Instruct');
+            expect(deepinfra.knownModels).toContain('mistralai/Mixtral-8x22B-Instruct-v0.1');
+            expect(deepinfra.knownModels).toContain('Qwen/Qwen2.5-72B-Instruct');
+            expect(deepinfra.knownModels).toContain('deepseek-ai/DeepSeek-R1');
+        });
+
+        it('should support model list', () => {
+            const deepinfra = getPreset('deepinfra');
+            expect(deepinfra.supportsModelList).toBe(true);
+        });
+    });
+
+    // ── SambaNova preset details ────────────────────────────────────
+
+    describe('SambaNova preset', () => {
+        it('should have correct name and displayName', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.name).toBe('sambanova');
+            expect(sambanova.displayName).toBe('SambaNova (Fast Inference)');
+        });
+
+        it('should have correct defaultBaseUrl', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.defaultBaseUrl).toBe('https://api.sambanova.ai/v1');
+        });
+
+        it('should have correct envKey and configKey', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.envKey).toBe('SAMBANOVA_API_KEY');
+            expect(sambanova.configKey).toBe('sambanova');
+        });
+
+        it('should have correct defaultModel', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.defaultModel).toBe('Meta-Llama-3.3-70B-Instruct');
+        });
+
+        it('should have non-empty knownModels array', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.knownModels).toBeInstanceOf(Array);
+            expect(sambanova.knownModels.length).toBeGreaterThan(0);
+            expect(sambanova.knownModels).toContain('Meta-Llama-3.3-70B-Instruct');
+            expect(sambanova.knownModels).toContain('DeepSeek-R1-Distill-Llama-70B');
+            expect(sambanova.knownModels).toContain('Qwen2.5-72B-Instruct');
+        });
+
+        it('should support model list', () => {
+            const sambanova = getPreset('sambanova');
+            expect(sambanova.supportsModelList).toBe(true);
+        });
+    });
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -221,6 +358,9 @@ describe('OpenAICompatProvider — New Providers', () => {
                 venice: { apiKey: 'test-venice-key', baseUrl: '', authProfiles: [] },
                 bedrock: { apiKey: 'test-bedrock-key', baseUrl: '', authProfiles: [] },
                 litellm: { apiKey: 'test-litellm-key', baseUrl: '', authProfiles: [] },
+                azure: { apiKey: 'test-azure-key', baseUrl: '', authProfiles: [] },
+                deepinfra: { apiKey: 'test-deepinfra-key', baseUrl: '', authProfiles: [] },
+                sambanova: { apiKey: 'test-sambanova-key', baseUrl: '', authProfiles: [] },
             },
         });
         mockResolveApiKey.mockReturnValue('test-key');
@@ -263,6 +403,42 @@ describe('OpenAICompatProvider — New Providers', () => {
         });
     });
 
+    describe('Azure provider instantiation', () => {
+        it('should create an Azure provider with correct name', () => {
+            const azure = new OpenAICompatProvider(getPreset('azure'));
+            expect(azure.name).toBe('azure');
+        });
+
+        it('should have Azure display name', () => {
+            const azure = new OpenAICompatProvider(getPreset('azure'));
+            expect(azure.displayName).toBe('Azure OpenAI (Enterprise)');
+        });
+    });
+
+    describe('DeepInfra provider instantiation', () => {
+        it('should create a DeepInfra provider with correct name', () => {
+            const deepinfra = new OpenAICompatProvider(getPreset('deepinfra'));
+            expect(deepinfra.name).toBe('deepinfra');
+        });
+
+        it('should have DeepInfra display name', () => {
+            const deepinfra = new OpenAICompatProvider(getPreset('deepinfra'));
+            expect(deepinfra.displayName).toBe('DeepInfra (Fast Inference)');
+        });
+    });
+
+    describe('SambaNova provider instantiation', () => {
+        it('should create a SambaNova provider with correct name', () => {
+            const sambanova = new OpenAICompatProvider(getPreset('sambanova'));
+            expect(sambanova.name).toBe('sambanova');
+        });
+
+        it('should have SambaNova display name', () => {
+            const sambanova = new OpenAICompatProvider(getPreset('sambanova'));
+            expect(sambanova.displayName).toBe('SambaNova (Fast Inference)');
+        });
+    });
+
     describe('healthCheck for new providers', () => {
         it('Venice healthCheck should return false when fetch rejects', async () => {
             const venice = new OpenAICompatProvider(getPreset('venice'));
@@ -280,6 +456,24 @@ describe('OpenAICompatProvider — New Providers', () => {
             const litellm = new OpenAICompatProvider(getPreset('litellm'));
             mockFetch.mockRejectedValue(new Error('Network error'));
             expect(await litellm.healthCheck()).toBe(false);
+        });
+
+        it('Azure healthCheck should return false when fetch rejects', async () => {
+            const azure = new OpenAICompatProvider(getPreset('azure'));
+            mockFetch.mockRejectedValue(new Error('Network error'));
+            expect(await azure.healthCheck()).toBe(false);
+        });
+
+        it('DeepInfra healthCheck should return false when fetch rejects', async () => {
+            const deepinfra = new OpenAICompatProvider(getPreset('deepinfra'));
+            mockFetch.mockRejectedValue(new Error('Network error'));
+            expect(await deepinfra.healthCheck()).toBe(false);
+        });
+
+        it('SambaNova healthCheck should return false when fetch rejects', async () => {
+            const sambanova = new OpenAICompatProvider(getPreset('sambanova'));
+            mockFetch.mockRejectedValue(new Error('Network error'));
+            expect(await sambanova.healthCheck()).toBe(false);
         });
     });
 
@@ -302,6 +496,26 @@ describe('OpenAICompatProvider — New Providers', () => {
             mockFetch.mockRejectedValue(new Error('timeout'));
             const models = await litellm.listModels();
             expect(models).toEqual(getPreset('litellm').knownModels);
+        });
+
+        it('Azure should return knownModels directly (supportsModelList=false)', async () => {
+            const azure = new OpenAICompatProvider(getPreset('azure'));
+            const models = await azure.listModels();
+            expect(models).toEqual(getPreset('azure').knownModels);
+        });
+
+        it('DeepInfra should attempt to fetch models (supportsModelList=true) and fall back on error', async () => {
+            const deepinfra = new OpenAICompatProvider(getPreset('deepinfra'));
+            mockFetch.mockRejectedValue(new Error('timeout'));
+            const models = await deepinfra.listModels();
+            expect(models).toEqual(getPreset('deepinfra').knownModels);
+        });
+
+        it('SambaNova should attempt to fetch models (supportsModelList=true) and fall back on error', async () => {
+            const sambanova = new OpenAICompatProvider(getPreset('sambanova'));
+            mockFetch.mockRejectedValue(new Error('timeout'));
+            const models = await sambanova.listModels();
+            expect(models).toEqual(getPreset('sambanova').knownModels);
         });
     });
 });
@@ -327,6 +541,9 @@ describe('Router — New Provider Aliases', () => {
                 venice: { apiKey: '', baseUrl: '', authProfiles: [] },
                 bedrock: { apiKey: '', baseUrl: '', authProfiles: [] },
                 litellm: { apiKey: '', baseUrl: '', authProfiles: [] },
+                azure: { apiKey: '', baseUrl: '', authProfiles: [] },
+                deepinfra: { apiKey: '', baseUrl: '', authProfiles: [] },
+                sambanova: { apiKey: '', baseUrl: '', authProfiles: [] },
                 anthropic: {}, openai: {}, google: {}, ollama: {},
                 groq: {}, mistral: {}, openrouter: {}, fireworks: {},
                 xai: {}, together: {}, deepseek: {}, cerebras: {},
@@ -376,6 +593,26 @@ describe('Router — New Provider Aliases', () => {
         it('should pass through "litellm" unchanged', () => {
             expect(normalizeProvider('litellm')).toBe('litellm');
         });
+
+        it('should normalize "azure-openai" to "azure"', () => {
+            expect(normalizeProvider('azure-openai')).toBe('azure');
+        });
+
+        it('should normalize "Azure-OpenAI" (mixed case) to "azure"', () => {
+            expect(normalizeProvider('Azure-OpenAI')).toBe('azure');
+        });
+
+        it('should pass through "azure" unchanged', () => {
+            expect(normalizeProvider('azure')).toBe('azure');
+        });
+
+        it('should pass through "deepinfra" unchanged', () => {
+            expect(normalizeProvider('deepinfra')).toBe('deepinfra');
+        });
+
+        it('should pass through "sambanova" unchanged', () => {
+            expect(normalizeProvider('sambanova')).toBe('sambanova');
+        });
     });
 
     describe('getProvider()', () => {
@@ -396,12 +633,30 @@ describe('Router — New Provider Aliases', () => {
             expect(provider).toBeDefined();
             expect(provider!.name).toBe('litellm');
         });
+
+        it('should return a provider for "azure"', () => {
+            const provider = getProvider('azure');
+            expect(provider).toBeDefined();
+            expect(provider!.name).toBe('azure');
+        });
+
+        it('should return a provider for "deepinfra"', () => {
+            const provider = getProvider('deepinfra');
+            expect(provider).toBeDefined();
+            expect(provider!.name).toBe('deepinfra');
+        });
+
+        it('should return a provider for "sambanova"', () => {
+            const provider = getProvider('sambanova');
+            expect(provider).toBeDefined();
+            expect(provider!.name).toBe('sambanova');
+        });
     });
 
     describe('getAllProviders()', () => {
-        it('should return 17 total providers (4 core + 13 compat)', () => {
+        it('should return 20 total providers (4 core + 16 compat)', () => {
             const all = getAllProviders();
-            expect(all.size).toBe(17);
+            expect(all.size).toBe(20);
         });
 
         it('should include venice, bedrock, and litellm in the provider map', () => {
@@ -409,6 +664,13 @@ describe('Router — New Provider Aliases', () => {
             expect(all.has('venice')).toBe(true);
             expect(all.has('bedrock')).toBe(true);
             expect(all.has('litellm')).toBe(true);
+        });
+
+        it('should include azure, deepinfra, and sambanova in the provider map', () => {
+            const all = getAllProviders();
+            expect(all.has('azure')).toBe(true);
+            expect(all.has('deepinfra')).toBe(true);
+            expect(all.has('sambanova')).toBe(true);
         });
     });
 });
@@ -436,6 +698,21 @@ describe('TitanConfigSchema — New Provider Entries', () => {
     it('should include litellm in the parsed providers', () => {
         const result = TitanConfigSchema.parse({});
         expect(result.providers).toHaveProperty('litellm');
+    });
+
+    it('should include azure in the parsed providers', () => {
+        const result = TitanConfigSchema.parse({});
+        expect(result.providers).toHaveProperty('azure');
+    });
+
+    it('should include deepinfra in the parsed providers', () => {
+        const result = TitanConfigSchema.parse({});
+        expect(result.providers).toHaveProperty('deepinfra');
+    });
+
+    it('should include sambanova in the parsed providers', () => {
+        const result = TitanConfigSchema.parse({});
+        expect(result.providers).toHaveProperty('sambanova');
     });
 
     it('venice provider config should have correct defaults', () => {
@@ -489,6 +766,57 @@ describe('TitanConfigSchema — New Provider Entries', () => {
         expect(result.providers.litellm.model).toBe('custom-model');
     });
 
+    it('azure provider config should have correct defaults', () => {
+        const result = TitanConfigSchema.parse({});
+        const azure = result.providers.azure;
+        expect(azure.authProfiles).toEqual([]);
+        expect(azure.apiKey).toBeUndefined();
+        expect(azure.baseUrl).toBeUndefined();
+    });
+
+    it('deepinfra provider config should have correct defaults', () => {
+        const result = TitanConfigSchema.parse({});
+        const deepinfra = result.providers.deepinfra;
+        expect(deepinfra.authProfiles).toEqual([]);
+        expect(deepinfra.apiKey).toBeUndefined();
+        expect(deepinfra.baseUrl).toBeUndefined();
+    });
+
+    it('sambanova provider config should have correct defaults', () => {
+        const result = TitanConfigSchema.parse({});
+        const sambanova = result.providers.sambanova;
+        expect(sambanova.authProfiles).toEqual([]);
+        expect(sambanova.apiKey).toBeUndefined();
+        expect(sambanova.baseUrl).toBeUndefined();
+    });
+
+    it('should accept custom baseUrl for azure', () => {
+        const result = TitanConfigSchema.parse({
+            providers: {
+                azure: { baseUrl: 'https://my-resource.openai.azure.com/openai/deployments/gpt-4o' },
+            },
+        });
+        expect(result.providers.azure.baseUrl).toBe('https://my-resource.openai.azure.com/openai/deployments/gpt-4o');
+    });
+
+    it('should accept custom apiKey for deepinfra', () => {
+        const result = TitanConfigSchema.parse({
+            providers: {
+                deepinfra: { apiKey: 'deepinfra-key-456' },
+            },
+        });
+        expect(result.providers.deepinfra.apiKey).toBe('deepinfra-key-456');
+    });
+
+    it('should accept custom model for sambanova', () => {
+        const result = TitanConfigSchema.parse({
+            providers: {
+                sambanova: { model: 'Meta-Llama-3.3-70B-Instruct' },
+            },
+        });
+        expect(result.providers.sambanova.model).toBe('Meta-Llama-3.3-70B-Instruct');
+    });
+
     it('should still include all original providers alongside new ones', () => {
         const result = TitanConfigSchema.parse({});
         const providerNames = Object.keys(result.providers);
@@ -497,6 +825,7 @@ describe('TitanConfigSchema — New Provider Entries', () => {
             'groq', 'mistral', 'openrouter', 'fireworks',
             'xai', 'together', 'deepseek', 'cerebras',
             'cohere', 'perplexity', 'venice', 'bedrock', 'litellm',
+            'azure', 'deepinfra', 'sambanova',
         ];
         for (const name of expected) {
             expect(providerNames).toContain(name);
@@ -575,5 +904,78 @@ describe('New Providers — Edge Cases', () => {
         const litellm = getPreset('litellm');
         const keys = new Set([venice.configKey, bedrock.configKey, litellm.configKey]);
         expect(keys.size).toBe(3);
+    });
+
+    it('Azure should use API key from environment variable key name', () => {
+        const azure = getPreset('azure');
+        expect(azure.envKey).toBe('AZURE_OPENAI_API_KEY');
+    });
+
+    it('Azure with supportsModelList=false should never call fetch for listModels', async () => {
+        mockLoadConfig.mockReturnValue({
+            providers: {
+                azure: { apiKey: 'test-key', baseUrl: '', authProfiles: [] },
+            },
+        });
+        mockResolveApiKey.mockReturnValue('test-key');
+
+        const azure = new OpenAICompatProvider(getPreset('azure'));
+        const models = await azure.listModels();
+        expect(models).toEqual(getPreset('azure').knownModels);
+        expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('DeepInfra with supportsModelList=true should fetch models from API on success', async () => {
+        mockLoadConfig.mockReturnValue({
+            providers: {
+                deepinfra: { apiKey: 'test-key', baseUrl: '', authProfiles: [] },
+            },
+        });
+        mockResolveApiKey.mockReturnValue('test-key');
+
+        const deepinfra = new OpenAICompatProvider(getPreset('deepinfra'));
+        mockFetch.mockResolvedValue(makeJsonResponse({
+            data: [{ id: 'meta-llama/Llama-3.3-70B-Instruct' }, { id: 'custom-model' }],
+        }));
+
+        const models = await deepinfra.listModels();
+        expect(models).toEqual(['meta-llama/Llama-3.3-70B-Instruct', 'custom-model']);
+    });
+
+    it('SambaNova with supportsModelList=true should fetch models from API on success', async () => {
+        mockLoadConfig.mockReturnValue({
+            providers: {
+                sambanova: { apiKey: 'test-key', baseUrl: '', authProfiles: [] },
+            },
+        });
+        mockResolveApiKey.mockReturnValue('test-key');
+
+        const sambanova = new OpenAICompatProvider(getPreset('sambanova'));
+        mockFetch.mockResolvedValue(makeJsonResponse({
+            data: [{ id: 'Meta-Llama-3.3-70B-Instruct' }, { id: 'Qwen2.5-72B-Instruct' }],
+        }));
+
+        const models = await sambanova.listModels();
+        expect(models).toEqual(['Meta-Llama-3.3-70B-Instruct', 'Qwen2.5-72B-Instruct']);
+    });
+
+    it('all six new presets should have unique config keys', () => {
+        const azure = getPreset('azure');
+        const deepinfra = getPreset('deepinfra');
+        const sambanova = getPreset('sambanova');
+        const venice = getPreset('venice');
+        const bedrock = getPreset('bedrock');
+        const litellm = getPreset('litellm');
+        const keys = new Set([
+            azure.configKey, deepinfra.configKey, sambanova.configKey,
+            venice.configKey, bedrock.configKey, litellm.configKey,
+        ]);
+        expect(keys.size).toBe(6);
+    });
+
+    it('all sixteen presets should have unique names', () => {
+        const names = PROVIDER_PRESETS.map(p => p.name);
+        const uniqueNames = new Set(names);
+        expect(uniqueNames.size).toBe(16);
     });
 });

@@ -454,8 +454,8 @@ describe('OpenAICompatProvider', () => {
     // ── PROVIDER_PRESETS ──────────────────────────────────────────────
 
     describe('PROVIDER_PRESETS', () => {
-        it('should contain 13 provider presets', () => {
-            expect(PROVIDER_PRESETS).toHaveLength(13);
+        it('should contain 16 provider presets', () => {
+            expect(PROVIDER_PRESETS).toHaveLength(16);
         });
 
         it('should include groq, mistral, openrouter, fireworks, xai, together, deepseek, cerebras, cohere, perplexity, venice, bedrock, litellm', () => {
@@ -477,7 +477,10 @@ describe('OpenAICompatProvider', () => {
 
         it('every preset should have valid URLs and non-empty known models', () => {
             for (const p of PROVIDER_PRESETS) {
-                expect(p.defaultBaseUrl).toMatch(/^https?:\/\//);
+                // Azure has empty baseUrl (user configures their endpoint)
+                if (p.name !== 'azure') {
+                    expect(p.defaultBaseUrl).toMatch(/^https?:\/\//);
+                }
                 expect(p.knownModels.length).toBeGreaterThan(0);
                 expect(p.envKey).toBeTruthy();
                 expect(p.configKey).toBeTruthy();

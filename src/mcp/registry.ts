@@ -13,6 +13,25 @@ import logger from '../utils/logger.js';
 const COMPONENT = 'MCPRegistry';
 const MCP_CONFIG_PATH = join(TITAN_HOME, 'mcp.json');
 
+// ─── Built-in Presets ────────────────────────────────────────────
+// Users can activate these with `titan mcp --add <preset-id>`
+
+export const BUILTIN_PRESETS: Omit<McpServer, 'timeoutMs'>[] = [
+    {
+        id: 'skyvern',
+        name: 'Skyvern AI Browser',
+        description: 'AI-powered browser automation with natural language commands, self-healing selectors, and credential management',
+        type: 'stdio',
+        command: 'skyvern',
+        args: ['run', 'mcp'],
+        env: {
+            SKYVERN_BASE_URL: 'http://localhost:8080',
+            SKYVERN_API_KEY: 'local',
+        },
+        enabled: false,
+    },
+];
+
 // ─── Persistence ──────────────────────────────────────────────────
 function loadServers(): McpServer[] {
     try {
@@ -29,6 +48,11 @@ function saveServers(servers: McpServer[]): void {
 }
 
 // ─── Public API ───────────────────────────────────────────────────
+
+/** Look up a built-in preset by ID */
+export function getBuiltinPreset(id: string): Omit<McpServer, 'timeoutMs'> | undefined {
+    return BUILTIN_PRESETS.find((p) => p.id === id);
+}
 
 /** List all configured MCP servers */
 export function listMcpServers(): McpServer[] {
@@ -47,6 +71,16 @@ export function addMcpServer(server: Omit<McpServer, 'timeoutMs' | 'enabled'>): 
     saveServers(servers);
     logger.info(COMPONENT, `Added MCP server: ${full.name}`);
     return full;
+}
+
+/** Add a built-in preset by its ID (e.g. 'skyvern') */
+export function addPreset(presetId: string): McpServer {
+    const preset = getBuiltinPreset(presetId);
+    if (!preset) {
+        const available = BUILTIN_PRESETS.map((p) => p.id).join(', ');
+        throw new Error(`Unknown preset "${presetId}". Available presets: ${available}`);
+    }
+    return addMcpServer(preset as Omit<McpServer, 'timeoutMs' | 'enabled'>);
 }
 
 /** Remove an MCP server */

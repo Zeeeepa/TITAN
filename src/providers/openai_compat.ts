@@ -423,4 +423,37 @@ export const PROVIDER_PRESETS: OpenAICompatConfig[] = [
         knownModels: ['gpt-4o', 'claude-sonnet-4-20250514', 'gemini-2.5-flash'],
         supportsModelList: true,
     },
+    // NOTE: Azure OpenAI uses custom endpoints (https://{resource}.openai.azure.com/openai/deployments/{model})
+    // and requires api-version query param + api-key header instead of Bearer token.
+    // Users must configure baseUrl to their Azure deployment endpoint.
+    {
+        name: 'azure',
+        displayName: 'Azure OpenAI (Enterprise)',
+        defaultBaseUrl: '',
+        envKey: 'AZURE_OPENAI_API_KEY',
+        configKey: 'azure',
+        defaultModel: 'gpt-4o',
+        knownModels: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o1-preview'],
+        supportsModelList: false,
+    },
+    {
+        name: 'deepinfra',
+        displayName: 'DeepInfra (Fast Inference)',
+        defaultBaseUrl: 'https://api.deepinfra.com/v1/openai',
+        envKey: 'DEEPINFRA_API_KEY',
+        configKey: 'deepinfra',
+        defaultModel: 'meta-llama/Llama-3.3-70B-Instruct',
+        knownModels: ['meta-llama/Llama-3.3-70B-Instruct', 'mistralai/Mixtral-8x22B-Instruct-v0.1', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-R1'],
+        supportsModelList: true,
+    },
+    {
+        name: 'sambanova',
+        displayName: 'SambaNova (Fast Inference)',
+        defaultBaseUrl: 'https://api.sambanova.ai/v1',
+        envKey: 'SAMBANOVA_API_KEY',
+        configKey: 'sambanova',
+        defaultModel: 'Meta-Llama-3.3-70B-Instruct',
+        knownModels: ['Meta-Llama-3.3-70B-Instruct', 'DeepSeek-R1-Distill-Llama-70B', 'Qwen2.5-72B-Instruct'],
+        supportsModelList: true,
+    },
 ];

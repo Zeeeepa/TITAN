@@ -6,14 +6,14 @@
 import { WebSocket } from 'ws';
 import { createHmac, timingSafeEqual } from 'crypto';
 import logger from '../utils/logger.js';
-import { getPeer, registerPeer, type MeshPeer } from './discovery.js';
+import { registerPeer } from './discovery.js';
 import { getOrCreateNodeId } from './identity.js';
 
 const COMPONENT = 'MeshTransport';
 
 // ── Active WebSocket connections to peers ──────────────────────
 const peerConnections = new Map<string, WebSocket>();
-const pendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
+const pendingRequests = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
 const reconnectState = new Map<string, { attempts: number }>();
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -24,7 +24,7 @@ export interface MeshMessage {
     fromNodeId: string;
     toNodeId?: string;
     requestId?: string;
-    payload: any;
+    payload: Record<string, unknown>;
     timestamp: string;
 }
 
@@ -78,13 +78,13 @@ export async function connectToPeer(
                     peerConnections.set(remoteNodeId, ws);
                     registerPeer({
                         nodeId: remoteNodeId,
-                        hostname: msg.payload?.hostname || address,
+                        hostname: (msg.payload?.hostname as string) || address,
                         address,
                         port,
-                        version: msg.payload?.version || 'unknown',
-                        models: msg.payload?.models || [],
-                        agentCount: msg.payload?.agentCount || 0,
-                        load: msg.payload?.load || 0,
+                        version: (msg.payload?.version as string) || 'unknown',
+                        models: (msg.payload?.models as string[]) || [],
+                        agentCount: (msg.payload?.agentCount as number) || 0,
+                        load: (msg.payload?.load as number) || 0,
                         discoveredVia: 'manual',
                         lastSeen: Date.now(),
                     });
@@ -169,7 +169,7 @@ export function routeTaskToNode(
     message: string,
     model: string,
     timeoutMs = 60_000,
-): Promise<any> {
+): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             pendingRequests.delete(requestId);
@@ -201,7 +201,7 @@ export function handleMeshWebSocket(
     ws: WebSocket,
     nodeId: string,
     localNodeId: string,
-    onTaskRequest?: (msg: MeshMessage, reply: (payload: any) => void) => void,
+    onTaskRequest?: (msg: MeshMessage, reply: (payload: Record<string, unknown>) => void) => void,
 ): void {
     peerConnections.set(nodeId, ws);
     logger.info(COMPONENT, `Mesh peer connected: ${nodeId}`);
@@ -214,13 +214,13 @@ export function handleMeshWebSocket(
             if (msg.action === 'heartbeat') {
                 registerPeer({
                     nodeId: msg.fromNodeId,
-                    hostname: msg.payload?.hostname || 'unknown',
+                    hostname: (msg.payload?.hostname as string) || 'unknown',
                     address: '', // Already connected
                     port: 0,
-                    version: msg.payload?.version || 'unknown',
-                    models: msg.payload?.models || [],
-                    agentCount: msg.payload?.agentCount || 0,
-                    load: msg.payload?.load || 0,
+                    version: (msg.payload?.version as string) || 'unknown',
+                    models: (msg.payload?.models as string[]) || [],
+                    agentCount: (msg.payload?.agentCount as number) || 0,
+                    load: (msg.payload?.load as number) || 0,
                     discoveredVia: 'manual',
                     lastSeen: Date.now(),
                 });
@@ -261,7 +261,7 @@ export function handleMeshWebSocket(
 }
 
 /** Start sending periodic heartbeats to all connected peers */
-export function startHeartbeat(localNodeId: string, payload?: Record<string, any>): void {
+export function startHeartbeat(localNodeId: string, payload?: Record<string, unknown>): void {
     if (heartbeatInterval) return; // Already running
     heartbeatInterval = setInterval(() => {
         const msg: MeshMessage = {

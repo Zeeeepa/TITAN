@@ -389,7 +389,9 @@ export function registerDataAnalysisSkill(): void {
 
                     const filePath = resolve(path);
                     const content = readFileSync(filePath, 'utf-8');
-                    let { headers, rows } = parseCSV(content, delimiter);
+                    const parsed = parseCSV(content, delimiter);
+                    const { headers } = parsed;
+                    let { rows } = parsed;
 
                     // Apply filter
                     if (filter) {

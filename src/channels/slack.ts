@@ -21,7 +21,7 @@ export class SlackChannel extends ChannelAdapter {
 
         try {
             // Dynamic import to only load Bolt when used
-            // @ts-ignore optional peer dependency — install with: npm install @slack/bolt
+            // @ts-expect-error optional peer dependency — install with: npm install @slack/bolt
             const { App } = await import('@slack/bolt');
             const app = new App({
                 token: channelConfig.token,
@@ -30,7 +30,7 @@ export class SlackChannel extends ChannelAdapter {
                 appToken: channelConfig.apiKey || '',
             });
 
-            app.message(async ({ message, say }: any) => {
+            app.message(async ({ message }: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
                 if (message.subtype) return;
                 const inbound: InboundMessage = {
                     id: message.ts, channel: 'slack', userId: message.user,

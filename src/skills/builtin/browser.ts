@@ -8,17 +8,6 @@ import logger from '../../utils/logger.js';
 
 const COMPONENT = 'Browser';
 
-/** Find a suitable browser binary */
-function findBrowser(): string {
-    const candidates = [
-        'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser',
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/usr/bin/google-chrome-stable',
-    ];
-    // Default to 'chromium' — user can override via config
-    return candidates[2];
-}
-
 export function registerBrowserSkill(): void {
     registerSkill(
         { name: 'browser', description: 'Browser control and web automation', version: '1.0.0', source: 'bundled', enabled: true },

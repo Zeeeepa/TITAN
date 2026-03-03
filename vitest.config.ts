@@ -12,7 +12,7 @@ export default defineConfig({
             reporter: ['text', 'html', 'json-summary'],
             include: ['src/**/*.ts'],
             exclude: ['src/gateway/dashboard.ts'],
-            thresholds: { branches: 35, functions: 35, lines: 35 },
+            thresholds: { branches: 55, functions: 55, lines: 55 },
         },
     },
 });

@@ -29,7 +29,7 @@ export class TelegramChannel extends ChannelAdapter {
         }
 
         try {
-            // @ts-ignore — grammy is an optional dependency
+            // @ts-expect-error — grammy is an optional dependency
             const { Bot } = await import('grammy');
             const bot = new Bot(token);
 

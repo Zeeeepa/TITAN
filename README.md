@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework. 14 providers. 30 tools. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework. 14 providers. 30+ tools. 1,200+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
@@ -63,7 +63,7 @@ npm run dev:gateway        # Start in dev mode
 | **Skills** | 30 built-in + drop-in YAML/JS creation | Fixed tool set |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
 | **GUI** | 11-panel Mission Control dashboard | CLI only or basic web UI |
-| **Codebase** | ~15K lines TypeScript | 50K-200K+ lines |
+| **Codebase** | ~22K lines TypeScript | 50K-200K+ lines |
 
 ---
 
@@ -331,9 +331,13 @@ Connect TITAN to your messaging platforms:
 | **Telegram** | grammY | Ready |
 | **Slack** | @slack/bolt | Ready |
 | **Google Chat** | Webhooks | Ready |
+| **WhatsApp** | Baileys | Ready |
+| **Matrix** | matrix-js-sdk | Ready |
+| **Signal** | signal-cli REST | Ready |
+| **MS Teams** | botbuilder | Ready |
 | **WebChat** | Built-in WebSocket | Ready |
 
-All channels support the DM pairing security system. Configure via `~/.titan/titan.json` or Mission Control Settings.
+All 9 channels support the DM pairing security system. Configure via `~/.titan/titan.json` or Mission Control Settings.
 
 ---
 
@@ -406,11 +410,11 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (99 tests, 10 files)
+npm run test           # vitest (1,213 tests, 37 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
-npm run test:coverage  # Coverage report
+npm run test:coverage  # Coverage report (56%+ with 55% threshold)
 ```
 
 ### Architecture
@@ -448,18 +452,24 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 
 ## Roadmap
 
-See [TASKS.md](TASKS.md) for the full development roadmap including Phase 3 and Phase 4 plans.
+See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
+
+### Recently Shipped (v2026.5.x)
+- Email skill (IMAP/SMTP via Nodemailer)
+- PDF parsing skill (pdf-parse)
+- Computer use (screenshots, mouse, keyboard via nut.js)
+- WhatsApp, Matrix, Signal, MS Teams channel adapters
+- Persistent webhooks with cron scheduling
+- Morning briefing system
+- OpenClaw Skill Scanner (quarantine + auto-scan)
+- Onboarding wizard (`titan onboard`)
+- MCP (Model Context Protocol) client support
 
 ### Upcoming
 - GitHub skill (PR review, issues, repos)
-- Email skill (IMAP/SMTP)
-- Morning briefing recipe
-- Computer use (screenshots, mouse, keyboard)
-- WhatsApp channel adapter
 - Image generation skill
-- PDF parsing skill
-- Persistent webhooks
 - Plugin marketplace
+- Voice mode (real-time audio transcription/synthesis)
 
 ---
 

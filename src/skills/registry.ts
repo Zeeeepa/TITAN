@@ -296,7 +296,7 @@ function loadYamlSkill(filePath: string): ToolHandler | null {
                     // Only allow built-in modules
                     const allowed = ['fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'url', 'util'];
                     if (!allowed.includes(mod)) throw new Error(`Module "${mod}" not allowed in YAML skills`);
-                    return require(mod);
+                    return globalThis.require(mod); // eslint-disable-line @typescript-eslint/no-require-imports
                 });
                 return typeof result === 'string' ? result : JSON.stringify(result, null, 2);
             } catch (err) {

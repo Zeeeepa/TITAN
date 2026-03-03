@@ -3,7 +3,6 @@
  * Executes a recipe against the current session, filling in parameters
  * and running each step as an agent conversation message.
  */
-import type { Recipe } from './types.js';
 import { saveRecipe, getRecipe } from './store.js';
 import logger from '../utils/logger.js';
 

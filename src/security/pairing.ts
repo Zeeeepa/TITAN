@@ -2,9 +2,7 @@
  * TITAN — Pairing Manager
  * DM pairing for secure inbound messaging (like OpenClaw's dmPolicy).
  */
-import { getDb } from '../memory/memory.js';
 import logger from '../utils/logger.js';
-import { v4 as uuid } from 'uuid';
 import { randomBytes } from 'crypto';
 
 const COMPONENT = 'Pairing';

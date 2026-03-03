@@ -17,7 +17,7 @@
  *     avoid shell-escape issues
  */
 
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -966,7 +966,7 @@ export function registerComputerUseSkill(): void {
 function buildMacOsKeystroke(keys: string): string {
     const parts = keys.split('+').map(p => p.trim());
     const modifiers: string[] = [];
-    let keyPart = parts[parts.length - 1];
+    const keyPart = parts[parts.length - 1];
 
     // Map modifiers
     for (let i = 0; i < parts.length - 1; i++) {

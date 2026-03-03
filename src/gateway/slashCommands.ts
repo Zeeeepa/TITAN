@@ -8,7 +8,7 @@ import { getOrCreateSession, closeSession, replaceSessionContext, setSessionMode
 import { getSessionCost, getDailyTotal, formatCostSummary } from '../agent/costOptimizer.js';
 import { getContextMessages } from '../agent/session.js';
 import { forceCompactContext } from '../agent/contextManager.js';
-import { resolveModel, getModelAliases, discoverAllModels } from '../providers/router.js';
+import { resolveModel, getModelAliases } from '../providers/router.js';
 import { isModelAllowed } from '../providers/router.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION } from '../utils/constants.js';

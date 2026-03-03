@@ -181,7 +181,7 @@ export function queryKnowledge(query: string, category?: string, limit: number =
     const k = loadKnowledgeBase();
     const q = query.toLowerCase();
 
-    let results = k.entries.filter((e) => {
+    const results = k.entries.filter((e) => {
         const matchesQuery = e.content.toLowerCase().includes(q) ||
             e.category.toLowerCase().includes(q) ||
             (e.context && e.context.toLowerCase().includes(q));

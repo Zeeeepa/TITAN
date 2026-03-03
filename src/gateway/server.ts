@@ -960,10 +960,10 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       handleMeshWebSocket(ws, peerNodeId, getOrCreateNodeId(), async (msg, reply) => {
         // Handle incoming task requests from mesh peers
         try {
-          const result = await processMessage(msg.payload.message, 'mesh', msg.fromNodeId, {
-            model: msg.payload.model,
+          const result = await processMessage(msg.payload.message as string, 'mesh', msg.fromNodeId, {
+            model: msg.payload.model as string,
           });
-          reply(result);
+          reply({ ...result });
         } catch (err) {
           reply({ error: (err as Error).message });
         }

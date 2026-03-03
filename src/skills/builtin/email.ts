@@ -172,7 +172,7 @@ async function sendViaSMTP(
                     send('STARTTLS');
                     break;
 
-                case 'starttls':
+                case 'starttls': {
                     if (code !== 220) return die(`STARTTLS failed: ${line}`);
                     // Upgrade the socket to TLS
                     upgrading = true;
@@ -201,6 +201,7 @@ async function sendViaSMTP(
                     step = 'ehlo2';
                     send(`EHLO ${cfg.host}`);
                     break;
+                }
 
                 case 'ehlo2':
                     if (!ok2xx) return die(`EHLO (post-TLS) failed: ${line}`);

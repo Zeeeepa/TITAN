@@ -27,7 +27,7 @@ function extractTextFromBuffer(buffer: Buffer): string {
             if (strMatches) {
                 for (const str of strMatches) {
                     // Remove BT/ET markers and parentheses/brackets
-                    let cleanStr = str.replace(/[\(\)<>]/g, '');
+                    let cleanStr = str.replace(/[()<>]/g, '');
                     // Decode hex strings
                     cleanStr = cleanStr.replace(/#([0-9A-Fa-f]{2})/g, (_, hex) => {
                         return String.fromCharCode(parseInt(hex, 16));

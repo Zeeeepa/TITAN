@@ -13,7 +13,7 @@ import { initMemory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills } from '../skills/registry.js';
 import { startGateway } from '../gateway/server.js';
 import { existsSync, unlinkSync } from 'fs';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import { runDoctor } from './doctor.js';
 import { runOnboard } from './onboard.js';
@@ -366,7 +366,7 @@ program
             console.log(chalk.cyan(`\n▶  Running recipe: ${recipe.name}\n`));
             initMemory();
             await initBuiltinSkills();
-            const config = loadConfig();
+            loadConfig();
             for await (const step of runRecipe(options.run, params)) {
                 console.log(chalk.gray(`\nStep ${step.stepIndex + 1}/${step.total}:`));
                 console.log(chalk.white(step.prompt));
@@ -377,7 +377,7 @@ program
             deleteRecipe(options.delete);
             console.log(chalk.green(`🗑️  Deleted recipe: ${options.delete}`));
         } else {
-            const recipes = listRecipes();
+            listRecipes();
             seedBuiltinRecipes();
             const all = listRecipes();
             console.log(chalk.cyan(`\n📋 TITAN Recipes (${all.length})\n`));
@@ -447,7 +447,7 @@ program
                 grouped.set(m.provider, list);
             }
 
-            for (const [providerName, providerModels] of grouped) {
+            for (const [_providerName, providerModels] of grouped) {
                 const first = providerModels[0];
                 const liveTag = providerModels.some(m => m.source === 'live') ? chalk.green(' [LIVE]') : chalk.gray(' [static]');
                 console.log(chalk.white(`  ${first.displayName}${liveTag}:`));

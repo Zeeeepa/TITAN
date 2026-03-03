@@ -12,6 +12,7 @@ import {
     type ToolCall,
 } from './base.js';
 import { loadConfig } from '../config/config.js';
+import type { ProviderConfig } from '../config/schema.js';
 import logger from '../utils/logger.js';
 import { fetchWithRetry } from '../utils/helpers.js';
 import { resolveApiKey } from './authResolver.js';
@@ -53,13 +54,13 @@ export class OpenAICompatProvider extends LLMProvider {
 
     private get apiKey(): string {
         const cfg = loadConfig();
-        const providerCfg = (cfg.providers as any)[this.config.configKey];
+        const providerCfg = (cfg.providers as Record<string, ProviderConfig>)[this.config.configKey];
         return resolveApiKey(this.config.name, providerCfg?.authProfiles || [], providerCfg?.apiKey || '', this.config.envKey);
     }
 
     private get baseUrl(): string {
         const cfg = loadConfig();
-        const providerCfg = (cfg.providers as any)[this.config.configKey];
+        const providerCfg = (cfg.providers as Record<string, ProviderConfig>)[this.config.configKey];
         return providerCfg?.baseUrl || this.config.defaultBaseUrl;
     }
 

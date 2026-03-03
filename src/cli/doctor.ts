@@ -9,7 +9,6 @@ import { TITAN_HOME, TITAN_CONFIG_PATH, TITAN_DB_PATH, TITAN_WORKSPACE, TITAN_VE
 import { healthCheckAll } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { getStallStats } from '../agent/stallDetector.js';
-import logger from '../utils/logger.js';
 
 interface CheckResult {
     name: string;

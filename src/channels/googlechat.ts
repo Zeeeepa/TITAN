@@ -1,7 +1,7 @@
 /**
  * TITAN — Google Chat Channel Adapter
  */
-import { ChannelAdapter, type InboundMessage, type OutboundMessage, type ChannelStatus } from './base.js';
+import { ChannelAdapter, type OutboundMessage, type ChannelStatus } from './base.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
 

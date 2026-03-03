@@ -3,7 +3,7 @@
  * Manages per-user/per-channel isolated sessions with history and context.
  */
 import { v4 as uuid } from 'uuid';
-import { getDb, getHistory, saveMessage, type ConversationMessage } from '../memory/memory.js';
+import { getDb, getHistory, saveMessage } from '../memory/memory.js';
 import type { ChatMessage } from '../providers/base.js';
 import { MAX_CONTEXT_MESSAGES, SESSION_TIMEOUT_MS } from '../utils/constants.js';
 import { generateKey } from '../security/encryption.js';

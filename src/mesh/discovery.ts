@@ -24,10 +24,28 @@ export interface MeshPeer {
     lastSeen: number;
 }
 
+// ── Bonjour structural types (dynamic import) ────────────────
+interface BonjourInstance {
+    publish(opts: Record<string, unknown>): unknown;
+    find(opts: Record<string, unknown>): BonjourBrowser;
+    destroy(): void;
+}
+interface BonjourBrowser {
+    on(event: string, cb: (service: BonjourService) => void): void;
+    stop(): void;
+}
+interface BonjourService {
+    name: string;
+    port: number;
+    txt?: Record<string, string>;
+    referer?: { address: string };
+    addresses?: string[];
+}
+
 // ── Peer store ─────────────────────────────────────────────────
 const peers = new Map<string, MeshPeer>();
-let bonjourInstance: any = null;
-let bonjourBrowser: any = null;
+let bonjourInstance: BonjourInstance | null = null;
+let bonjourBrowser: BonjourBrowser | null = null;
 let tailscaleInterval: ReturnType<typeof setInterval> | null = null;
 
 export function getPeers(): MeshPeer[] {
@@ -63,8 +81,8 @@ export function registerPeer(peer: MeshPeer): void {
 
 async function startMdns(nodeId: string, port: number): Promise<void> {
     try {
-        const { Bonjour } = await import('bonjour-service' as any);
-        bonjourInstance = new Bonjour();
+        const { Bonjour } = await import('bonjour-service');
+        bonjourInstance = new Bonjour() as unknown as BonjourInstance;
 
         // Publish this node
         bonjourInstance.publish({
@@ -80,7 +98,7 @@ async function startMdns(nodeId: string, port: number): Promise<void> {
 
         // Browse for peers
         bonjourBrowser = bonjourInstance.find({ type: 'titan-mesh' });
-        bonjourBrowser.on('up', async (service: any) => {
+        bonjourBrowser.on('up', async (service: BonjourService) => {
             const peerNodeId = service.txt?.nodeId;
             if (!peerNodeId || peerNodeId === nodeId) return;
 
@@ -105,7 +123,7 @@ async function startMdns(nodeId: string, port: number): Promise<void> {
             }
         });
 
-        bonjourBrowser.on('down', (service: any) => {
+        bonjourBrowser.on('down', (service: BonjourService) => {
             const peerNodeId = service.txt?.nodeId;
             if (peerNodeId) removePeer(peerNodeId);
         });
@@ -192,7 +210,7 @@ async function probePeer(address: string, port: number): Promise<ProbeResult | n
 
 // ── Manual Peer ──────────────────────────────────────────────
 
-export async function addManualPeer(address: string, port: number, nodeId: string): Promise<boolean> {
+export async function addManualPeer(address: string, port: number, _nodeId: string): Promise<boolean> {
     const info = await probePeer(address, port);
     if (!info) return false;
     registerPeer({

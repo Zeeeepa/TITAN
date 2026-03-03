@@ -31,7 +31,6 @@ export class MatrixChannel extends ChannelAdapter {
 
         try {
             // Dynamic import to avoid requiring matrix-js-sdk when not used
-            // @ts-ignore — matrix-js-sdk is an optional dependency
             const sdk = await import('matrix-js-sdk');
 
             const homeserver = process.env.MATRIX_HOMESERVER || 'https://matrix.org';
@@ -43,8 +42,8 @@ export class MatrixChannel extends ChannelAdapter {
                 userId: userId,
             });
 
-            // @ts-ignore — matrix-js-sdk event name typing issue
-            client.on('Room.timeline' as any, (event: any, room: any) => {
+            // @ts-expect-error — matrix-js-sdk event name typing issue
+            client.on('Room.timeline' as string, (event: any, room: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
                 if (event.getType() !== 'm.room.message') return;
                 if (event.getSender() === client.getUserId()) return;
 

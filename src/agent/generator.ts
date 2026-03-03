@@ -107,10 +107,10 @@ export async function generateAndInstallSkill(
         let code = response.content;
 
         // Clean up markdown block if the LLM ignored instructions
-        if (code.startsWith('\`\`\`typescript')) {
-            code = code.replace(/^\`\`\`typescript\n/, '').replace(/\n\`\`\`$/, '');
-        } else if (code.startsWith('\`\`\`')) {
-            code = code.replace(/^\`\`\`\n/, '').replace(/\n\`\`\`$/, '');
+        if (code.startsWith('```typescript')) {
+            code = code.replace(/^```typescript\n/, '').replace(/\n```$/, '');
+        } else if (code.startsWith('```')) {
+            code = code.replace(/^```\n/, '').replace(/\n```$/, '');
         }
 
         // 2. Static Analysis / Safety Check (Basic)
@@ -136,9 +136,9 @@ export async function generateAndInstallSkill(
             // We'll write a tiny compiler script or use tsc directly if available globally
             execFileSync('npx', ['tsc', tsFilePath, '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--target', 'ES2022'], { stdio: 'pipe' });
             logger.info(COMPONENT, `Compiled ${finalName}.ts successfully.`);
-        } catch (compileError: any) {
+        } catch (compileError: unknown) {
             logger.error(COMPONENT, `Compilation failed for ${finalName}`);
-            return { success: false, error: `Compilation failed: ${compileError.message || 'Unknown error'}` };
+            return { success: false, error: `Compilation failed: ${compileError instanceof Error ? compileError.message : 'Unknown error'}` };
         }
 
         if (!existsSync(jsFilePath)) {
@@ -157,8 +157,9 @@ export async function generateAndInstallSkill(
             filePath: tsFilePath
         };
 
-    } catch (e: any) {
-        logger.error(COMPONENT, `Auto-generation failed: ${e.message}`);
-        return { success: false, error: e.message };
+    } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logger.error(COMPONENT, `Auto-generation failed: ${errMsg}`);
+        return { success: false, error: errMsg };
     }
 }

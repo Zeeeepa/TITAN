@@ -4,8 +4,8 @@
  * Uses no native dependencies — pure Node.js for maximum portability.
  */
 import { existsSync, readFileSync, writeFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { TITAN_DB_PATH, TITAN_HOME } from '../utils/constants.js';
+import { join } from 'path';
+import { TITAN_HOME } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
 import { encrypt, decrypt, type EncryptedPayload } from '../security/encryption.js';
@@ -175,7 +175,7 @@ export function saveMessage(message: Omit<ConversationMessage, 'createdAt'>, e2e
       const payload = encrypt(message.content, Buffer.from(e2eKey, 'base64'));
       content = JSON.stringify(payload);
       isEncrypted = true;
-    } catch (e) {
+    } catch (_e) {
       logger.error(COMPONENT, `Failed to encrypt message for storage`);
       content = "[ENCRYPTION FAILED] " + content; // Fallback, though we should probably throw in strict environments
     }
@@ -216,7 +216,7 @@ export function getHistory(sessionId: string, limit: number = 50, e2eKey?: strin
           ...m,
           content: decrypt(payload, Buffer.from(e2eKey, 'base64'))
         };
-      } catch (e) {
+      } catch (_e) {
         logger.error(COMPONENT, `Failed to decrypt message ${m.id}`);
         return { ...m, content: "[DECRYPTION FAILED]" };
       }

@@ -46,8 +46,8 @@ export function encrypt(text: string, key: Buffer | string): EncryptedPayload {
             authTag,
             data: encrypted
         };
-    } catch (e: any) {
-        logger.error(COMPONENT, `Encryption failed: ${e.message}`);
+    } catch (e: unknown) {
+        logger.error(COMPONENT, `Encryption failed: ${e instanceof Error ? e.message : String(e)}`);
         throw new Error('Failed to encrypt session data.');
     }
 }
@@ -71,8 +71,8 @@ export function decrypt(payload: EncryptedPayload, key: Buffer | string): string
         decrypted += decipher.final('utf8');
 
         return decrypted;
-    } catch (e: any) {
-        logger.error(COMPONENT, `Decryption failed: ${e.message}`);
+    } catch (e: unknown) {
+        logger.error(COMPONENT, `Decryption failed: ${e instanceof Error ? e.message : String(e)}`);
         throw new Error('Failed to decrypt session data. Invalid key or corrupted payload.');
     }
 }

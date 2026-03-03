@@ -3,9 +3,19 @@
  * Scans skills downloaded from ClaWHub or any external source BEFORE installation.
  * Protects against: prompt injection payloads, malicious system calls,
  * data exfiltration, crypto miners, reverse shells, and supply-chain attacks.
- * 
+ *
  * Nothing gets installed unless it passes all checks.
+ *
+ * Quarantine & auto-scan system inspired by openclaw-skill-scanner
+ * by Jason Allen O'Neal (https://github.com/jason-allen-oneal/openclaw-skill-scanner)
+ * Used with permission. Credit where credit is due.
  */
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
+import { join, basename } from 'path';
+import { TITAN_HOME } from '../utils/constants.js';
+import logger from '../utils/logger.js';
+
+const SCANNER_COMPONENT = 'SkillScanner';
 
 export interface ScanResult {
     safe: boolean;
@@ -74,7 +84,7 @@ const MEDIUM_PATTERNS: { rule: string; pattern: RegExp; description: string }[] 
 ];
 
 const LOW_PATTERNS: { rule: string; pattern: RegExp; description: string }[] = [
-    { rule: 'HARDCODED_IP', pattern: /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b(?!(?:\/\d+)?)/, description: 'Hardcoded IP address' },
+    { rule: 'HARDCODED_IP', pattern: /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b(?!\/\d)/, description: 'Hardcoded IP address' },
     { rule: 'SPAWN_SHELL', pattern: /spawnSync?\s*\(\s*['"`](?:sh|bash|cmd|powershell)/i, description: 'Shell spawning — review manually' },
     { rule: 'NETWORK_REQUEST', pattern: /https?:\/\/(?!clawhub\.ai|npmjs\.com|github\.com)/i, description: 'Network request to unlisted domain' },
 ];
@@ -159,5 +169,150 @@ export function formatScanResult(result: ScanResult, name: string): string {
                 ? '  ⚠️  WARNING — Review the findings above before deciding to install.'
                 : '  ✅ APPROVED — Skill passed security scan and is safe to install.',
     );
+    return lines.join('\n');
+}
+
+// ─── Quarantine System ────────────────────────────────────────────
+// Inspired by openclaw-skill-scanner by Jason Allen O'Neal
+// https://github.com/jason-allen-oneal/openclaw-skill-scanner
+
+const SKILLS_DIR = join(TITAN_HOME, 'skills');
+const QUARANTINE_DIR = join(TITAN_HOME, 'skills-quarantine');
+
+/**
+ * Quarantine a skill by moving it from the skills directory to the quarantine directory.
+ * The skill is renamed with a timestamp suffix to prevent conflicts.
+ */
+export function quarantineSkill(skillPath: string, reason: string): { quarantinedTo: string } {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const name = basename(skillPath);
+    const dest = join(QUARANTINE_DIR, `${name}-${ts}`);
+
+    if (!existsSync(QUARANTINE_DIR)) {
+        mkdirSync(QUARANTINE_DIR, { recursive: true });
+    }
+
+    renameSync(skillPath, dest);
+    logger.warn(SCANNER_COMPONENT, `Quarantined skill "${name}" → ${dest} (reason: ${reason})`);
+
+    return { quarantinedTo: dest };
+}
+
+/**
+ * Scan all user skills in the skills directory.
+ * Returns a summary of findings per skill.
+ * Optionally auto-quarantine skills with critical/high findings.
+ *
+ * @param autoQuarantine If true, automatically quarantine dangerous skills
+ */
+export function scanAllUserSkills(autoQuarantine = false): {
+    scanned: number;
+    safe: number;
+    warned: number;
+    blocked: number;
+    quarantined: string[];
+    results: Map<string, ScanResult>;
+} {
+    const results = new Map<string, ScanResult>();
+    const quarantined: string[] = [];
+    let safe = 0;
+    let warned = 0;
+    let blocked = 0;
+
+    if (!existsSync(SKILLS_DIR)) {
+        return { scanned: 0, safe: 0, warned: 0, blocked: 0, quarantined: [], results };
+    }
+
+    const entries = readdirSync(SKILLS_DIR);
+
+    for (const entry of entries) {
+        const entryPath = join(SKILLS_DIR, entry);
+        const stat = statSync(entryPath);
+
+        // Scan individual .js/.ts/.yaml/.yml files
+        if (stat.isFile() && /\.(js|ts|yaml|yml)$/.test(entry)) {
+            const code = readFileSync(entryPath, 'utf-8');
+            const result = scanSkillCode(code, entry);
+            results.set(entry, result);
+
+            if (result.recommendation === 'block') {
+                blocked++;
+                if (autoQuarantine) {
+                    quarantineSkill(entryPath, 'Critical/High findings detected');
+                    quarantined.push(entry);
+                }
+            } else if (result.recommendation === 'warn') {
+                warned++;
+                if (autoQuarantine) {
+                    quarantineSkill(entryPath, 'High severity findings detected');
+                    quarantined.push(entry);
+                }
+            } else {
+                safe++;
+            }
+        }
+
+        // Scan skill directories (look for main entry files)
+        if (stat.isDirectory()) {
+            const mainFiles = ['index.ts', 'index.js', 'skill.ts', 'skill.js', 'main.ts', 'main.js'];
+            for (const mf of mainFiles) {
+                const mainPath = join(entryPath, mf);
+                if (existsSync(mainPath)) {
+                    const code = readFileSync(mainPath, 'utf-8');
+                    const result = scanSkillCode(code, `${entry}/${mf}`);
+                    results.set(entry, result);
+
+                    if (result.recommendation === 'block') {
+                        blocked++;
+                        if (autoQuarantine) {
+                            quarantineSkill(entryPath, 'Critical/High findings in directory skill');
+                            quarantined.push(entry);
+                        }
+                    } else if (result.recommendation === 'warn') {
+                        warned++;
+                    } else {
+                        safe++;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    logger.info(SCANNER_COMPONENT,
+        `Scan complete: ${results.size} skills scanned — ${safe} safe, ${warned} warned, ${blocked} blocked, ${quarantined.length} quarantined`);
+
+    return { scanned: results.size, safe, warned, blocked, quarantined, results };
+}
+
+/**
+ * Generate a markdown scan report for all user skills.
+ */
+export function generateScanReport(results: Map<string, ScanResult>): string {
+    const lines: string[] = [
+        '# TITAN Skill Security Scan Report',
+        `**Date:** ${new Date().toISOString()}`,
+        `**Skills Scanned:** ${results.size}`,
+        '',
+    ];
+
+    for (const [name, result] of results) {
+        const icon = result.recommendation === 'block' ? '🚫' : result.recommendation === 'warn' ? '⚠️' : '✅';
+        lines.push(`## ${icon} ${name} (Score: ${result.score}/100)`);
+        lines.push(`**Recommendation:** ${result.recommendation.toUpperCase()}`);
+
+        if (result.findings.length > 0) {
+            lines.push('');
+            lines.push('| Severity | Rule | Description | Line |');
+            lines.push('|----------|------|-------------|------|');
+            for (const f of result.findings) {
+                lines.push(`| ${f.severity.toUpperCase()} | ${f.rule} | ${f.description} | ${f.line || '-'} |`);
+            }
+        } else {
+            lines.push('No findings — skill is clean.');
+        }
+        lines.push('');
+    }
+
     return lines.join('\n');
 }

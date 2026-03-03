@@ -31,7 +31,7 @@ export class DiscordChannel extends ChannelAdapter {
 
         try {
             // Dynamic import to avoid requiring discord.js when not used
-            // @ts-ignore — discord.js is an optional dependency
+            // @ts-expect-error — discord.js is an optional dependency
             const { Client, GatewayIntentBits, Events } = await import('discord.js');
 
             const client = new Client({

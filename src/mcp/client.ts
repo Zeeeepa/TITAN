@@ -159,9 +159,9 @@ async function connectHttp(server: McpServer): Promise<McpConnection> {
         const data = await res.json() as { result?: { tools: McpTool[] } };
         connection.tools = data.result?.tools || [];
         connection.status = 'connected';
-    } catch (e: any) {
+    } catch (e: unknown) {
         connection.status = 'error';
-        connection.error = e.message;
+        connection.error = e instanceof Error ? e.message : String(e);
     }
     return connection;
 }

@@ -215,7 +215,7 @@ export function maybeCompressContext(
 
 /** Get a human-readable cost summary for display */
 export function getCostStatus(): Record<string, SessionCost> {
-    const now = new Date().toISOString().split('T')[0];
+    const _now = new Date().toISOString().split('T')[0];
     // Assuming globalStore and sessionStores are defined elsewhere or need to be added.
     // For now, I'll use the existing `todayTotalUsd` and convert `sessionCosts` Map to a Record.
     // This part of the provided snippet is problematic as `globalStore` and `sessionStores` are not defined.

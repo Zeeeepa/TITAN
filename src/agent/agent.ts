@@ -2,20 +2,19 @@
  * TITAN — Core Agent Loop
  * The main agent: receives messages, builds context, calls LLM, handles tools, responds.
  */
-import { v4 as uuid } from 'uuid';
 import { existsSync, readFileSync } from 'fs';
 import { chat } from '../providers/router.js';
 import { loadConfig } from '../config/config.js';
-import { getOrCreateSession, addMessage, getContextMessages, type Session } from './session.js';
-import { executeTools, getToolDefinitions } from './toolRunner.js';
+import { getOrCreateSession, addMessage, getContextMessages } from './session.js';
+import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
-import { initLearning, recordToolResult, recordSuccessPattern, getLearningContext } from '../memory/learning.js';
-import { buildPersonalContext, loadProfile, calibrateTechnicalLevel } from '../memory/relationship.js';
+import { recordToolResult, getLearningContext } from '../memory/learning.js';
+import { buildPersonalContext } from '../memory/relationship.js';
 import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler } from './stallDetector.js';
 import { checkForLoop, resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
 import { getCachedResponse, setCachedResponse } from './responseCache.js';
-import { buildSmartContext, estimateTokens } from './contextManager.js';
+import { buildSmartContext } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
@@ -285,7 +284,7 @@ export async function processMessage(
         });
 
         // Execute tools
-        let toolResults: any[] = [];
+        let toolResults: ToolResult[] = [];
         try {
             if (isKimiSwarm) {
                 // Intercept execution and route to Swarm Sub-Agents

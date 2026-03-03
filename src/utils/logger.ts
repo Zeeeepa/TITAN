@@ -31,7 +31,7 @@ const LEVEL_NAMES: Record<LogLevel, string> = {
     [LogLevel.ERROR]: 'ERROR',
     [LogLevel.SILENT]: '     ',
 };
-const ansiStrip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+const ansiStrip = (s: string) => s.replace(/\u001b\[[0-9;]*m/g, ''); // eslint-disable-line no-control-regex
 
 let currentLevel: LogLevel = LogLevel.INFO;
 

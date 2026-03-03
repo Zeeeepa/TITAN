@@ -6,9 +6,6 @@ import { registerSkill } from '../registry.js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { dirname } from 'path';
 import { ensureDir } from '../../utils/helpers.js';
-import logger from '../../utils/logger.js';
-
-const COMPONENT = 'ApplyPatch';
 
 export function registerApplyPatchSkill(): void {
     registerSkill(
@@ -111,7 +108,7 @@ export function registerApplyPatchSkill(): void {
 
 /** Apply a simple patch without git diff headers */
 function applySimplePatch(patch: string, cwd: string): string {
-    const oldFileMatch = patch.match(/^--- (.+)$/m);
+    const _oldFileMatch = patch.match(/^--- (.+)$/m);
     const newFileMatch = patch.match(/^\+\+\+ (.+)$/m);
 
     if (!newFileMatch) return 'Could not parse patch: no +++ line found.';

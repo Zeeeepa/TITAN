@@ -126,5 +126,80 @@ describe('Helpers (extended)', () => {
             const result = deepMerge({ a: [1, 2] }, { a: [3, 4] } as any);
             expect(result.a).toEqual([3, 4]); // replaced, not merged
         });
+
+        it('should handle undefined values in source', () => {
+            const result = deepMerge({ a: 1, b: 2 }, { a: undefined } as any);
+            expect(result.a).toBe(1); // undefined doesn't overwrite
+        });
+
+        it('should handle null values in source', () => {
+            const result = deepMerge({ a: 1 }, { a: null } as any);
+            expect(result.a).toBeNull(); // null does overwrite
+        });
+
+        it('should deeply merge nested objects', () => {
+            const result = deepMerge(
+                { a: { b: { c: 1, d: 2 } } },
+                { a: { b: { c: 3 } } } as any,
+            );
+            expect(result.a.b.c).toBe(3);
+            expect(result.a.b.d).toBe(2);
+        });
+    });
+
+    describe('shortId', () => {
+        it('should return a string of length 8', () => {
+            const id = shortId();
+            expect(typeof id).toBe('string');
+            expect(id.length).toBeLessThanOrEqual(8);
+            expect(id.length).toBeGreaterThan(0);
+        });
+
+        it('should return unique ids', () => {
+            const ids = new Set(Array.from({ length: 100 }, () => shortId()));
+            expect(ids.size).toBeGreaterThan(90); // at least 90% unique
+        });
+    });
+
+    describe('formatBytes (extended)', () => {
+        it('should format 0 bytes', () => {
+            expect(formatBytes(0)).toBe('0 B');
+        });
+
+        it('should format bytes', () => {
+            expect(formatBytes(500)).toBe('500 B');
+        });
+
+        it('should format kilobytes', () => {
+            expect(formatBytes(1024)).toBe('1 KB');
+        });
+
+        it('should format megabytes', () => {
+            expect(formatBytes(1048576)).toBe('1 MB');
+        });
+    });
+
+    describe('formatDuration (extended)', () => {
+        it('should format milliseconds', () => {
+            expect(formatDuration(500)).toBe('500ms');
+        });
+
+        it('should format seconds', () => {
+            expect(formatDuration(5000)).toBe('5.0s');
+        });
+
+        it('should format minutes and seconds', () => {
+            expect(formatDuration(90000)).toBe('1m 30s');
+        });
+    });
+
+    describe('truncate (extended)', () => {
+        it('should not truncate string within limit', () => {
+            expect(truncate('hello', 10)).toBe('hello');
+        });
+
+        it('should truncate long strings with ellipsis', () => {
+            expect(truncate('hello world', 8)).toBe('hello...');
+        });
     });
 });

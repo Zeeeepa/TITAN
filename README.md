@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 30+ tools. 2,170+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 30+ tools. 2,830+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
@@ -62,8 +62,8 @@ npm run dev:gateway        # Start in dev mode
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
 | **Skills** | 30 built-in + drop-in YAML/JS creation | Fixed tool set |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
-| **GUI** | 11-panel Mission Control dashboard | CLI only or basic web UI |
-| **Codebase** | ~22K lines TypeScript | 50K-200K+ lines |
+| **GUI** | 12-panel Mission Control dashboard | CLI only or basic web UI |
+| **Codebase** | ~25K lines TypeScript | 50K-200K+ lines |
 
 ---
 
@@ -115,7 +115,7 @@ Run up to 5 concurrent agents, each with its own model and personality.
 
 ```bash
 titan agents --spawn researcher --model openai/gpt-4o
-titan agents --spawn coder --model ollama/llama3.1
+titan agents --spawn coder --model ollama/qwen3.5:4b
 titan agents --list
 ```
 
@@ -262,7 +262,7 @@ export OPENROUTER_API_KEY="sk-or-..."
 
 ## Mission Control
 
-An 11-panel dark-mode dashboard at `http://localhost:48420`.
+A 12-panel dark-mode dashboard at `http://localhost:48420`.
 
 | Panel | Description |
 |-------|-------------|
@@ -274,6 +274,7 @@ An 11-panel dark-mode dashboard at `http://localhost:48420`.
 | **Skills** | Installed skills with enable/disable controls |
 | **Sessions** | Active sessions with message counts and history |
 | **Learning** | Tool success rates and knowledge base stats |
+| **Autopilot** | Schedule, status, history, and run control for autopilot mode |
 | **Security** | Audit log and DM pairing management |
 | **Logs** | Color-coded real-time log viewer with filtering |
 | **Memory Graph** | Visual force-directed graph of entities and relationships |
@@ -472,7 +473,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (2,100+ tests, 57 files)
+npm run test           # vitest (2,830+ tests, 67 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -484,10 +485,10 @@ npm run test:coverage  # Coverage report (68%+ with 55% threshold)
 ```
 src/
   agent/        Core agent loop, multi-agent, swarm, planner, autonomy
-  channels/     Discord, Telegram, Slack, Google Chat, WebChat
+  channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       30 built-in tools + user skill loader
+  skills/       30+ built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport

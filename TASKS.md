@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-02
-**Current Version:** 2026.5.0
+**Last Updated:** 2026-03-03
+**Current Version:** 2026.5.8
 **Author:** Tony Elliott (Djtony707)
 
 ---
@@ -43,6 +43,14 @@
 - 1,160+ tests across 37 files, 56.6% line coverage (55% threshold)
 - OpenClaw Skill Scanner Guard integrated (credit: Jason Allen O'Neal)
 
+### Phase 5: Competitive Dominance (v2026.5.1–5.8)
+- **v2026.5.1–5.3**: 20 runtime bug fixes, 1,523 tests, 66.88% coverage
+- **v2026.5.4**: Encrypted secrets vault, tamper-evident audit log, self-healing doctor, 3 providers (Venice AI, AWS Bedrock, LiteLLM), resource limits, 2,100+ tests
+- **v2026.5.5**: Autopilot Mode — hands-free scheduled agent runs with cron
+- **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
+- **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,612 tests
+- **v2026.5.8**: Ollama model guide, 147→0 ESLint warnings, `local` model alias, 2,838 tests across 67 files
+
 ---
 
 ## NOW: Stabilize & Harden What We Have
@@ -50,27 +58,27 @@
 Focus on making existing features work correctly before adding new ones.
 
 ### Testing & Quality
-- [ ] Fix gateway-extended.test.ts (23 failing — auth mock issues)
-- [ ] Push coverage from 56.6% → 65%+
-- [ ] Integration tests for all 9 channels (mocked)
+- [x] Fix gateway-extended.test.ts (23 failing — auth mock issues)
+- [x] Push coverage from 56.6% → 65%+
+- [x] Integration tests for all 9 channels (mocked)
 - [ ] E2E tests for gateway + dashboard
 - [ ] Performance benchmarks (startup time, memory, throughput)
 
 ### Harden Existing Features
-- [ ] **Self-Healing** — Auto-detect and fix configuration/dependency issues
+- [x] **Self-Healing** — Auto-detect and fix configuration/dependency issues (`titan doctor --fix`)
 - [ ] **Telemetry Dashboard** — Usage analytics, cost forecasting, performance trends
 - [ ] **Multi-modal Pipelines** — Image → text → code → execution chains
 - [ ] **Notion/Jira Skill** — Project management integration (deferred from Phase 3)
 - [ ] **OAuth Hub** — One-click connection to SaaS services (Google, GitHub, Slack, Microsoft)
 - [ ] **API Provider Directory** — Curated catalog of providers in onboarding/dashboard. Based on [openclaw-api-list](https://github.com/cporter202/openclaw-api-list).
-- [ ] Tunnel support (Cloudflare, Tailscale, ngrok)
+- [x] Tunnel support (Cloudflare Tunnel — quick + named modes)
 - [ ] Multi-layer sandbox (Landlock, Firejail, Bubblewrap auto-detect)
-- [ ] Audit logging with signed event trail
-- [ ] Resource limits (memory, CPU, disk, subprocess caps)
-- [ ] Encrypted secrets store (ChaCha20-Poly1305 or AES-256-GCM)
+- [x] Audit logging with signed event trail (HMAC-SHA256 chained JSONL)
+- [x] Resource limits (memory, CPU, disk, subprocess caps)
+- [x] Encrypted secrets store (AES-256-GCM vault with PBKDF2)
 
 ### Expand What Works
-- [ ] Add providers toward 22+ (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova)
+- [x] Add providers to 20 (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova)
 - [ ] Add channels toward 18+ (IRC, Lark, OneBot/QQ, Line, DingTalk, Email inbound, Nostr, Mattermost, iMessage)
 - [ ] Vector search + RAG pipeline (SQLite, FTS5, embeddings)
 - [ ] Memory hygiene (auto-archive stale, configurable retention)
@@ -104,7 +112,8 @@ Only after the above is solid:
 |-------|-------|-------|--------------|
 | Phase 2 | 99 | 10 | ~27% |
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
-| Phase 5 target | 3,000+ | 50+ | 80%+ |
+| Phase 5 (current) | 2,838 | 67 | ~68% |
+| Phase 5 target | 3,500+ | 75+ | 80%+ |
 
 ---
 

@@ -534,9 +534,10 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'a.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // past debounce
+            await vi.advanceTimersByTimeAsync(10_000); // past rate limit
             fileChangeCallback!('change', 'b.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // past debounce
 
             const events = mod.getMonitorEvents();
             expect(events.length).toBe(2);
@@ -569,9 +570,10 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'first.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // past debounce
+            await vi.advanceTimersByTimeAsync(10_000); // past rate limit
             fileChangeCallback!('change', 'second.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // past debounce
 
             const events = mod.getMonitorEvents();
             // Newest event (second.txt) should be first
@@ -606,7 +608,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'test.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             const events = mod.getMonitorEvents();
             expect(events[0].monitorId).toBe('mon-id-check');
@@ -680,7 +682,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'test.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             expect(handler1).not.toHaveBeenCalled();
             expect(handler2).toHaveBeenCalled();
@@ -840,8 +842,8 @@ describe('Monitor System', () => {
             expect(fileChangeCallback).not.toBeNull();
             fileChangeCallback!('change', 'data.json');
 
-            // Allow async trigger to settle
-            await vi.advanceTimersByTimeAsync(100);
+            // Allow debounce (2s) + async trigger to settle
+            await vi.advanceTimersByTimeAsync(2100);
 
             const events = mod.getMonitorEvents();
             expect(events.length).toBeGreaterThanOrEqual(1);
@@ -882,7 +884,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'readme.md');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             expect(handler).toHaveBeenCalledWith(
                 expect.objectContaining({ id: 'mon-handler' }),
@@ -920,7 +922,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'test.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             // Should not throw — error is caught and logged
             const logger = (await import('../src/utils/logger.js')).default;
@@ -954,7 +956,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('rename', 'moved.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             const events = mod.getMonitorEvents();
             expect(events[0].detail).toContain('rename');
@@ -987,7 +989,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'update.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             const savedData = JSON.parse(mockFiles['/tmp/titan-test-monitor/monitors.json']);
             expect(savedData[0].lastTriggeredAt).toBeTruthy();
@@ -1020,12 +1022,15 @@ describe('Monitor System', () => {
             const mod = await freshMonitor();
             mod.initMonitors();
 
+            // Events must be spaced past debounce (2s) + rate limit (10s) to each count
             fileChangeCallback!('change', 'a.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // debounce fires trigger 1
+            await vi.advanceTimersByTimeAsync(10_000); // past rate limit
             fileChangeCallback!('change', 'b.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // debounce fires trigger 2
+            await vi.advanceTimersByTimeAsync(10_000); // past rate limit
             fileChangeCallback!('change', 'c.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100); // debounce fires trigger 3
 
             const savedData = JSON.parse(mockFiles['/tmp/titan-test-monitor/monitors.json']);
             expect(savedData[0].triggerCount).toBe(3);
@@ -1061,7 +1066,7 @@ describe('Monitor System', () => {
             mod.initMonitors();
 
             fileChangeCallback!('change', 'file.txt');
-            await vi.advanceTimersByTimeAsync(100);
+            await vi.advanceTimersByTimeAsync(2100);
 
             const monitorArg = handler.mock.calls[0][0];
             expect(monitorArg.prompt).toBe('Special prompt text');
@@ -1232,10 +1237,10 @@ describe('Monitor System', () => {
             const mod = await freshMonitor();
             mod.initMonitors();
 
-            // Trigger 110 events
+            // Trigger 110 events — each spaced past debounce (2s) + rate limit (10s)
             for (let i = 0; i < 110; i++) {
                 fileChangeCallback!('change', `file-${i}.txt`);
-                await vi.advanceTimersByTimeAsync(10);
+                await vi.advanceTimersByTimeAsync(12_100); // 2s debounce + 10s rate limit + margin
             }
 
             const events = mod.getMonitorEvents();
@@ -1268,10 +1273,10 @@ describe('Monitor System', () => {
             const mod = await freshMonitor();
             mod.initMonitors();
 
-            // Trigger 105 events
+            // Trigger 105 events — spaced past debounce + rate limit
             for (let i = 0; i < 105; i++) {
                 fileChangeCallback!('change', `file-${i}.txt`);
-                await vi.advanceTimersByTimeAsync(10);
+                await vi.advanceTimersByTimeAsync(12_100);
             }
 
             const events = mod.getMonitorEvents();

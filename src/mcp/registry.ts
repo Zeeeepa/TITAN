@@ -25,7 +25,7 @@ export const BUILTIN_PRESETS: Omit<McpServer, 'timeoutMs'>[] = [
         command: 'skyvern',
         args: ['run', 'mcp'],
         env: {
-            SKYVERN_BASE_URL: 'http://localhost:8080',
+            SKYVERN_BASE_URL: 'http://localhost:8000',
             SKYVERN_API_KEY: 'local',
         },
         enabled: false,

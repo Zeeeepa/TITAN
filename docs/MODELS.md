@@ -10,13 +10,15 @@ TITAN needs models with **native tool calling** (function calling) support. Mode
 
 | Tier | RAM / VRAM | Model | Speed | Why |
 |------|-----------|-------|-------|-----|
-| **Starter** | 8 GB | `qwen3.5:4b` | ~150 tok/s | Best lightweight model, 256K context, native tool calling |
+| **Starter (GPU)** | 8 GB VRAM | `qwen3.5:4b` | ~150 tok/s | Best lightweight model, 256K context, native tool calling |
+| **Starter (CPU)** | 8-12 GB RAM | `llama3.2:3b` | ~16 tok/s | Fastest CPU inference, native tool calling |
 | **Standard** | 16 GB | `qwen3.5:9b` | ~80-120 tok/s | Best balanced — fast, accurate, 256K context |
 | **Power** | 32 GB+ | `qwen3-coder:32b` | ~20-40 tok/s | Community-tested "extremely stable" tool calling |
 
 ```bash
 # Install your tier
-ollama pull qwen3.5:4b       # Starter
+ollama pull llama3.2:3b      # Starter (CPU-only)
+ollama pull qwen3.5:4b       # Starter (GPU)
 ollama pull qwen3.5:9b       # Standard
 ollama pull qwen3-coder:32b  # Power
 ```
@@ -86,11 +88,14 @@ These models have known issues with TITAN's tool calling requirements:
 | Model | Issue |
 |-------|-------|
 | **DeepSeek-R1** (all sizes) | Unstable tool calling — generates malformed JSON schemas, often ignores tool definitions entirely |
-| **LLaMA 3.x** (all sizes) | Weak tool schema adherence — frequently hallucinates parameters, inconsistent function call format |
 | **LLaMA 3.1** | Previously TITAN's default; replaced due to poor tool calling reliability |
 | **Mistral/Mixtral** (local) | Inconsistent tool calling support across quantizations |
 | **Phi-3/Phi-4** | No native tool calling in Ollama builds |
 | **Gemma 2** | Limited tool calling, tends to narrate instead of calling tools |
+| **dolphin3** (all sizes) | No Ollama native tool calling support — returns "does not support tools" error |
+| **arcee-agent** (all sizes) | Despite being "built for function calling", no Ollama native tool support |
+
+**Note on LLaMA 3.2:3b:** Supported for tool calling but tends to hallucinate unnecessary tool calls (e.g., calling `web_search` for "What is 2+2?"). TITAN's small model tool reduction mitigates this. Best option for CPU-only hardware due to speed.
 
 These models may work fine for simple chat, but will produce unreliable results when TITAN tries to use tools.
 
@@ -100,21 +105,37 @@ These models may work fine for simple chat, but will produce unreliable results 
 
 | Setup | Recommendation |
 |-------|---------------|
-| Laptop, 8 GB RAM | `qwen3.5:4b` — runs well on CPU |
+| Mini PC, 8-12 GB RAM (CPU-only) | `llama3.2:3b` — 16 tok/s, fastest CPU model with tool calling |
+| Laptop, 8 GB RAM | `qwen3.5:4b` — runs well on GPU, slow on CPU (~6 tok/s) |
 | Desktop, 16 GB RAM | `qwen3.5:9b` — good balance |
 | Desktop, 24 GB VRAM (RTX 4090) | `qwen3-coder:32b` — full GPU offload |
 | Server, 32+ GB RAM | `qwen3-coder:32b` or multiple models |
 | Raspberry Pi 5 (8 GB) | `qwen3.5:1.5b` — basic tasks only |
+
+### CPU-Only Benchmarks (Ryzen 7 5825U, 12GB RAM)
+
+Tested on GMKtec M5 PLUS with TITAN v2026.5.9:
+
+| Model | Raw Speed | Tool Calling | TITAN Agent | Notes |
+|-------|-----------|-------------|-------------|-------|
+| `llama3.2:3b` | 16.1 tok/s | Native (Ollama) | 68-132s per query | Fastest, but hallucinates tools on simple questions |
+| `qwen3.5:4b` | 5.7 tok/s | Native (Ollama) | 169s+ per query | Excellent quality, too verbose for CPU |
+| `dolphin3:8b` | 7.0 tok/s | Not supported | N/A | Good quality, no Ollama tool calling support |
+| `arcee-agent:7b` | 6.5 tok/s | Not supported | N/A | Despite name, no native tool calling in Ollama |
+
+**Recommendation for CPU-only:** Use `llama3.2:3b` for speed. Accept ~70-130s response times for tool-using queries. For chat-only (no tools), `dolphin3:8b` gives better quality at ~7 tok/s.
 
 ### GPU Acceleration
 
 Ollama automatically uses your GPU if available. Check with:
 
 ```bash
-ollama ps   # Shows running models and GPU layers
+ollama ps   # Shows running models and GPU/CPU split
 ```
 
 For NVIDIA GPUs, ensure you have the latest drivers. For Apple Silicon, Metal acceleration is automatic.
+
+> **Note:** Integrated GPUs (AMD APUs, Intel UHD) are generally NOT used by Ollama for inference. `ollama ps` will show `100% CPU` even if `/dev/kfd` exists.
 
 ---
 

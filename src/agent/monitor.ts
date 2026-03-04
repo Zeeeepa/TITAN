@@ -48,6 +48,12 @@ const activeIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
 const eventLog: MonitorEvent[] = [];
 let onTrigger: ((monitor: TitanMonitor, event: MonitorEvent) => Promise<void>) | null = null;
 
+// Debounce state per monitor — coalesces rapid file events into one trigger
+const debounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+const DEBOUNCE_MS = 2000; // 2-second window
+const MIN_TRIGGER_INTERVAL_MS = 10_000; // max 1 trigger per 10s per monitor
+const lastTriggerTime: Map<string, number> = new Map();
+
 // ─── Persistence ──────────────────────────────────────────────────
 function loadMonitors(): TitanMonitor[] {
     try {
@@ -133,9 +139,31 @@ function startMonitor(monitor: TitanMonitor): void {
             logger.warn(COMPONENT, `Watch path does not exist: ${monitor.watchPath}`);
             return;
         }
+        // Warn about high-churn directories
+        const highChurnDirs = ['/tmp', '/var/log', '/var/tmp'];
+        if (highChurnDirs.some(d => monitor.watchPath!.startsWith(d))) {
+            logger.warn(COMPONENT, `Watch path "${monitor.watchPath}" is a high-churn directory — debouncing enabled (${DEBOUNCE_MS}ms, max 1 trigger/${MIN_TRIGGER_INTERVAL_MS / 1000}s)`);
+        }
         const watcher = watch(monitor.watchPath, { recursive: true }, (eventType, filename) => {
-            trigger(monitor, `File ${eventType}: ${filename}`)
-                .catch((err) => logger.warn(COMPONENT, `Monitor trigger error: ${(err as Error).message}`));
+            // Skip TITAN's own files (node compile cache, jiti cache, log files)
+            const fn = filename ?? '';
+            if (fn.includes('node-compile-cache') || fn.includes('jiti') || fn.includes('titan')) return;
+
+            // Debounce: coalesce rapid events within DEBOUNCE_MS window
+            const existing = debounceTimers.get(monitor.id);
+            if (existing) clearTimeout(existing);
+
+            debounceTimers.set(monitor.id, setTimeout(() => {
+                debounceTimers.delete(monitor.id);
+
+                // Rate limit: skip if triggered too recently
+                const lastTime = lastTriggerTime.get(monitor.id) ?? 0;
+                if (Date.now() - lastTime < MIN_TRIGGER_INTERVAL_MS) return;
+                lastTriggerTime.set(monitor.id, Date.now());
+
+                trigger(monitor, `File ${eventType}: ${fn}`)
+                    .catch((err) => logger.warn(COMPONENT, `Monitor trigger error: ${(err as Error).message}`));
+            }, DEBOUNCE_MS));
         });
         watcher.on('error', (err: Error) => logger.warn(COMPONENT, `File watcher error: ${err.message}`));
         activeWatchers.set(monitor.id, watcher);
@@ -159,6 +187,9 @@ function stopMonitor(id: string): void {
     if (watcher) { watcher.close(); activeWatchers.delete(id); }
     const interval = activeIntervals.get(id);
     if (interval) { clearInterval(interval); activeIntervals.delete(id); }
+    const timer = debounceTimers.get(id);
+    if (timer) { clearTimeout(timer); debounceTimers.delete(id); }
+    lastTriggerTime.delete(id);
 }
 
 /** Boot all enabled monitors on startup */

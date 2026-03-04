@@ -218,13 +218,17 @@ AES-256-GCM encryption for sensitive conversations. Keys generated per-session, 
 
 TITAN integrates with [Skyvern](https://github.com/Skyvern-AI/skyvern) for AI-powered browser automation. Instead of brittle CSS selectors, Skyvern uses vision + LLMs to interact with web pages using natural language.
 
+**Native tools (built-in):** TITAN includes 3 native Skyvern tools (`skyvern_task`, `skyvern_extract`, `skyvern_sessions`) that call Skyvern's REST API directly — no extra dependencies needed.
+
+**MCP integration (optional):** For the full 35-tool suite, register Skyvern as an MCP server:
+
 ```bash
 pip install skyvern && skyvern init    # Install Skyvern (Python)
-skyvern run server                      # Start the Skyvern backend
+skyvern run server                      # Start the Skyvern backend (port 8000)
 titan mcp --add skyvern                 # Register as MCP server in TITAN
 ```
 
-Once connected, TITAN gains 35 browser automation tools including `skyvern_act`, `skyvern_extract`, `skyvern_validate`, credential management, and self-healing script compilation.
+The MCP integration adds `skyvern_act`, `skyvern_validate`, credential management, and self-healing script compilation.
 
 > Skyvern is AGPL-3.0 licensed and runs as a separate service. TITAN's MIT license is not affected.
 
@@ -585,6 +589,10 @@ TITAN stands on the shoulders of giants. Special thanks to the projects and peop
 ### Temporal Knowledge Graph
 
 - **[Graphiti](https://github.com/getzep/graphiti)** by [Zep AI](https://www.getzep.com/) — TITAN's native temporal knowledge graph (`src/memory/graph.ts`) is inspired by the Graphiti project's approach to episodic memory, entity extraction, and temporal graph architecture. Created by [Daniel Chalef](https://github.com/danielchalef), [Preston Rasmussen](https://github.com/prasmussen15), [Pavlo Paliychuk](https://github.com/paul-paliychuk), Travis Beauvais, and [Jack Ryan](https://github.com/jackaldenryan). Licensed under Apache 2.0. Research paper: [arXiv:2501.13956](https://arxiv.org/abs/2501.13956).
+
+### Browser Automation
+
+- **[Skyvern](https://github.com/Skyvern-AI/skyvern)** by [Skyvern AI](https://skyvern.com/) — AI browser automation using vision + LLMs (native tools + MCP integration). Licensed under AGPL-3.0 (runs as a separate service).
 
 ### Open-Source Libraries
 

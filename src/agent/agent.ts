@@ -24,6 +24,11 @@ import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js'
 const COMPONENT = 'Agent';
 const MAX_TOOL_ROUNDS = 10;
 
+/** Strip leaked tool-call JSON from LLM responses (common with small local models) */
+function stripToolJson(text: string): string {
+    return text.replace(/\s*\{"(?:name|tool_call)":\s*"[^"]+",\s*"(?:parameters|arguments)":\s*\{[^}]*\}\s*\}\s*/g, '').trim();
+}
+
 // Wire the stall detector so silence timeouts are logged rather than silently discarded
 setStallHandler(async (event) => {
     logger.warn(COMPONENT, `Stall event [${event.type}] in session ${event.sessionId}: ${event.detail} (nudge #${event.nudgeCount})`);
@@ -201,10 +206,12 @@ export async function processMessage(
     }
 
     // Small-model tool reduction — prevent tool hallucination on models <8B
-    const SMALL_MODEL_PATTERNS = ['llama3.2', 'llama3.1:8b', 'phi', 'gemma:2b', 'qwen3.5:4b', 'tinyllama'];
+    // Validated on Ryzen 7 5825U: llama3.2:3b hallucinates web_search on trivial questions
+    const SMALL_MODEL_PATTERNS = ['llama3.2', 'llama3.1:8b', 'phi', 'gemma:2b', 'qwen3.5:4b', 'tinyllama', 'dolphin3'];
     const isSmallModel = SMALL_MODEL_PATTERNS.some(p => activeModel.toLowerCase().includes(p));
     if (isSmallModel && !isKimiSwarm) {
-        const CORE_TOOL_NAMES = ['shell', 'read_file', 'write_file', 'edit_file', 'list_dir', 'web_search', 'memory'];
+        // web_search removed: small models hallucinate tool calls for trivial questions
+        const CORE_TOOL_NAMES = ['shell', 'read_file', 'write_file', 'edit_file', 'list_dir', 'memory'];
         const coreTools = activeTools.filter(t => CORE_TOOL_NAMES.includes(t.function.name));
         logger.info(COMPONENT, `[SmallModel] Reducing tools from ${activeTools.length} to ${coreTools.length} for ${activeModel}`);
         activeTools = coreTools;
@@ -275,7 +282,7 @@ export async function processMessage(
                 messages.push({ role: 'user', content: nudge });
                 continue;
             }
-            finalContent = response.content;
+            finalContent = stripToolJson(response.content);
 
             // ── Response cache: store final text responses ───
             setCachedResponse(smartMessages, activeModel, finalContent);
@@ -367,7 +374,7 @@ export async function processMessage(
 
         // If this is the last round, add a note
         if (round === MAX_TOOL_ROUNDS - 1) {
-            finalContent = response.content || 'I completed the tool operations. Let me know if you need anything else.';
+            finalContent = stripToolJson(response.content || 'I completed the tool operations. Let me know if you need anything else.');
         }
     }
 

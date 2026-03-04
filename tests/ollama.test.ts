@@ -175,6 +175,56 @@ describe('OllamaProvider', () => {
         expect(body.model).toBe('mistral');
     });
 
+    it('retries without tools when model does not support tool calling', async () => {
+        // First call: 400 "does not support tools"; second call: success without tools
+        mockFetchWithRetry
+            .mockResolvedValueOnce({
+                ok: false,
+                status: 400,
+                text: async () => 'model "dolphin3:8b" does not support tools',
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    message: { content: 'Chat-only response' },
+                    prompt_eval_count: 10,
+                    eval_count: 5,
+                }),
+            });
+
+        const result = await provider.chat({
+            model: 'ollama/dolphin3:8b',
+            messages: [{ role: 'user', content: 'Hello' }],
+            tools: [{
+                type: 'function',
+                function: { name: 'shell', description: 'Run command', parameters: { type: 'object', properties: {} } },
+            }],
+        });
+
+        expect(result.content).toBe('Chat-only response');
+        // Second call should NOT have tools in the body
+        const [, retryOpts] = mockFetchWithRetry.mock.calls[1];
+        const retryBody = JSON.parse(retryOpts.body);
+        expect(retryBody.tools).toBeUndefined();
+    });
+
+    it('throws original error when 400 is not about tool support', async () => {
+        mockFetchWithRetry.mockResolvedValue({
+            ok: false,
+            status: 400,
+            text: async () => 'invalid model name',
+        });
+
+        await expect(provider.chat({
+            model: 'ollama/bad-model',
+            messages: [{ role: 'user', content: 'Hello' }],
+            tools: [{
+                type: 'function',
+                function: { name: 'shell', description: 'Run command', parameters: { type: 'object', properties: {} } },
+            }],
+        })).rejects.toThrow('Ollama error (400): invalid model name');
+    });
+
     it('uses default model when none specified', async () => {
         mockFetchWithRetry.mockResolvedValue({
             ok: true,

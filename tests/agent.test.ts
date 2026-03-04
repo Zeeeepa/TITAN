@@ -764,6 +764,28 @@ describe('Agent processMessage', () => {
         expect(mockGetOrCreateSession).toHaveBeenCalledWith('cli', 'default');
     });
 
+    // ── Tool JSON stripping ──────────────────────────────────────────
+
+    it('should strip leaked tool JSON from LLM response', async () => {
+        const leakedContent = 'Here is the answer {"name":"web_search","parameters":{"query":"test"}} and more text.';
+        mockChat.mockResolvedValue(makeChatResponse({ content: leakedContent }));
+
+        const result = await processMessage('Search for something');
+
+        expect(result.content).not.toContain('web_search');
+        expect(result.content).not.toContain('"parameters"');
+        expect(result.content).toContain('Here is the answer');
+        expect(result.content).toContain('more text.');
+    });
+
+    it('should pass through clean responses unchanged', async () => {
+        mockChat.mockResolvedValue(makeChatResponse({ content: 'No tool JSON here.' }));
+
+        const result = await processMessage('Hello');
+
+        expect(result.content).toBe('No tool JSON here.');
+    });
+
     // ── durationMs is positive ──────────────────────────────────────
 
     it('should return a positive durationMs', async () => {

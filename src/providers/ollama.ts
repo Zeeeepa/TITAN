@@ -67,7 +67,7 @@ export class OllamaProvider extends LLMProvider {
             }));
         }
 
-        const response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
+        let response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -75,7 +75,22 @@ export class OllamaProvider extends LLMProvider {
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(`Ollama error (${response.status}): ${errorText}`);
+            // Fallback: if model doesn't support native tool calling, retry without tools
+            if (response.status === 400 && errorText.includes('does not support tools') && body.tools) {
+                logger.warn(COMPONENT, `Model ${model} does not support native tool calling — running in chat-only mode`);
+                delete body.tools;
+                response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (!response.ok) {
+                    const retryText = await response.text();
+                    throw new Error(`Ollama error (${response.status}): ${retryText}`);
+                }
+            } else {
+                throw new Error(`Ollama error (${response.status}): ${errorText}`);
+            }
         }
 
         const data = await response.json() as Record<string, unknown>;
@@ -138,7 +153,7 @@ export class OllamaProvider extends LLMProvider {
         }
 
         try {
-            const response = await fetch(`${this.baseUrl}/api/chat`, {
+            let response = await fetch(`${this.baseUrl}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -146,8 +161,24 @@ export class OllamaProvider extends LLMProvider {
 
             if (!response.ok || !response.body) {
                 const errorText = await response.text();
-                yield { type: 'error', error: `Ollama error (${response.status}): ${errorText}` };
-                return;
+                // Fallback: if model doesn't support native tool calling, retry without tools
+                if (response.status === 400 && errorText.includes('does not support tools') && body.tools) {
+                    logger.warn(COMPONENT, `Model ${model} does not support native tool calling — running in chat-only mode`);
+                    delete body.tools;
+                    response = await fetch(`${this.baseUrl}/api/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    if (!response.ok || !response.body) {
+                        const retryText = await response.text();
+                        yield { type: 'error', error: `Ollama error (${response.status}): ${retryText}` };
+                        return;
+                    }
+                } else {
+                    yield { type: 'error', error: `Ollama error (${response.status}): ${errorText}` };
+                    return;
+                }
             }
 
             const reader = response.body.getReader();

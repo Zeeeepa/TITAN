@@ -64,6 +64,7 @@ let httpServer: ReturnType<typeof createServer> | null = null;
 let tokenCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let rateLimitCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let activeLlmRequests = 0;
+let maxConcurrentOverride: number | null = null;
 
 export function stopGateway(): Promise<void> {
     return new Promise((resolve) => {
@@ -304,6 +305,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const { setStallThreshold } = await import('../agent/stallDetector.js');
     setStallThreshold(120_000);
     logger.info(COMPONENT, 'No GPU detected — stall timeout increased to 120s for CPU inference');
+    maxConcurrentOverride = 2;
+    logger.info(COMPONENT, 'CPU-only mode: maxConcurrentTasks auto-tuned to 2');
   }
 
   // Initialize subsystems
@@ -525,8 +528,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       }
     } catch { /* fall through to routeMessage */ }
 
-    // Concurrent LLM request limit
-    const maxConcurrent = loadConfig().security.maxConcurrentTasks || 5;
+    // Concurrent LLM request limit (auto-tuned to 2 on CPU-only systems)
+    const maxConcurrent = maxConcurrentOverride ?? (loadConfig().security.maxConcurrentTasks || 5);
     if (activeLlmRequests >= maxConcurrent) {
       res.status(503).json({ error: 'Server busy — too many concurrent requests. Try again shortly.' });
       return;

@@ -15,6 +15,7 @@ import {
     clearSession,
     getStallStats,
     setStallHandler,
+    setStallThreshold,
     type StallEvent,
 } from '../src/agent/stallDetector.js';
 
@@ -154,6 +155,30 @@ describe('Stall Detector', () => {
     describe('setStallHandler', () => {
         it('should accept a handler function', () => {
             expect(() => setStallHandler(async () => 'nudge')).not.toThrow();
+        });
+    });
+
+    describe('setStallThreshold', () => {
+        it('should change the silence timeout without throwing', () => {
+            expect(() => setStallThreshold(50)).not.toThrow();
+            // Reset to default
+            setStallThreshold(30_000);
+        });
+
+        it('setStallThreshold changes the silence timeout', async () => {
+            // Set a very short threshold
+            setStallThreshold(50);
+
+            // Start heartbeat — the stall should trigger after 50ms, not 30s
+            heartbeat('test-threshold');
+
+            // Wait 100ms — stall should have triggered
+            await new Promise(r => setTimeout(r, 100));
+
+            clearSession('test-threshold');
+
+            // Reset to default
+            setStallThreshold(30_000);
         });
     });
 });

@@ -109,6 +109,11 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         // Dynamic import to avoid circular dependency (router → config → graph)
         const { chat: routerChat } = await import('../providers/router.js');
         const config = loadConfig();
+        const model = config.agent.model.toLowerCase();
+
+        // Skip entity extraction for very small models that can't produce valid JSON
+        const SKIP_MODELS = ['llama3.2:1b', 'tinyllama', 'phi-2'];
+        if (SKIP_MODELS.some(m => model.includes(m))) return [];
 
         const prompt = `Extract entities from this text as a JSON array. Each item: {"name":"...","type":"person|topic|project|place|fact","facts":["fact1","fact2"]}. Return ONLY the JSON array, no other text.\n\nText: ${content.slice(0, 500)}`;
 
@@ -132,9 +137,21 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         const text = response.content || '';
         const match = text.match(/\[[\s\S]*\]/);
         if (!match) return [];
-        const parsed = JSON.parse(match[0]);
-        if (!Array.isArray(parsed)) return [];
-        return parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
+
+        // Try to repair common JSON issues from small models
+        const jsonStr = match[0]
+            .replace(/,\s*]/g, ']')        // trailing commas in arrays
+            .replace(/,\s*}/g, '}')         // trailing commas in objects
+            .replace(/'/g, '"');            // single quotes to double
+
+        try {
+            const parsed = JSON.parse(jsonStr);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
+        } catch {
+            logger.debug(COMPONENT, 'Entity extraction JSON repair failed, skipping');
+            return [];
+        }
     } catch (err) {
         logger.warn(COMPONENT, `Entity extraction failed: ${(err as Error).message}`);
         return [];

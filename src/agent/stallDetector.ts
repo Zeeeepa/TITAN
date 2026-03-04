@@ -15,9 +15,15 @@ import logger from '../utils/logger.js';
 const COMPONENT = 'StallDetector';
 
 // ─── Config ───────────────────────────────────────────────────────
-const DEFAULT_STALL_THRESHOLD_MS = 30_000; // 30 seconds
+let stallThresholdMs = 30_000; // 30 seconds (default, auto-tuned for CPU-only)
 const MAX_TOOL_LOOP_REPEATS = 3;
 const MAX_NUDGE_ATTEMPTS = 2;
+
+/** Set the stall detection timeout (e.g. 120_000 for CPU-only inference) */
+export function setStallThreshold(ms: number): void {
+    stallThresholdMs = ms;
+    logger.info(COMPONENT, `Stall threshold set to ${ms / 1000}s`);
+}
 
 // ─── Types ────────────────────────────────────────────────────────
 export type StallType = 'silence' | 'tool_loop' | 'empty_response' | 'max_rounds';
@@ -75,9 +81,9 @@ export function heartbeat(sessionId: string): void {
 
     // Start the silence watchdog
     state.timer = setTimeout(() => {
-        triggerStall(sessionId, 'silence', `No agent activity for ${DEFAULT_STALL_THRESHOLD_MS / 1000}s`)
+        triggerStall(sessionId, 'silence', `No agent activity for ${stallThresholdMs / 1000}s`)
             .catch((err) => logger.error(COMPONENT, `Stall trigger error: ${(err as Error).message}`));
-    }, DEFAULT_STALL_THRESHOLD_MS);
+    }, stallThresholdMs);
 }
 
 /** Call this every time a tool is invoked */

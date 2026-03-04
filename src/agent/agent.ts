@@ -195,9 +195,19 @@ export async function processMessage(
     // If using kimi-k2.5, proxy the tools through Swarm Routers
     // to prevent context collapse from the massive generic 23-tool schema.
     const isKimiSwarm = activeModel.includes('kimi-k2.5');
-    const activeTools = isKimiSwarm ? getSwarmRouterTools() : tools;
+    let activeTools = isKimiSwarm ? getSwarmRouterTools() : tools;
     if (isKimiSwarm) {
         logger.info(COMPONENT, `[Swarm] Intercepted kimi-k2.5 payload. Downgrading context from ${tools.length} to ${activeTools.length} router agents.`);
+    }
+
+    // Small-model tool reduction — prevent tool hallucination on models <8B
+    const SMALL_MODEL_PATTERNS = ['llama3.2', 'llama3.1:8b', 'phi', 'gemma:2b', 'qwen3.5:4b', 'tinyllama'];
+    const isSmallModel = SMALL_MODEL_PATTERNS.some(p => activeModel.toLowerCase().includes(p));
+    if (isSmallModel && !isKimiSwarm) {
+        const CORE_TOOL_NAMES = ['shell', 'read_file', 'write_file', 'edit_file', 'list_dir', 'web_search', 'memory'];
+        const coreTools = activeTools.filter(t => CORE_TOOL_NAMES.includes(t.function.name));
+        logger.info(COMPONENT, `[SmallModel] Reducing tools from ${activeTools.length} to ${coreTools.length} for ${activeModel}`);
+        activeTools = coreTools;
     }
 
     // ── Stall detector: start heartbeat for this session ────────

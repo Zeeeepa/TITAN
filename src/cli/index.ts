@@ -652,12 +652,12 @@ program
 
 // ─── CONFIG ──────────────────────────────────────────────────────
 program
-    .command('config')
-    .description('View or edit TITAN configuration')
+    .command('config [key]')
+    .description('View or edit TITAN configuration (use: titan config agent.model)')
     .option('--show', 'Show current configuration')
     .option('--set <key=value>', 'Set a configuration value')
     .option('--path', 'Show config file path')
-    .action((options) => {
+    .action((key: string | undefined, options: Record<string, unknown>) => {
         if (options.path) {
             console.log(TITAN_CONFIG_PATH);
         } else if (options.set) {
@@ -693,8 +693,23 @@ program
             }
         } else {
             const config = loadConfig();
-            console.log(chalk.cyan('\n⚙️  TITAN Configuration\n'));
-            console.log(JSON.stringify(config, null, 2));
+            if (key) {
+                // Walk dot-notation to get nested value
+                const parts = key.split('.');
+                let value: unknown = config;
+                for (const part of parts) {
+                    if (value && typeof value === 'object' && part in (value as Record<string, unknown>)) {
+                        value = (value as Record<string, unknown>)[part];
+                    } else {
+                        console.log(chalk.red(`Key not found: ${key}`));
+                        process.exit(1);
+                    }
+                }
+                console.log(typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value));
+            } else {
+                console.log(chalk.cyan('\n⚙️  TITAN Configuration\n'));
+                console.log(JSON.stringify(config, null, 2));
+            }
         }
         process.exit(0);
     });

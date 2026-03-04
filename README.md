@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 30+ tools. 2,830+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 55+ tools. 2,850+ tests. Pure JavaScript — no native compilation.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-20-purple" alt="20 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-30-orange" alt="30 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-55+-orange" alt="55+ Tools"/></a>
 </p>
 
 <p align="center">
@@ -25,6 +25,11 @@
   <a href="#custom-skills">Custom Skills</a> &bull;
   <a href="#cli-reference">CLI</a>
 </p>
+
+---
+
+> **WARNING — EXPERIMENTAL SOFTWARE**
+> TITAN is experimental, actively developed software. It can execute shell commands, modify files, access the network, and take autonomous actions on your system. **Use at your own risk.** The author and contributors provide this software "as is" without warranty of any kind. By installing or running TITAN, you accept full responsibility for any consequences, including but not limited to data loss, system instability, unintended actions, API charges, or security issues. Always review TITAN's configuration, run it in supervised mode first, and never grant it access to systems or credentials you cannot afford to lose. See [LICENSE](LICENSE) for the full legal terms.
 
 ---
 
@@ -60,7 +65,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | Minimal or none |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 30 built-in + drop-in YAML/JS creation | Fixed tool set |
+| **Skills** | 55+ built-in + drop-in YAML/JS creation | Fixed tool set |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
 | **GUI** | 12-panel Mission Control dashboard | CLI only or basic web UI |
 | **Codebase** | ~25K lines TypeScript | 50K-200K+ lines |
@@ -83,7 +88,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 30 Built-in Tools
+### 55+ Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -91,6 +96,12 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Filesystem** | `read_file`, `write_file`, `edit_file`, `list_dir`, `apply_patch` |
 | **Web** | `web_search`, `web_fetch`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` (Playwright) |
 | **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
+| **GitHub** | `github_repos`, `github_issues`, `github_prs`, `github_commits`, `github_files` |
+| **Email** | `email_send`, `email_search`, `email_read`, `email_list` |
+| **Computer Use** | `screenshot`, `mouse_click`, `mouse_move`, `keyboard_type`, `keyboard_press`, `screen_read` |
+| **Data & Documents** | `data_analysis`, `csv_parse`, `csv_stats`, `pdf_read`, `pdf_info` |
+| **Smart Home** | `ha_devices`, `ha_control`, `ha_status` |
+| **Image Generation** | `generate_image`, `edit_image` |
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
@@ -434,7 +445,7 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 | `titan doctor` | System diagnostics |
 | `titan doctor --fix` | Auto-fix detected issues |
 | `titan vault` | Manage encrypted secrets vault |
-| `titan config` | View/edit configuration |
+| `titan config [key]` | View/edit configuration (e.g. `titan config agent.model`) |
 | `titan graphiti --init` | Initialize knowledge graph |
 | `titan graphiti --stats` | Graph statistics |
 | `titan mcp` | Manage MCP servers |
@@ -473,11 +484,11 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (2,830+ tests, 67 files)
+npm run test           # vitest (2,850+ tests, 69 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
-npm run test:coverage  # Coverage report (68%+ with 55% threshold)
+npm run test:coverage  # Coverage report (78%+ with 55% threshold)
 ```
 
 ### Architecture
@@ -488,7 +499,7 @@ src/
   channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       30+ built-in tools + user skill loader
+  skills/       55+ built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
@@ -518,7 +529,8 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
 
 ### Recently Shipped (v2026.5.x)
-- **v2026.5.8**: Ollama model guide (`docs/MODELS.md`), 147→0 ESLint warnings, `local` model alias, 2,800+ tests
+- **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction (<8B models get 7 core tools), Ollama `think:false`, configurable stall detector with GPU auto-detection, `titan config [key]`, slash commands via REST API, config validation, graph entity extraction hardening, concurrent LLM request limiting, 2,850+ tests
+- **v2026.5.8**: Ollama model guide (`docs/MODELS.md`), 147→0 ESLint warnings, `local` model alias, 2,830+ tests
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,600+ tests
 - **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
 - **v2026.5.5**: Autopilot Mode — hands-free scheduled agent runs with cron
@@ -604,6 +616,14 @@ If TITAN saves you time, consider supporting its development:
 [![Fund with thanks.dev](https://img.shields.io/badge/Fund%20with-thanks.dev-brightgreen)](https://thanks.dev/Djtony707/TITAN)
 
 Every contribution — large or small — helps keep TITAN free, maintained, and moving forward.
+
+---
+
+## Disclaimer
+
+TITAN IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+TITAN is an autonomous agent that can execute arbitrary commands, modify your filesystem, make network requests, and incur API costs. The author accepts no responsibility or liability for any actions taken by the software, including but not limited to: data loss, unauthorized access, unintended system modifications, API usage charges, security breaches, or any other damages resulting from use of this software. You are solely responsible for reviewing and approving all actions taken by TITAN on your systems.
 
 ---
 

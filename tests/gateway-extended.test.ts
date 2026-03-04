@@ -158,9 +158,16 @@ vi.mock('../src/mcp/registry.js', () => ({
     getMcpStatus: vi.fn().mockReturnValue([]),
 }));
 
+vi.mock('../src/gateway/slashCommands.js', () => ({
+    initSlashCommands: vi.fn(),
+    handleSlashCommand: vi.fn().mockResolvedValue(null),
+}));
+
 // ── Import gateway after all mocks ───────────────────────────────────────
 
 import { startGateway, stopGateway } from '../src/gateway/server.js';
+import { handleSlashCommand } from '../src/gateway/slashCommands.js';
+import { routeMessage } from '../src/agent/multiAgent.js';
 
 // Auth header for routes that require it
 const authHeaders = { Authorization: 'Bearer noauth' };
@@ -447,6 +454,19 @@ describe('Gateway Extended', () => {
             const body = await res.json() as any;
             expect(body.ok).toBe(true);
         });
+
+        it('POST /api/config with unrecognized fields returns 400', async () => {
+            const res = await fetch(`${BASE}/api/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ invalidField: 'value' }),
+            });
+            expect(res.status).toBe(400);
+            const body = await res.json() as any;
+            expect(body.error).toContain('No recognized fields');
+            expect(body.validFields).toBeDefined();
+            expect(Array.isArray(body.validFields)).toBe(true);
+        });
     });
 
     // ── API Routes: Models ───────────────────────────────────────────
@@ -581,11 +601,12 @@ describe('Gateway Extended', () => {
             expect(body.models).toEqual([]);
         });
 
-        it('GET /api/mesh/hello with mesh disabled should return 404', async () => {
+        it('GET /api/mesh/hello with mesh disabled should return disabled', async () => {
             const res = await fetch(`${BASE}/api/mesh/hello`, { headers: authHeaders });
-            expect(res.status).toBe(404);
+            expect(res.status).toBe(200);
             const body = await res.json() as any;
             expect(body.titan).toBe(false);
+            expect(body.enabled).toBe(false);
         });
     });
 
@@ -679,6 +700,22 @@ describe('Gateway Extended', () => {
                 body: JSON.stringify({ content: 'hi', channel: 'discord', userId: 'user-123' }),
             });
             expect(res.status).toBe(200);
+        });
+
+        it('POST /api/message with slash command bypasses routeMessage', async () => {
+            // Mock handleSlashCommand to return a result for this request
+            const mockHandleSlash = handleSlashCommand as ReturnType<typeof vi.fn>;
+            mockHandleSlash.mockResolvedValueOnce({ response: 'System status: OK', command: '/status' });
+
+            const res = await fetch(`${BASE}/api/message`, {
+                method: 'POST',
+                headers: jsonAuth,
+                body: JSON.stringify({ content: '/status' }),
+            });
+            expect(res.status).toBe(200);
+            const body = await res.json() as any;
+            expect(body.model).toBe('system');
+            expect(body.content).toBe('System status: OK');
         });
     });
 
@@ -816,6 +853,49 @@ describe('Gateway Extended', () => {
                 setTimeout(() => { ws1.close(); ws2.close(); reject(new Error('WS timeout')); }, 5000);
             });
         });
+    });
+
+    // ── Concurrent LLM request limit ────────────────────────────────
+
+    describe('Concurrent LLM limit', () => {
+        it('returns 503 when too many concurrent requests', async () => {
+            // Make routeMessage slow so we can saturate the concurrency limit
+            const mockRoute = routeMessage as ReturnType<typeof vi.fn>;
+            const originalImpl = mockRoute.getMockImplementation();
+
+            // Replace routeMessage with a slow version that hangs for 2 seconds
+            mockRoute.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({
+                content: 'delayed', toolsUsed: [], tokenUsage: { total: 1 }, durationMs: 1,
+            }), 2000)));
+
+            // Fire off more requests than the maxConcurrent limit (default 5)
+            const requests: Promise<Response>[] = [];
+            for (let i = 0; i < 7; i++) {
+                requests.push(fetch(`${BASE}/api/message`, {
+                    method: 'POST',
+                    headers: jsonAuth,
+                    body: JSON.stringify({ content: `concurrent-test-${i}` }),
+                }));
+            }
+
+            const responses = await Promise.all(requests);
+            const statuses = responses.map(r => r.status);
+
+            // At least one should be 503 (server busy)
+            expect(statuses).toContain(503);
+
+            // Restore mock
+            if (originalImpl) {
+                mockRoute.mockImplementation(originalImpl);
+            } else {
+                mockRoute.mockResolvedValue({
+                    content: 'test-response', toolsUsed: [], tokenUsage: { total: 10 }, durationMs: 5,
+                });
+            }
+
+            // Wait for pending requests to drain
+            await new Promise(r => setTimeout(r, 2500));
+        }, 10000);
     });
 
     // ── stopGateway ──────────────────────────────────────────────────

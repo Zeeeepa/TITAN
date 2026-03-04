@@ -5,6 +5,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
+import net from 'net';
 import { join } from 'path';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
@@ -62,6 +63,7 @@ let httpServer: ReturnType<typeof createServer> | null = null;
 /** Interval IDs for cleanup on shutdown */
 let tokenCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let rateLimitCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let activeLlmRequests = 0;
 
 export function stopGateway(): Promise<void> {
     return new Promise((resolve) => {
@@ -283,6 +285,27 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   logger.info(COMPONENT, `Starting ${TITAN_NAME} Gateway v${TITAN_VERSION}`);
 
+  // ── Port pre-check: fail fast before loading subsystems ────
+  const portAvailable = await new Promise<boolean>((resolve) => {
+    const tester = net.createServer();
+    tester.once('error', () => resolve(false));
+    tester.once('listening', () => { tester.close(); resolve(true); });
+    tester.listen(port, host);
+  });
+  if (!portAvailable) {
+    logger.error(COMPONENT, `Port ${port} is already in use. Is TITAN already running?`);
+    logger.info(COMPONENT, `Try: titan gateway --port ${port + 1}`);
+    process.exit(1);
+  }
+
+  // ── GPU detection: adjust stall timeout for CPU-only inference ──
+  const { detectGpu } = await import('../utils/hardware.js');
+  if (!detectGpu()) {
+    const { setStallThreshold } = await import('../agent/stallDetector.js');
+    setStallThreshold(120_000);
+    logger.info(COMPONENT, 'No GPU detected — stall timeout increased to 120s for CPU inference');
+  }
+
   // Initialize subsystems
   initMemory();
   initLearning();
@@ -492,11 +515,30 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       res.status(400).json({ error: 'content is required' });
       return;
     }
+
+    // Check slash commands first (same as handleInboundMessage)
+    try {
+      const slashResult = await handleSlashCommand(content, channel, userId);
+      if (slashResult) {
+        res.json({ content: slashResult.response, sessionId: null, toolsUsed: [], model: 'system' });
+        return;
+      }
+    } catch { /* fall through to routeMessage */ }
+
+    // Concurrent LLM request limit
+    const maxConcurrent = loadConfig().security.maxConcurrentTasks || 5;
+    if (activeLlmRequests >= maxConcurrent) {
+      res.status(503).json({ error: 'Server busy — too many concurrent requests. Try again shortly.' });
+      return;
+    }
+    activeLlmRequests++;
     try {
       const response = await routeMessage(content, channel, userId);
       res.json(response);
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
+    } finally {
+      activeLlmRequests--;
     }
   });
 
@@ -634,6 +676,14 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           }
         }
       }
+      if (changedFields.length === 0) {
+        const validFields = ['model', 'autonomyMode', 'sandboxMode', 'logLevel', 'anthropicKey', 'openaiKey',
+          'googleKey', 'ollamaUrl', 'maxTokens', 'temperature', 'systemPrompt', 'shieldEnabled',
+          'shieldMode', 'deniedTools', 'networkAllowlist', 'gatewayPort', 'gatewayAuthMode',
+          'gatewayPassword', 'gatewayToken', 'channels'];
+        res.status(400).json({ error: 'No recognized fields in request body', validFields });
+        return;
+      }
       updateConfig(cfg);
 
       // Determine which changed fields require a restart
@@ -757,7 +807,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // ── Mesh Networking Endpoints ─────────────────────────────────
   app.get('/api/mesh/hello', async (_req, res) => {
     const cfg = loadConfig();
-    if (!cfg.mesh.enabled) { res.status(404).json({ titan: false }); return; }
+    if (!cfg.mesh.enabled) { res.json({ titan: false, enabled: false }); return; }
     const { getOrCreateNodeId } = await import('../mesh/identity.js');
     const { discoverAllModels: discoverModels } = await import('../providers/router.js');
     const models = await discoverModels();
@@ -855,7 +905,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/skills':             { get:  { summary: 'List loaded skills',                     tags: ['Skills'] } },
         '/api/tools':              { get:  { summary: 'List registered tools',                  tags: ['Skills'] } },
         '/api/channels':           { get:  { summary: 'List channel statuses',                  tags: ['Channels'] } },
-        '/api/message':            { post: { summary: 'Send a message',                         tags: ['Channels'], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, channel: { type: 'string' }, userId: { type: 'string' } } } } } } } },
+        '/api/message':            { post: { summary: 'Send a message',                         tags: ['Channels'], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { content: { type: 'string' }, channel: { type: 'string' }, userId: { type: 'string' } } } } } } } },
         '/api/chat/stream':        { post: { summary: 'Stream chat via SSE',                    tags: ['Channels'], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { message: { type: 'string' }, model: { type: 'string' } } } } } } } },
         '/api/config':             { get:  { summary: 'Get current config',                     tags: ['Config'] },
                                      post: { summary: 'Update config',                          tags: ['Config'] } },
@@ -872,7 +922,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/mesh/peers':         { get:  { summary: 'List mesh peers',                        tags: ['Mesh'] } },
         '/api/mesh/models':        { get:  { summary: 'List mesh models',                       tags: ['Mesh'] } },
         '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
-        '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['System'] } },
+        '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['Tunnel'] } },
+        '/api/autopilot/status':   { get:  { summary: 'Autopilot status',                      tags: ['Autopilot'] } },
+        '/api/autopilot/history':  { get:  { summary: 'Autopilot run history',                 tags: ['Autopilot'] } },
+        '/api/autopilot/run':      { post: { summary: 'Trigger autopilot run',                 tags: ['Autopilot'] } },
         '/api/docs':               { get:  { summary: 'OpenAPI spec (JSON)',                    tags: ['Docs'] } },
         '/docs':                   { get:  { summary: 'API documentation page',                 tags: ['Docs'] } },
       },
@@ -910,7 +963,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       ]},
       { cat: 'Channels', routes: [
         { method: 'GET',  path: '/api/channels',         desc: 'List channel statuses' },
-        { method: 'POST', path: '/api/message',          desc: 'Send message (body: {message, channel?, userId?})' },
+        { method: 'POST', path: '/api/message',          desc: 'Send message (body: {content, channel?, userId?})' },
         { method: 'POST', path: '/api/chat/stream',      desc: 'Stream chat (SSE, body: {message, model?})' },
       ]},
       { cat: 'Config',   routes: [
@@ -934,6 +987,14 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         { method: 'POST', path: '/api/profile',          desc: 'Update profile' },
         { method: 'GET',  path: '/api/learning',         desc: 'Learning engine stats' },
         { method: 'GET',  path: '/api/graphiti',         desc: 'Memory graph data' },
+      ]},
+      { cat: 'Autopilot', routes: [
+        { method: 'GET',  path: '/api/autopilot/status', desc: 'Autopilot status' },
+        { method: 'GET',  path: '/api/autopilot/history', desc: 'Autopilot run history' },
+        { method: 'POST', path: '/api/autopilot/run',    desc: 'Trigger autopilot run' },
+      ]},
+      { cat: 'Tunnel',   routes: [
+        { method: 'GET',  path: '/api/tunnel/status',    desc: 'Cloudflare tunnel status' },
       ]},
       { cat: 'Logs',     routes: [
         { method: 'GET',  path: '/api/logs',             desc: 'Read log file (query: lines)' },

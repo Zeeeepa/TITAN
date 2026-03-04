@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-03
-**Current Version:** 2026.5.8
+**Last Updated:** 2026-03-04
+**Current Version:** 2026.5.9
 **Author:** Tony Elliott (Djtony707)
 
 ---
@@ -50,6 +50,7 @@
 - **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,612 tests
 - **v2026.5.8**: Ollama model guide, 147→0 ESLint warnings, `local` model alias, 2,838 tests across 67 files
+- **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction, Ollama think:false, configurable stall detector, GPU auto-detection, config get key, slash commands via API, config validation, graph JSON repair, concurrent LLM limit, +244 tests (2,856 total across 69 files)
 
 ---
 
@@ -63,6 +64,7 @@ Focus on making existing features work correctly before adding new ones.
 - [x] Integration tests for all 9 channels (mocked)
 - [ ] E2E tests for gateway + dashboard
 - [ ] Performance benchmarks (startup time, memory, throughput)
+- [x] Small model performance optimization (tool reduction, think:false, stall tuning)
 
 ### Harden Existing Features
 - [x] **Self-Healing** — Auto-detect and fix configuration/dependency issues (`titan doctor --fix`)
@@ -76,6 +78,11 @@ Focus on making existing features work correctly before adding new ones.
 - [x] Audit logging with signed event trail (HMAC-SHA256 chained JSONL)
 - [x] Resource limits (memory, CPU, disk, subprocess caps)
 - [x] Encrypted secrets store (AES-256-GCM vault with PBKDF2)
+- [x] Port pre-check to prevent EADDRINUSE crashes on startup
+- [x] Config validation (reject unknown fields with 400)
+- [x] Concurrent LLM request limiting (503 when overloaded)
+- [x] Graph entity extraction hardening (JSON repair, skip weak models)
+- [x] Slash commands via REST API (not just WebSocket)
 
 ### Expand What Works
 - [x] Add providers to 20 (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova)
@@ -84,6 +91,36 @@ Focus on making existing features work correctly before adding new ones.
 - [ ] Memory hygiene (auto-archive stale, configurable retention)
 - [ ] Streaming to dashboard (real-time token delivery)
 - [ ] Code interpreter skill (sandboxed JS/Python execution)
+
+---
+
+## NEXT: Batch 10 — Polish & Expand
+
+Focus areas for the next release, informed by real-world testing on CPU-only hardware.
+
+### Performance & Reliability
+- [ ] **Streaming response for /api/message** — Return tokens as they arrive, not all-at-once after full inference
+- [ ] **Ollama model auto-detect** — Read parameter count from Ollama API, auto-set small model mode
+- [ ] **Inference timeout** — Configurable hard timeout for LLM calls (not just stall detection)
+- [ ] **Connection pooling** — Reuse HTTP connections to Ollama/providers instead of new socket per request
+- [ ] **Warm model keep-alive** — Ping Ollama to keep the model loaded in RAM between requests
+
+### Dashboard & UX
+- [ ] **Streaming to dashboard** — Real-time token delivery in WebChat panel via SSE/WebSocket
+- [ ] **Hardware info panel** — Show CPU, RAM, GPU status, model load state in Mission Control
+- [ ] **Config get in dashboard** — Add a "Query Config" widget matching the CLI `titan config <key>` feature
+- [ ] **Mobile-responsive dashboard** — CSS fixes for small screens
+
+### Testing & Quality
+- [ ] **E2E tests** — Gateway + dashboard integration tests (Playwright or similar)
+- [ ] **Performance benchmarks** — Startup time, memory footprint, requests/sec, inference latency
+- [ ] **Push coverage to 75%+** — Target the untested files (autopilot, tunnel, planner)
+
+### New Capabilities
+- [ ] **Vector search + RAG pipeline** — SQLite FTS5 + embeddings for semantic memory search
+- [ ] **Code interpreter skill** — Sandboxed JavaScript/Python execution for data analysis
+- [ ] **Memory hygiene** — Auto-archive stale graph entities, configurable retention policy
+- [ ] **IRC channel adapter** — Lightweight channel for developer communities
 
 ---
 
@@ -112,7 +149,7 @@ Only after the above is solid:
 |-------|-------|-------|--------------|
 | Phase 2 | 99 | 10 | ~27% |
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
-| Phase 5 (current) | 2,838 | 67 | ~68% |
+| Phase 5 (current) | 2,856 | 69 | ~68% |
 | Phase 5 target | 3,500+ | 75+ | 80%+ |
 
 ---

@@ -51,6 +51,11 @@ export class OllamaProvider extends LLMProvider {
             },
         };
 
+        // Disable thinking for Ollama models when not explicitly enabled
+        if (options.thinking === false) {
+            body.think = false;
+        }
+
         if (options.tools && options.tools.length > 0) {
             body.tools = options.tools.map((t) => ({
                 type: 'function',
@@ -122,6 +127,11 @@ export class OllamaProvider extends LLMProvider {
             stream: true,
             options: { num_predict: options.maxTokens || 8192, temperature: options.temperature ?? 0.7 },
         };
+
+        // Disable thinking for Ollama models when not explicitly enabled
+        if (options.thinking === false) {
+            body.think = false;
+        }
 
         if (options.tools && options.tools.length > 0) {
             body.tools = options.tools.map((t) => ({ type: 'function', function: { name: t.function.name, description: t.function.description, parameters: t.function.parameters } }));

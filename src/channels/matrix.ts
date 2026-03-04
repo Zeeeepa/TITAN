@@ -43,7 +43,7 @@ export class MatrixChannel extends ChannelAdapter {
             });
 
             // @ts-expect-error — matrix-js-sdk event name typing issue
-            client.on('Room.timeline' as string, (event: any, room: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+            client.on('Room.timeline' as string, (event: { getType(): string; getSender(): string; getContent(): Record<string, unknown>; getId(): string; getTs(): number }, room: { roomId: string }) => {
                 if (event.getType() !== 'm.room.message') return;
                 if (event.getSender() === client.getUserId()) return;
 
@@ -55,7 +55,7 @@ export class MatrixChannel extends ChannelAdapter {
                     channel: 'matrix',
                     userId: event.getSender(),
                     userName: event.getSender(),
-                    content: content.body,
+                    content: content.body as string,
                     groupId: room.roomId,
                     timestamp: new Date(event.getTs()),
                     raw: event,
@@ -77,7 +77,7 @@ export class MatrixChannel extends ChannelAdapter {
     async disconnect(): Promise<void> {
         if (this.client) {
             try {
-                (this.client as any).stopClient();
+                (this.client as unknown as { stopClient(): void }).stopClient();
                 this.connected = false;
                 logger.info(COMPONENT, 'Disconnected');
             } catch (error) {
@@ -93,7 +93,7 @@ export class MatrixChannel extends ChannelAdapter {
         }
 
         try {
-            const client = this.client as any;
+            const client = this.client as unknown as { sendTextMessage(roomId: string, content: string): Promise<void> };
             const roomId = message.groupId || message.userId;
 
             if (!roomId) {

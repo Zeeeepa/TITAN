@@ -4,10 +4,7 @@
  * Matches OpenClaw's web_fetch tool.
  */
 import { registerSkill } from '../registry.js';
-import logger from '../../utils/logger.js';
 import { TITAN_VERSION } from '../../utils/constants.js';
-
-const COMPONENT = 'WebFetch';
 
 /** Convert HTML to clean readable text */
 function htmlToText(html: string): string {

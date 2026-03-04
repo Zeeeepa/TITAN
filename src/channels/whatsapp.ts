@@ -31,7 +31,16 @@ export class WhatsAppChannel extends ChannelAdapter {
             // Dynamic import to avoid requiring Baileys when not used
             const baileys = await import(
                 /* @vite-ignore */ '@whiskeysockets/baileys' as string
-            ) as any;
+            /* eslint-disable @typescript-eslint/no-explicit-any */
+            ) as unknown as {
+                default: (...args: any[]) => {
+                    ev: { on: (event: string, cb: (data: any) => void) => void };
+                    [key: string]: any;
+                };
+                useMultiFileAuthState: (path: string) => Promise<{ state: unknown; saveCreds: () => Promise<void> }>;
+                DisconnectReason: Record<string, number>;
+            };
+            /* eslint-enable @typescript-eslint/no-explicit-any */
             const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys;
 
             const authDir = join(TITAN_HOME, 'whatsapp-auth');
@@ -44,7 +53,7 @@ export class WhatsAppChannel extends ChannelAdapter {
 
             sock.ev.on('creds.update', saveCreds);
 
-            sock.ev.on('connection.update', (update: any) => {
+            sock.ev.on('connection.update', (update: Record<string, unknown>) => {
                 const { connection, lastDisconnect, qr } = update;
 
                 if (qr) {
@@ -53,7 +62,8 @@ export class WhatsAppChannel extends ChannelAdapter {
 
                 if (connection === 'close') {
                     this.connected = false;
-                    const reason = (lastDisconnect?.error as any)?.output?.statusCode;
+                    const disconnectOutput = ((lastDisconnect as Record<string, unknown>)?.error as Record<string, unknown>)?.output as Record<string, unknown> | undefined;
+                    const reason = disconnectOutput?.statusCode;
                     if (reason !== DisconnectReason.loggedOut) {
                         const MAX_RETRIES = 10;
                         if (this.reconnecting) return;
@@ -69,7 +79,7 @@ export class WhatsAppChannel extends ChannelAdapter {
                             this.reconnecting = false;
                             // Clean up old socket before reconnecting
                             if (this.socket) {
-                                try { (this.socket as any).end?.(); } catch { /* ignore */ }
+                                try { (this.socket as Record<string, unknown> & { end?: () => void }).end?.(); } catch { /* ignore */ }
                                 this.socket = null;
                             }
                             this.connect();
@@ -87,7 +97,14 @@ export class WhatsAppChannel extends ChannelAdapter {
                 }
             });
 
-            sock.ev.on('messages.upsert', (m: any) => {
+            sock.ev.on('messages.upsert', (m: {
+                messages: Array<{
+                    message?: { conversation?: string; extendedTextMessage?: { text?: string } };
+                    key: { id?: string; fromMe?: boolean; remoteJid?: string };
+                    pushName?: string;
+                    messageTimestamp?: number;
+                }>;
+            }) => {
                 for (const msg of m.messages) {
                     if (!msg.message || msg.key.fromMe) continue;
 
@@ -122,7 +139,7 @@ export class WhatsAppChannel extends ChannelAdapter {
 
     async disconnect(): Promise<void> {
         if (this.socket) {
-            (this.socket as any).end();
+            (this.socket as Record<string, unknown> & { end: () => void }).end();
             this.connected = false;
             logger.info(COMPONENT, 'Disconnected');
         }
@@ -141,7 +158,7 @@ export class WhatsAppChannel extends ChannelAdapter {
                 return;
             }
 
-            await (this.socket as any).sendMessage(jid, { text: message.content });
+            await (this.socket as Record<string, unknown> & { sendMessage: (jid: string, msg: Record<string, unknown>) => Promise<void> }).sendMessage(jid, { text: message.content });
         } catch (error) {
             logger.error(COMPONENT, `Send failed: ${(error as Error).message}`);
         }

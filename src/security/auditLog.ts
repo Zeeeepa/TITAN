@@ -4,7 +4,7 @@
  * Stores at ~/.titan/audit.jsonl
  */
 import { createHmac } from 'crypto';
-import { appendFileSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { appendFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { hostname } from 'os';
 import { TITAN_HOME } from '../utils/constants.js';
@@ -112,7 +112,7 @@ function readLastHash(): string {
     }
 
     try {
-        const entry = JSON.parse(lastLine) as AuditEntry;
+        JSON.parse(lastLine); // validate JSON
         // The hash of the last entry is the HMAC of that entire entry's JSON
         lastHash = computeHmac(lastLine);
         return lastHash;

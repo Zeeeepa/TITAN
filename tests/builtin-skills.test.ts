@@ -2295,3 +2295,661 @@ describe('Memory Graph Skill', () => {
         expect(result).toContain('No episodes');
     });
 });
+
+// ════════════════════════════════════════════════════════════════════
+// Computer Use Skill
+// ════════════════════════════════════════════════════════════════════
+
+describe('Computer Use Skill', () => {
+    let handlers: Map<string, any>;
+
+    beforeEach(async () => {
+        vi.resetModules();
+        handlers = new Map<string, any>();
+
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockReturnValue({
+                security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+            }),
+        }));
+        vi.doMock('../src/skills/registry.js', () => ({
+            registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
+                handlers.set(handler.name, handler);
+            }),
+        }));
+        vi.doMock('child_process', () => ({
+            execFileSync: vi.fn().mockReturnValue(Buffer.from('success')),
+        }));
+        vi.doMock('fs', async () => {
+            const actual = await vi.importActual<typeof import('fs')>('fs');
+            return {
+                ...actual,
+                existsSync: vi.fn().mockReturnValue(true),
+                readFileSync: vi.fn().mockReturnValue(Buffer.from('data')),
+                mkdirSync: vi.fn(),
+            };
+        });
+    });
+
+    it('should register all computer use handlers', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        expect(handlers.has('screenshot')).toBe(true);
+        expect(handlers.has('mouse_click')).toBe(true);
+        expect(handlers.has('mouse_move')).toBe(true);
+        expect(handlers.has('keyboard_type')).toBe(true);
+        expect(handlers.has('keyboard_press')).toBe(true);
+        expect(handlers.has('screen_read')).toBe(true);
+    });
+
+    it('screenshot handler should invoke scrot on linux', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('screenshot');
+            const result = await handler.execute({ target: 'screen' });
+            // The mock readFileSync returns Buffer.from('data'), which base64-encodes to 'ZGF0YQ=='
+            expect(result).toContain('data:image/png;base64,');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('screenshot handler should invoke screencapture on macOS', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'darwin', writable: true });
+
+        try {
+            vi.resetModules();
+            handlers = new Map<string, any>();
+
+            vi.doMock('../src/utils/logger.js', () => ({
+                default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+            }));
+            vi.doMock('../src/config/config.js', () => ({
+                loadConfig: vi.fn().mockReturnValue({
+                    security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+                }),
+            }));
+            vi.doMock('../src/skills/registry.js', () => ({
+                registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
+                    handlers.set(handler.name, handler);
+                }),
+            }));
+            vi.doMock('child_process', () => ({
+                execFileSync: vi.fn().mockReturnValue(Buffer.from('success')),
+            }));
+            vi.doMock('fs', async () => {
+                const actual = await vi.importActual<typeof import('fs')>('fs');
+                return {
+                    ...actual,
+                    existsSync: vi.fn().mockReturnValue(true),
+                    readFileSync: vi.fn().mockReturnValue(Buffer.from('screenshot-data')),
+                    mkdirSync: vi.fn(),
+                };
+            });
+
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('screenshot');
+            const result = await handler.execute({ target: 'screen' });
+            expect(result).toContain('data:image/png;base64,');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('screenshot should return error when no screenshot tool is available', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            vi.resetModules();
+            handlers = new Map<string, any>();
+
+            vi.doMock('../src/utils/logger.js', () => ({
+                default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+            }));
+            vi.doMock('../src/config/config.js', () => ({
+                loadConfig: vi.fn().mockReturnValue({
+                    security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+                }),
+            }));
+            vi.doMock('../src/skills/registry.js', () => ({
+                registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
+                    handlers.set(handler.name, handler);
+                }),
+            }));
+            // execFileSync throws for 'which' calls (no tools available)
+            vi.doMock('child_process', () => ({
+                execFileSync: vi.fn().mockImplementation((cmd: string) => {
+                    if (cmd === 'which') throw new Error('not found');
+                    return Buffer.from('success');
+                }),
+            }));
+            vi.doMock('fs', async () => {
+                const actual = await vi.importActual<typeof import('fs')>('fs');
+                return {
+                    ...actual,
+                    existsSync: vi.fn().mockReturnValue(false),
+                    readFileSync: vi.fn().mockReturnValue(Buffer.from('data')),
+                    mkdirSync: vi.fn(),
+                };
+            });
+
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('screenshot');
+            const result = await handler.execute({ target: 'screen' });
+            expect(result).toContain('Error');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('mouse_click should accept valid coordinates', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('mouse_click');
+            const result = await handler.execute({ x: 100, y: 200 });
+            expect(typeof result).toBe('string');
+            // Should succeed or report missing xdotool — not a coordinate error
+            expect(result).not.toContain('Invalid coordinate');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('mouse_click should return error for invalid coordinates (NaN)', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('mouse_click');
+        const result = await handler.execute({ x: 'abc', y: 200 });
+        expect(result).toContain('Error');
+        expect(result).toContain('Invalid coordinate');
+    });
+
+    it('mouse_click should return error for invalid button name', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('mouse_click');
+        const result = await handler.execute({ x: 100, y: 200, button: 'invalid_btn' });
+        expect(result).toContain('Error');
+        expect(result).toContain('Invalid button');
+    });
+
+    it('keyboard_type should type text', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('keyboard_type');
+            const result = await handler.execute({ text: 'Hello TITAN' });
+            expect(typeof result).toBe('string');
+            // Either succeeds or reports xdotool missing, but no empty-text error
+            expect(result).not.toContain('non-empty string');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('keyboard_type should reject empty text', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('keyboard_type');
+        const result = await handler.execute({ text: '' });
+        expect(result).toContain('Error');
+        expect(result).toContain('non-empty string');
+    });
+
+    it('keyboard_press should validate named keys', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('keyboard_press');
+            const result = await handler.execute({ keys: 'Enter' });
+            expect(typeof result).toBe('string');
+            // Should not contain 'Unknown key' error
+            expect(result).not.toContain('Unknown key');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('keyboard_press should return error for invalid key name', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('keyboard_press');
+        const result = await handler.execute({ keys: 'InvalidKeyXYZ123' });
+        expect(result).toContain('Error');
+        expect(result).toContain('Unknown key');
+    });
+
+    it('keyboard_press should reject empty keys parameter', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('keyboard_press');
+        const result = await handler.execute({ keys: '' });
+        expect(result).toContain('Error');
+        expect(result).toContain('non-empty string');
+    });
+
+    it('screen_read should return clipboard content on linux', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('screen_read');
+            const result = await handler.execute({ method: 'clipboard' });
+            expect(typeof result).toBe('string');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('mouse_move should accept valid coordinates', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('mouse_move');
+            const result = await handler.execute({ x: 500, y: 300 });
+            expect(typeof result).toBe('string');
+            expect(result).not.toContain('Invalid coordinate');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+
+    it('mouse_move should return error for non-finite coordinates', async () => {
+        const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+        registerComputerUseSkill();
+
+        const handler = handlers.get('mouse_move');
+        const result = await handler.execute({ x: Infinity, y: 300 });
+        expect(result).toContain('Error');
+        expect(result).toContain('Invalid coordinate');
+    });
+
+    it('keyboard_press should accept modifier+key combos like Control+C', async () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', writable: true });
+
+        try {
+            const { registerComputerUseSkill } = await import('../src/skills/builtin/computer_use.js');
+            registerComputerUseSkill();
+
+            const handler = handlers.get('keyboard_press');
+            const result = await handler.execute({ keys: 'Control+c' });
+            expect(typeof result).toBe('string');
+            expect(result).not.toContain('Unknown');
+        } finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, writable: true });
+        }
+    });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Web Fetch Skill (web_browser / browse_url equivalent)
+// ════════════════════════════════════════════════════════════════════
+
+describe('Web Fetch Skill', () => {
+    let fetchHandler: any;
+
+    beforeEach(async () => {
+        vi.resetModules();
+
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockReturnValue({
+                security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+            }),
+        }));
+        vi.doMock('../src/skills/registry.js', () => ({
+            registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
+                fetchHandler = handler;
+            }),
+        }));
+    });
+
+    it('should register the web_fetch handler', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        expect(fetchHandler).toBeDefined();
+        expect(fetchHandler.name).toBe('web_fetch');
+    });
+
+    it('should have url as a required parameter', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        expect(fetchHandler.parameters.required).toContain('url');
+    });
+
+    it('should return error for missing url', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const result = await fetchHandler.execute({});
+        expect(result).toContain('Error');
+    });
+
+    it('should block internal/localhost URLs (SSRF protection)', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const result = await fetchHandler.execute({ url: 'http://localhost:8080/admin' });
+        expect(result).toContain('Error');
+        expect(result).toContain('internal');
+    });
+
+    it('should block private network 10.x.x.x URLs', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const result = await fetchHandler.execute({ url: 'http://10.0.0.1/admin' });
+        expect(result).toContain('Error');
+        expect(result).toContain('internal');
+    });
+
+    it('should block 192.168.x.x URLs', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const result = await fetchHandler.execute({ url: 'http://192.168.1.1/config' });
+        expect(result).toContain('Error');
+        expect(result).toContain('internal');
+    });
+
+    it('should block 127.0.0.1 URLs', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const result = await fetchHandler.execute({ url: 'http://127.0.0.1:3000' });
+        expect(result).toContain('Error');
+        expect(result).toContain('internal');
+    });
+
+    it('should support extractMode text parameter', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const props = fetchHandler.parameters.properties;
+        expect(props.extractMode).toBeDefined();
+        expect(props.extractMode.enum).toContain('markdown');
+        expect(props.extractMode.enum).toContain('text');
+    });
+
+    it('should support maxChars parameter', async () => {
+        const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+        registerWebFetchSkill();
+
+        const props = fetchHandler.parameters.properties;
+        expect(props.maxChars).toBeDefined();
+        expect(props.maxChars.type).toBe('number');
+    });
+
+    it('should handle fetch errors gracefully', async () => {
+        // Mock global fetch to throw
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+
+        try {
+            const { registerWebFetchSkill } = await import('../src/skills/builtin/web_fetch.js');
+            registerWebFetchSkill();
+
+            const result = await fetchHandler.execute({ url: 'https://example.com' });
+            expect(result).toContain('Error');
+            expect(result).toContain('Network error');
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Webhook Skill (Extended)
+// ════════════════════════════════════════════════════════════════════
+
+describe('Webhook Skill — Extended', () => {
+    let webhookHandler: any;
+
+    beforeEach(async () => {
+        vi.resetModules();
+
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockReturnValue({
+                security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+            }),
+        }));
+        vi.doMock('../src/skills/registry.js', () => ({
+            registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
+                webhookHandler = handler;
+            }),
+        }));
+        vi.doMock('uuid', () => ({
+            v4: vi.fn().mockReturnValue('wh-test-uuid-1234-5678'),
+        }));
+        vi.doMock('../src/memory/memory.js', () => ({
+            getDb: vi.fn().mockReturnValue({ memories: [] }),
+            rememberFact: vi.fn(),
+            searchMemories: vi.fn().mockReturnValue([]),
+        }));
+        vi.doMock('../../memory/memory.js', () => ({
+            getDb: vi.fn().mockReturnValue({ memories: [] }),
+            rememberFact: vi.fn(),
+            searchMemories: vi.fn().mockReturnValue([]),
+        }));
+    });
+
+    it('should register the webhook handler', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        expect(webhookHandler).toBeDefined();
+        expect(webhookHandler.name).toBe('webhook');
+    });
+
+    it('should have action parameter with create, list, delete', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const actionProp = webhookHandler.parameters.properties.action;
+        expect(actionProp.enum).toContain('create');
+        expect(actionProp.enum).toContain('list');
+        expect(actionProp.enum).toContain('delete');
+    });
+
+    it('webhook_create should create a webhook and return its details', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const result = await webhookHandler.execute({
+            action: 'create',
+            name: 'test-hook',
+            path: '/hooks/test',
+            handler: 'echo hello',
+        });
+        expect(result).toContain('Created webhook');
+        expect(result).toContain('test-hook');
+        expect(result).toContain('/hooks/test');
+        expect(result).toContain('wh-test-uuid');
+    });
+
+    it('webhook_create should use defaults when name/path missing', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const result = await webhookHandler.execute({ action: 'create' });
+        expect(result).toContain('Created webhook');
+        // Default name uses uuid prefix
+        expect(result).toContain('webhook-');
+        // Default method is POST
+        expect(result).toContain('POST');
+    });
+
+    it('webhook_list should report no active webhooks when empty', async () => {
+        const { registerWebhookSkill, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        // Clear any webhooks that might exist from other tests
+        getActiveWebhooks().clear();
+
+        const result = await webhookHandler.execute({ action: 'list' });
+        expect(result).toContain('No active webhooks');
+    });
+
+    it('webhook_list should return active webhooks after creation', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        await webhookHandler.execute({ action: 'create', name: 'my-hook', path: '/my-hook', handler: 'notify' });
+        const result = await webhookHandler.execute({ action: 'list' });
+        expect(result).toContain('my-hook');
+        expect(result).toContain('/my-hook');
+    });
+
+    it('webhook_delete should require webhookId parameter', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const result = await webhookHandler.execute({ action: 'delete' });
+        expect(result).toContain('Error');
+        expect(result).toContain('webhookId is required');
+    });
+
+    it('webhook_delete should remove a webhook by id', async () => {
+        const { registerWebhookSkill, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        await webhookHandler.execute({ action: 'create', name: 'to-delete', path: '/delete-me' });
+        const hookId = Array.from(getActiveWebhooks().keys())[0];
+
+        const result = await webhookHandler.execute({ action: 'delete', webhookId: hookId });
+        expect(result).toContain('Deleted webhook');
+        expect(getActiveWebhooks().has(hookId)).toBe(false);
+    });
+
+    it('webhook_create should support custom method (GET)', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const result = await webhookHandler.execute({
+            action: 'create',
+            name: 'get-hook',
+            path: '/get-test',
+            method: 'GET',
+            handler: 'list items',
+        });
+        expect(result).toContain('GET');
+        expect(result).toContain('get-hook');
+    });
+
+    it('should handle unknown action gracefully', async () => {
+        const { registerWebhookSkill } = await import('../src/skills/builtin/webhook.js');
+        registerWebhookSkill();
+
+        const result = await webhookHandler.execute({ action: 'restart' });
+        expect(result).toContain('Unknown action');
+    });
+
+    it('initPersistentWebhooks should load webhooks from memory', async () => {
+        vi.resetModules();
+
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockReturnValue({
+                security: { deniedTools: [], allowedTools: [], commandTimeout: 30000 },
+            }),
+        }));
+        vi.doMock('../src/skills/registry.js', () => ({
+            registerSkill: vi.fn(),
+        }));
+        vi.doMock('uuid', () => ({
+            v4: vi.fn().mockReturnValue('init-uuid'),
+        }));
+        vi.doMock('../src/memory/memory.js', () => ({
+            getDb: vi.fn().mockReturnValue({ memories: [] }),
+            rememberFact: vi.fn(),
+            searchMemories: vi.fn().mockReturnValue([
+                {
+                    key: 'hook-1',
+                    value: JSON.stringify({
+                        id: 'hook-1',
+                        path: '/restored',
+                        name: 'restored-hook',
+                        method: 'POST',
+                        handler: 'do stuff',
+                    }),
+                    category: 'webhook',
+                },
+            ]),
+        }));
+        vi.doMock('../../memory/memory.js', () => ({
+            getDb: vi.fn().mockReturnValue({ memories: [] }),
+            rememberFact: vi.fn(),
+            searchMemories: vi.fn().mockReturnValue([
+                {
+                    key: 'hook-1',
+                    value: JSON.stringify({
+                        id: 'hook-1',
+                        path: '/restored',
+                        name: 'restored-hook',
+                        method: 'POST',
+                        handler: 'do stuff',
+                    }),
+                    category: 'webhook',
+                },
+            ]),
+        }));
+
+        const { initPersistentWebhooks, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
+        initPersistentWebhooks();
+
+        expect(getActiveWebhooks().has('hook-1')).toBe(true);
+        const hook = getActiveWebhooks().get('hook-1');
+        expect(hook?.name).toBe('restored-hook');
+        expect(hook?.path).toBe('/restored');
+    });
+});

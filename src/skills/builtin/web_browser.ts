@@ -1,17 +1,17 @@
 /**
  * TITAN — Universal Web Browser
  * Set-and-forget web browsing for TITAN. No configuration needed.
- * 
+ *
  * HOW IT WORKS:
  * ─────────────────────────────────────────────────────────────────
  * 1. Fast path: tries a plain fetch() first — instant, zero cost
  * 2. If the page needs JavaScript (React/Vue/SPAs), falls back to
  *    Playwright with a persistent local Chromium browser session
- * 3. Extracts clean readable text (not raw HTML) so the LLM gets 
+ * 3. Extracts clean readable text (not raw HTML) so the LLM gets
  *    signal, not noise
  * 4. Can screenshot pages for visual tasks
  * 5. Session cookies persist between calls — stay logged in
- * 
+ *
  * WHY PLAYWRIGHT + PERSISTANCE:
  * ─────────────────────────────────────────────────────────────────
  * Unlike single-use headless browsers, TITAN keeps one browser
@@ -20,11 +20,10 @@
  * - You can log into sites once and TITAN stays logged in
  * - Cookies and localStorage persist across page visits
  * - "Set and forget" — just works, no Docker, no config
- * 
+ *
  * AUTO-INSTALL: Playwright chromium is auto-installed on first use.
  */
 import { registerSkill } from '../registry.js';
-import { registerTool } from '../../agent/toolRunner.js';
 import { z } from 'zod';
 import logger from '../../utils/logger.js';
 import { TITAN_VERSION } from '../../utils/constants.js';
@@ -41,22 +40,46 @@ interface BrowseResult {
     extractedLinks?: string[];
 }
 
-// ─── Persistent browser session ───────────────────────────────────
-let playwrightBrowser: any = null;
-let playwrightContext: any = null;
-let launchPromise: Promise<any> | null = null;
+interface DomElement { tag: string; id: string; name: string; cls: string; text: string; type?: string }
 
-async function doLaunchBrowser(): Promise<any> {
-    let chromium: any;
+/** Minimal Playwright shape so we can type dynamic imports without depending on @playwright/test */
+interface PwLocator { first(): PwLocator; waitFor(opts: unknown): Promise<unknown>; catch(fn: () => void): Promise<unknown> }
+interface PwPage {
+    goto(url: string, opts?: unknown): Promise<unknown>;
+    title(): Promise<string>;
+    evaluate(fn: unknown, ...args: unknown[]): Promise<unknown>;
+    screenshot(opts?: unknown): Promise<Buffer>;
+    close(): Promise<void>;
+    url(): string;
+    click(sel: string): Promise<void>;
+    fill(sel: string, val: string): Promise<void>;
+    waitForTimeout(ms: number): Promise<void>;
+    locator(sel: string): PwLocator;
+    innerText(sel: string): Promise<string>;
+    focus(sel: string): Promise<void>;
+    type(sel: string, text: string, opts?: unknown): Promise<void>;
+    keyboard: { type(text: string, opts?: unknown): Promise<void>; press(key: string): Promise<void> };
+}
+interface PwContext { newPage(): Promise<PwPage>; close(): Promise<void> }
+interface PwBrowser { newContext(opts?: unknown): Promise<PwContext>; isConnected(): boolean; close(): Promise<void> }
+interface PwChromium { launch(opts?: unknown): Promise<PwBrowser> }
+
+// ─── Persistent browser session ───────────────────────────────────
+let playwrightBrowser: PwBrowser | null = null;
+let playwrightContext: PwContext | null = null;
+let launchPromise: Promise<PwContext> | null = null;
+
+async function doLaunchBrowser(): Promise<PwContext> {
+    let chromium: PwChromium;
     try {
-        const pw = await import('playwright' as any);
-        chromium = pw.chromium;
+        const pw = await import('playwright' as string);
+        chromium = pw.chromium as PwChromium;
     } catch {
         const { execSync } = await import('child_process');
         logger.info(COMPONENT, 'Installing Playwright Chromium (first time only, may take ~1 min)...');
         execSync('npx playwright install chromium --with-deps 2>&1', { stdio: 'pipe', timeout: 120_000 });
-        const pw = await import('playwright' as any);
-        chromium = pw.chromium;
+        const pw = await import('playwright' as string);
+        chromium = pw.chromium as PwChromium;
     }
 
     playwrightBrowser = await chromium.launch({
@@ -71,9 +94,9 @@ async function doLaunchBrowser(): Promise<any> {
     return playwrightContext;
 }
 
-async function getOrCreateBrowser(): Promise<any> {
+async function getOrCreateBrowser(): Promise<PwContext> {
     if (playwrightBrowser && playwrightBrowser.isConnected()) {
-        return playwrightContext;
+        return playwrightContext!;
     }
     // Singleton launch — prevents thundering herd (concurrent requests launching multiple browsers)
     if (!launchPromise) {
@@ -132,25 +155,27 @@ async function fetchWithBrowser(url: string, screenshot: boolean): Promise<Brows
         const title = await page.title();
         const bodyText = await page.evaluate(() => {
             // Note: this runs in browser context — globalThis is the browser window
-            const win = globalThis as any;
+            const win = globalThis as unknown as Record<string, unknown>;
+            const doc = win.document as unknown as { querySelector: (s: string) => { textContent?: string } | null; body?: { innerText?: string } };
             const selectors = ['article', 'main', '[role="main"]', '.content', '#content', 'body'];
             for (const sel of selectors) {
-                const el = win.document.querySelector(sel);
+                const el = doc.querySelector(sel);
                 if (el && el.textContent && el.textContent.trim().length > 200) {
                     return el.textContent.trim().replace(/\s{3,}/g, '\n\n').slice(0, 8000);
                 }
             }
-            return win.document.body?.innerText?.slice(0, 8000) ?? '';
-        });
+            return doc.body?.innerText?.slice(0, 8000) ?? '';
+        }) as string;
 
         // Optionally grab visible links
         const links = await page.evaluate(() => {
-            const win = globalThis as any;
-            return Array.from(win.document.querySelectorAll('a[href]') as any[])
-                .map((el: any) => el.href)
+            const win = globalThis as unknown as Record<string, unknown>;
+            const doc = win.document as unknown as { querySelectorAll: (s: string) => ArrayLike<{ href: string }> };
+            return Array.from(doc.querySelectorAll('a[href]'))
+                .map((el: { href: string }) => el.href)
                 .filter((href: string) => href.startsWith('http'))
                 .slice(0, 20);
-        });
+        }) as string[];
 
         let screenshotData: string | undefined;
         if (screenshot) {
@@ -250,7 +275,7 @@ export function initWebBrowserTool(): void {
             required: ['query'],
         },
         execute: async (args) => {
-            const { query, numResults } = SearchSchema.parse(args);
+            const { query } = SearchSchema.parse(args);
             logger.info(COMPONENT, `Searching: ${query}`);
 
             // Use DuckDuckGo Lite — no API key, no rate limit for reasonable use
@@ -301,8 +326,8 @@ export function initWebBrowserTool(): void {
             },
             required: ['url', 'actions'],
         },
-        execute: async (args: any) => {
-            const { url, actions, returnType = 'smart_dom' } = args;
+        execute: async (args: Record<string, unknown>) => {
+            const { url, actions, returnType = 'smart_dom' } = args as { url: string; actions: Record<string, unknown>[]; returnType?: string };
             const ctx = await getOrCreateBrowser();
             const page = await ctx.newPage();
 
@@ -316,22 +341,22 @@ export function initWebBrowserTool(): void {
                 for (const step of actions) {
                     try {
                         if (step.action === 'click' && step.selector) {
-                            await page.locator(step.selector).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
-                            await page.click(step.selector);
+                            await page.locator(step.selector as string).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
+                            await page.click(step.selector as string);
                             results.push(`✅ Clicked: ${step.selector}`);
                         } else if (step.action === 'fill' && step.selector && step.value !== undefined) {
-                            await page.locator(step.selector).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
-                            await page.fill(step.selector, step.value);
+                            await page.locator(step.selector as string).first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
+                            await page.fill(step.selector as string, step.value as string);
                             results.push(`✅ Filled: ${step.selector} -> *****`);
                         } else if (step.action === 'wait' && step.delayMs) {
-                            await page.waitForTimeout(step.delayMs);
+                            await page.waitForTimeout(step.delayMs as number);
                             results.push(`✅ Waited: ${step.delayMs}ms`);
                         } else if (step.action === 'evaluate' && step.script) {
                             await page.evaluate(step.script);
                             results.push(`✅ Evaluated custom script`);
                         }
-                    } catch (e: any) {
-                        results.push(`❌ Failed Step: ${step.action} on ${step.selector} - ${e.message.split('\\n')[0]}`);
+                    } catch (e: unknown) {
+                        results.push(`❌ Failed Step: ${step.action} on ${step.selector} - ${(e as Error).message.split('\\n')[0]}`);
                         break; // Stop execution on first failure to prevent chaos
                     }
                 }
@@ -346,27 +371,28 @@ export function initWebBrowserTool(): void {
 
                 if (returnType === 'smart_dom') {
                     const domMap = await page.evaluate(() => {
-                        const win = globalThis as any;
-                        const elements: { tag: string, id: string, name: string, cls: string, text: string, type?: string }[] = [];
-                        const interactive = win.document.querySelectorAll('button, a[href], input, select, textarea');
-                        interactive.forEach((el: any) => {
-                            const bounds = el.getBoundingClientRect();
+                        const win = globalThis as unknown as Record<string, unknown>;
+                        const doc = win.document as unknown as { querySelectorAll: (s: string) => ArrayLike<Record<string, unknown>> };
+                        const elements: { tag: string; id: string; name: string; cls: string; text: string; type?: string }[] = [];
+                        const interactive = doc.querySelectorAll('button, a[href], input, select, textarea');
+                        Array.from(interactive).forEach((el: Record<string, unknown>) => {
+                            const bounds = (el.getBoundingClientRect as () => { width: number; height: number })();
                             if (bounds.width === 0 || bounds.height === 0) return; // Skip invisible elements
 
                             elements.push({
-                                tag: el.tagName.toLowerCase(),
-                                id: el.id,
-                                name: (el as any).name || '',
-                                cls: el.className.toString(),
-                                text: (el as any).innerText?.slice(0, 50) || (el as any).value?.slice(0, 50) || '',
-                                type: (el as any).type || ''
+                                tag: ((el.tagName as string) || '').toLowerCase(),
+                                id: (el.id as string) || '',
+                                name: (el.name as string) || '',
+                                cls: String(el.className || ''),
+                                text: (el.innerText as string)?.slice(0, 50) || (el.value as string)?.slice(0, 50) || '',
+                                type: (el.type as string) || ''
                             });
                         });
                         return elements;
-                    });
+                    }) as DomElement[];
 
                     let domString = "--- Smart DOM Map (Interactive Elements) ---\n";
-                    domMap.slice(0, 100).forEach((e: any) => {
+                    domMap.slice(0, 100).forEach((e: DomElement) => {
                         let sel = e.tag;
                         if (e.id) sel += `#${e.id}`;
                         else if (e.name) sel += `[name="${e.name}"]`;
@@ -380,7 +406,11 @@ export function initWebBrowserTool(): void {
                     output += domString;
                 } else if (returnType === 'text') {
                     output += "--- Page Text ---\n";
-                    const bodyText = await page.evaluate(() => (globalThis as any).document.body?.innerText?.slice(0, 8000) ?? '');
+                    const bodyText = await page.evaluate(() => {
+                        const win = globalThis as unknown as Record<string, unknown>;
+                        const doc = win.document as unknown as { body?: { innerText?: string } };
+                        return doc.body?.innerText?.slice(0, 8000) ?? '';
+                    }) as string;
                     output += bodyText;
                 } else if (returnType === 'screenshot') {
                     const buf = await page.screenshot({ type: 'jpeg', quality: 60 });

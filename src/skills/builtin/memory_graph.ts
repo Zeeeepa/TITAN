@@ -9,7 +9,6 @@ import {
     listEntities,
     getEntity,
     getEntityEpisodes,
-    getRecentEpisodes,
 } from '../../memory/graph.js';
 
 export function registerMemoryGraphSkill(): void {

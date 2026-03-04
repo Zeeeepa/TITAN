@@ -2,8 +2,8 @@
  * TITAN — Filesystem Skill (Built-in)
  * Read, write, edit, and list files and directories.
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, unlinkSync, mkdirSync } from 'fs';
-import { join, resolve, basename } from 'path';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from 'fs';
+import { join, resolve } from 'path';
 import { registerSkill } from '../registry.js';
 
 export function registerFilesystemSkill(): void {

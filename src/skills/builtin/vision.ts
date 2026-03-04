@@ -68,7 +68,7 @@ async function analyzeWithAnthropic(base64Data: string, mediaType: string, promp
         throw new Error(`Anthropic Vision API error: ${await response.text()}`);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as { content: Array<{ text: string }> };
     return data.content[0].text;
 }
 
@@ -106,7 +106,7 @@ async function analyzeWithOpenAI(base64Data: string, mediaType: string, prompt: 
         throw new Error(`OpenAI Vision API error: ${await response.text()}`);
     }
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
     return data.choices[0].message.content;
 }
 
@@ -158,8 +158,8 @@ const handler: ToolHandler = {
             else {
                 return "Error: Vision tool requires either an Anthropic or OpenAI API key configured in TITAN.";
             }
-        } catch (e: any) {
-            return `Vision Analysis Failed: ${e.message}`;
+        } catch (e: unknown) {
+            return `Vision Analysis Failed: ${(e as Error).message}`;
         }
     },
 };

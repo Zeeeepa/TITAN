@@ -218,8 +218,8 @@ export async function loadAutoSkills(): Promise<void> {
                         loadedCount++;
                     }
                 }
-            } catch (e: any) {
-                logger.warn(COMPONENT, `Failed to load skill ${file}: ${e.message}`);
+            } catch (e: unknown) {
+                logger.warn(COMPONENT, `Failed to load skill ${file}: ${(e as Error).message}`);
             }
         }
     }
@@ -260,7 +260,7 @@ function loadYamlSkill(filePath: string): ToolHandler | null {
 
     // Parse parameters section
     const paramsSection = content.match(/^parameters:\n((?:\s{2}\w[\s\S]*?)(?=\nscript:|\n\w|\n$))/m);
-    const properties: Record<string, any> = {};
+    const properties: Record<string, Record<string, unknown>> = {};
     const required: string[] = [];
 
     if (paramsSection) {

@@ -77,9 +77,9 @@ const sttHandler: ToolHandler = {
 
             const data = await response.json() as { text: string };
             return `Transcript: "${data.text}"`;
-        } catch (e: any) {
-            logger.error(COMPONENT, `Transcription failed: ${e.message}`);
-            return `Error transcribing audio: ${e.message}`;
+        } catch (e: unknown) {
+            logger.error(COMPONENT, `Transcription failed: ${(e as Error).message}`);
+            return `Error transcribing audio: ${(e as Error).message}`;
         }
     }
 };
@@ -140,9 +140,9 @@ const ttsHandler: ToolHandler = {
             writeFileSync(tmpPath, buffer);
 
             return `Success. Generated MP3 audio file saved to: ${tmpPath}`;
-        } catch (e: any) {
-            logger.error(COMPONENT, `TTS failed: ${e.message}`);
-            return `Error generating speech: ${e.message}`;
+        } catch (e: unknown) {
+            logger.error(COMPONENT, `TTS failed: ${(e as Error).message}`);
+            return `Error generating speech: ${(e as Error).message}`;
         }
     }
 };

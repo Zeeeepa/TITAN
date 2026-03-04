@@ -26,6 +26,31 @@ import logger from '../../utils/logger.js';
 
 const COMPONENT = 'ComputerUse';
 
+/** Minimal Playwright shape — avoids depending on @playwright/test types */
+interface PwLocator { first(): PwLocator; waitFor(opts: unknown): Promise<unknown> }
+interface PwPage {
+    goto(url: string, opts?: unknown): Promise<unknown>;
+    title(): Promise<string>;
+    evaluate(fn: unknown, ...args: unknown[]): Promise<unknown>;
+    screenshot(opts?: unknown): Promise<Buffer>;
+    close(): Promise<void>;
+    url(): string;
+    click(sel: string, opts?: unknown): Promise<void>;
+    dblclick(sel: string): Promise<void>;
+    fill(sel: string, val: string): Promise<void>;
+    waitForTimeout(ms: number): Promise<void>;
+    locator(sel: string): PwLocator;
+    $(sel: string): Promise<{ screenshot: (opts: unknown) => Promise<void> } | null>;
+    innerText(sel: string): Promise<string>;
+    focus(sel: string): Promise<void>;
+    type(sel: string, text: string, opts?: unknown): Promise<void>;
+    keyboard: { type(text: string, opts?: unknown): Promise<void>; press(key: string): Promise<void> };
+}
+interface PwContext { newPage(): Promise<PwPage>; close(): Promise<void> }
+interface PwBrowser { newContext(opts?: unknown): Promise<PwContext>; close(): Promise<void> }
+interface PwChromium { launch(opts?: unknown): Promise<PwBrowser> }
+interface PwModule { chromium: PwChromium }
+
 // ─── OS helpers ───────────────────────────────────────────────────────────────
 
 function isLinux(): boolean {
@@ -60,9 +85,10 @@ function runCmd(program: string, args: string[], timeoutMs = 15_000): string {
             timeout: timeoutMs,
         });
         return out.toString('utf-8').trim();
-    } catch (err: any) {
+    } catch (err: unknown) {
         // execFileSync puts stderr in err.stderr when available
-        const detail = err.stderr?.toString().trim() || err.message;
+        const e = err as { stderr?: Buffer; message?: string };
+        const detail = e.stderr?.toString().trim() || e.message;
         throw new Error(`${program} failed: ${detail}`);
     }
 }
@@ -272,7 +298,6 @@ async function captureDesktopScreenshot(region?: { x: number; y: number; width: 
  * Imports dynamically so the skill still loads even when Playwright is absent.
  */
 async function captureBrowserScreenshot(selector?: string): Promise<string> {
-    let getOrCreateBrowser: () => Promise<any>;
     try {
         const mod = await import('./web_browser.js');
         // web_browser.ts does not export getOrCreateBrowser — use the browse_url
@@ -288,9 +313,9 @@ async function captureBrowserScreenshot(selector?: string): Promise<string> {
     }
 
     // Launch (or reuse) Playwright directly
-    let pw: any;
+    let pw: PwModule;
     try {
-        pw = await import('playwright' as any);
+        pw = await import('playwright' as string) as PwModule;
     } catch {
         throw new Error('Playwright is not installed. Run: npx playwright install chromium');
     }
@@ -409,9 +434,9 @@ export function registerComputerUseSkill(): void {
                     }
 
                     return `data:image/png;base64,${base64}`;
-                } catch (err: any) {
-                    logger.error(COMPONENT, `screenshot failed: ${err.message}`);
-                    return `Error taking screenshot: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `screenshot failed: ${(err as Error).message}`);
+                    return `Error taking screenshot: ${(err as Error).message}`;
                 }
             },
         },
@@ -464,9 +489,9 @@ export function registerComputerUseSkill(): void {
                 try {
                     if (selector) {
                         // Browser path — use Playwright
-                        let pw: any;
+                        let pw: PwModule;
                         try {
-                            pw = await import('playwright' as any);
+                            pw = await import('playwright' as string) as PwModule;
                         } catch {
                             return 'Error: Playwright is not installed. Run: npx playwright install chromium';
                         }
@@ -538,9 +563,9 @@ export function registerComputerUseSkill(): void {
                     } else {
                         return `Error: Unsupported platform for desktop mouse clicks: ${process.platform}`;
                     }
-                } catch (err: any) {
-                    logger.error(COMPONENT, `mouse_click failed: ${err.message}`);
-                    return `Error: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `mouse_click failed: ${(err as Error).message}`);
+                    return `Error: ${(err as Error).message}`;
                 }
             },
         },
@@ -595,9 +620,9 @@ export function registerComputerUseSkill(): void {
                     } else {
                         return `Error: Unsupported platform for mouse_move: ${process.platform}`;
                     }
-                } catch (err: any) {
-                    logger.error(COMPONENT, `mouse_move failed: ${err.message}`);
-                    return `Error: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `mouse_move failed: ${(err as Error).message}`);
+                    return `Error: ${(err as Error).message}`;
                 }
             },
         },
@@ -657,9 +682,9 @@ export function registerComputerUseSkill(): void {
 
                 try {
                     if (target === 'browser') {
-                        let pw: any;
+                        let pw: PwModule;
                         try {
-                            pw = await import('playwright' as any);
+                            pw = await import('playwright' as string) as PwModule;
                         } catch {
                             return 'Error: Playwright is not installed. Run: npx playwright install chromium';
                         }
@@ -716,9 +741,9 @@ export function registerComputerUseSkill(): void {
                     } else {
                         return `Error: Unsupported platform for keyboard_type: ${process.platform}`;
                     }
-                } catch (err: any) {
-                    logger.error(COMPONENT, `keyboard_type failed: ${err.message}`);
-                    return `Error: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `keyboard_type failed: ${(err as Error).message}`);
+                    return `Error: ${(err as Error).message}`;
                 }
             },
         },
@@ -772,9 +797,9 @@ export function registerComputerUseSkill(): void {
                     const xdotoolKeys = validateAndConvertKey(keysRaw.trim());
 
                     if (target === 'browser') {
-                        let pw: any;
+                        let pw: PwModule;
                         try {
-                            pw = await import('playwright' as any);
+                            pw = await import('playwright' as string) as PwModule;
                         } catch {
                             return 'Error: Playwright is not installed. Run: npx playwright install chromium';
                         }
@@ -814,9 +839,9 @@ export function registerComputerUseSkill(): void {
                     } else {
                         return `Error: Unsupported platform for keyboard_press: ${process.platform}`;
                     }
-                } catch (err: any) {
-                    logger.error(COMPONENT, `keyboard_press failed: ${err.message}`);
-                    return `Error: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `keyboard_press failed: ${(err as Error).message}`);
+                    return `Error: ${(err as Error).message}`;
                 }
             },
         },
@@ -872,9 +897,9 @@ export function registerComputerUseSkill(): void {
 
                 try {
                     if (method === 'browser') {
-                        let pw: any;
+                        let pw: PwModule;
                         try {
-                            pw = await import('playwright' as any);
+                            pw = await import('playwright' as string) as PwModule;
                         } catch {
                             return 'Error: Playwright is not installed. Run: npx playwright install chromium';
                         }
@@ -941,9 +966,9 @@ export function registerComputerUseSkill(): void {
                     } else {
                         return `Error: Unsupported platform for clipboard reading: ${process.platform}`;
                     }
-                } catch (err: any) {
-                    logger.error(COMPONENT, `screen_read failed: ${err.message}`);
-                    return `Error: ${err.message}`;
+                } catch (err: unknown) {
+                    logger.error(COMPONENT, `screen_read failed: ${(err as Error).message}`);
+                    return `Error: ${(err as Error).message}`;
                 }
             },
         },

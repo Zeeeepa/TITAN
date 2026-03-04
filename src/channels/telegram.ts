@@ -33,11 +33,11 @@ export class TelegramChannel extends ChannelAdapter {
             const { Bot } = await import('grammy');
             const bot = new Bot(token);
 
-            bot.catch((err: any) => {
-                logger.error(COMPONENT, `Grammy error: ${err.message ?? err}`);
+            bot.catch((err: unknown) => {
+                logger.error(COMPONENT, `Grammy error: ${(err as Error).message ?? err}`);
             });
 
-            bot.on('message:text', (ctx: any) => {
+            bot.on('message:text', (ctx: { from?: { id: number; username?: string; first_name: string }; message: { message_id: number; text: string; date: number }; chat: { type: string; id: number } }) => {
                 if (!ctx.from) return;
                 try {
                     const inbound: InboundMessage = {
@@ -68,7 +68,7 @@ export class TelegramChannel extends ChannelAdapter {
 
     async disconnect(): Promise<void> {
         if (this.bot) {
-            (this.bot as any).stop();
+            (this.bot as unknown as { stop(): void }).stop();
             this.connected = false;
             logger.info(COMPONENT, 'Disconnected');
         }
@@ -79,7 +79,7 @@ export class TelegramChannel extends ChannelAdapter {
         try {
             const chatId = message.userId || message.groupId;
             if (chatId) {
-                await (this.bot as any).api.sendMessage(chatId, message.content, { parse_mode: 'Markdown' });
+                await (this.bot as unknown as { api: { sendMessage(chatId: string, content: string, opts: Record<string, string>): Promise<void> } }).api.sendMessage(chatId, message.content, { parse_mode: 'Markdown' });
             }
         } catch (error) {
             logger.error(COMPONENT, `Send failed: ${(error as Error).message}`);

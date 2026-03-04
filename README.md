@@ -79,7 +79,9 @@ titan model --alias fast=openai/gpt-4o-mini   # Create shortcuts
 titan model --set anthropic/claude-sonnet-4-20250514
 ```
 
-Built-in aliases: `fast`, `smart`, `cheap`, `reasoning` — fully configurable.
+Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully configurable.
+
+> **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
 ### 30 Built-in Tools
 
@@ -515,6 +517,7 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
 
 ### Recently Shipped (v2026.5.x)
+- **v2026.5.8**: Ollama model guide (`docs/MODELS.md`), 147→0 ESLint warnings, `local` model alias, 2,800+ tests
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,600+ tests
 - **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
 - **v2026.5.5**: Autopilot Mode — hands-free scheduled agent runs with cron

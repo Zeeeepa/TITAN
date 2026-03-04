@@ -175,7 +175,7 @@ export function saveMessage(message: Omit<ConversationMessage, 'createdAt'>, e2e
       const payload = encrypt(message.content, Buffer.from(e2eKey, 'base64'));
       content = JSON.stringify(payload);
       isEncrypted = true;
-    } catch (_e) {
+    } catch {
       logger.error(COMPONENT, `Failed to encrypt message for storage`);
       content = "[ENCRYPTION FAILED] " + content; // Fallback, though we should probably throw in strict environments
     }
@@ -216,7 +216,7 @@ export function getHistory(sessionId: string, limit: number = 50, e2eKey?: strin
           ...m,
           content: decrypt(payload, Buffer.from(e2eKey, 'base64'))
         };
-      } catch (_e) {
+      } catch {
         logger.error(COMPONENT, `Failed to decrypt message ${m.id}`);
         return { ...m, content: "[DECRYPTION FAILED]" };
       }

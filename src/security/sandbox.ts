@@ -161,9 +161,9 @@ export function enforceResourceLimits(limits?: ResourceLimits): ResourceLimitRes
     if (limits.maxSubprocesses !== undefined && limits.maxSubprocesses > 0) {
         try {
             // Count ChildProcess handles from active handles
-            const handles = (process as any)._getActiveHandles?.() ?? [];
-            const childProcessCount = handles.filter(
-                (h: any) => h?.constructor?.name === 'ChildProcess',
+            const handles = (process as unknown as Record<string, (() => unknown[]) | undefined>)._getActiveHandles?.() ?? [];
+            const childProcessCount = (handles as Array<{ constructor?: { name?: string } }>).filter(
+                (h) => h?.constructor?.name === 'ChildProcess',
             ).length;
             if (childProcessCount > limits.maxSubprocesses) {
                 violations.push(

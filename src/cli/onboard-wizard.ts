@@ -375,14 +375,6 @@ interface OnboardingOptions {
   skipSkills?: boolean;
 }
 
-interface WizardContext {
-  config: any;
-  workspaceDir: string;
-  userName: string;
-  userNotes: string;
-  flow: 'quickstart' | 'advanced';
-}
-
 export async function runOnboardingWizard(options: OnboardingOptions = {}) {
   console.clear();
   
@@ -406,8 +398,8 @@ export async function runOnboardingWizard(options: OnboardingOptions = {}) {
   const existingConfig = await loadConfig();
   const hasExistingConfig = Object.keys(existingConfig).length > 0;
 
-  let config: any = { ...existingConfig };
-  let workspaceDir = config.workspace || path.join(process.env.HOME || '~', '.titan');
+  let config: Record<string, unknown> = { ...existingConfig };
+  let workspaceDir = (config.workspace as string) || path.join(process.env.HOME || '~', '.titan');
 
   // Handle existing config
   if (hasExistingConfig) {
@@ -456,13 +448,13 @@ export async function runOnboardingWizard(options: OnboardingOptions = {}) {
   // Collect user information
   const userName = await input({
     message: 'What is your name?',
-    default: config.user?.name || process.env.USER || 'User',
+    default: (config.user as Record<string, unknown>)?.name as string || process.env.USER || 'User',
     validate: (value) => value.length > 0 || 'Name is required',
   });
 
   const userNotes = await input({
     message: 'Any notes about yourself? (optional)',
-    default: config.user?.notes || '',
+    default: (config.user as Record<string, unknown>)?.notes as string || '',
   });
 
   // Workspace setup
@@ -474,28 +466,28 @@ export async function runOnboardingWizard(options: OnboardingOptions = {}) {
 
   // Provider setup
   console.log(chalk.blue.bold('\n  ─── AI Provider Setup ───\n'));
-  config.providers = await setupProviders(config.providers || {});
+  config.providers = await setupProviders((config.providers as Record<string, Record<string, unknown>>) || {});
 
   // Model selection
   if (flow === 'advanced') {
     console.log(chalk.blue.bold('\n  ─── Model Configuration ───\n'));
-    config.model = await setupModel(config.model || {}, config.providers);
+    config.model = await setupModel((config.model as Record<string, unknown>) || {}, config.providers as Record<string, Record<string, unknown>>);
   }
 
   // Gateway configuration
   console.log(chalk.blue.bold('\n  ─── Gateway Configuration ───\n'));
-  config.gateway = await setupGateway(config.gateway || {});
+  config.gateway = await setupGateway((config.gateway as Record<string, unknown>) || {});
 
   // Channel setup
   if (!options.skipChannels) {
     console.log(chalk.blue.bold('\n  ─── Channel Setup ───\n'));
-    config.channels = await setupChannels(config.channels || {});
+    config.channels = await setupChannels((config.channels as Record<string, unknown>) || {});
   }
 
   // Skills setup
   if (!options.skipSkills && flow === 'advanced') {
     console.log(chalk.blue.bold('\n  ─── Skills Setup ───\n'));
-    config.skills = await setupSkills(config.skills || {});
+    config.skills = await setupSkills((config.skills as Record<string, unknown>) || {});
   }
 
   // Save configuration
@@ -505,7 +497,7 @@ export async function runOnboardingWizard(options: OnboardingOptions = {}) {
     notes: userNotes,
   };
 
-  await saveConfig(config);
+  await saveConfig(config as Parameters<typeof saveConfig>[0]);
   logger.info(COMPONENT, 'Configuration saved');
 
   // Create workspace templates
@@ -552,8 +544,8 @@ async function showSecurityWarning() {
   }
 }
 
-async function setupProviders(existingProviders: Record<string, any>): Promise<Record<string, any>> {
-  const providers: Record<string, any> = { ...existingProviders };
+async function setupProviders(existingProviders: Record<string, Record<string, unknown>>): Promise<Record<string, Record<string, unknown>>> {
+  const providers: Record<string, Record<string, unknown>> = { ...existingProviders };
 
   const enableAnthropic = await confirm({
     message: 'Enable Anthropic (Claude) provider?',
@@ -621,9 +613,9 @@ async function setupProviders(existingProviders: Record<string, any>): Promise<R
 }
 
 async function setupModel(
-  existingModel: any,
-  providers: Record<string, any>
-): Promise<any> {
+  existingModel: Record<string, unknown>,
+  providers: Record<string, Record<string, unknown>>
+): Promise<Record<string, unknown>> {
   const availableModels: { name: string; value: string }[] = [];
 
   if (providers.anthropic?.apiKey) {
@@ -662,7 +654,7 @@ async function setupModel(
     return existingModel;
   }
 
-  const defaultModel = existingModel.default || availableModels[0]?.value;
+  const defaultModel = (existingModel.default as string) || availableModels[0]?.value;
 
   const selectedModel = await select({
     message: 'Select your default AI model:',
@@ -701,28 +693,29 @@ async function setupModel(
   };
 }
 
-async function setupGateway(existingGateway: any): Promise<any> {
-  const gateway = { ...existingGateway };
+async function setupGateway(existingGateway: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const gateway: Record<string, unknown> = { ...existingGateway };
 
   const port = await number({
     message: 'Gateway port:',
-    default: gateway.port || 48420,
+    default: (gateway.port as number) || 48420,
     min: 1024,
     max: 65535,
   });
 
   gateway.port = port;
 
+  const existingAuth = gateway.auth as Record<string, unknown> | undefined;
   const authMode = await select({
     message: 'Authentication mode:',
     choices: [
       { name: 'Token (recommended for most setups)', value: 'token' },
       { name: 'Password (for shared/public access)', value: 'password' },
     ],
-    default: gateway.auth?.mode || 'token',
+    default: (existingAuth?.mode as string) || 'token',
   });
 
-  gateway.auth = { mode: authMode };
+  const auth: Record<string, unknown> = { mode: authMode };
 
   if (authMode === 'token') {
     const token = await password({
@@ -731,7 +724,7 @@ async function setupGateway(existingGateway: any): Promise<any> {
     });
 
     if (token) {
-      gateway.auth.token = token;
+      auth.token = token;
     }
   } else {
     const password_value = await password({
@@ -740,8 +733,10 @@ async function setupGateway(existingGateway: any): Promise<any> {
       validate: (value) => value.length >= 8 || 'Password must be at least 8 characters',
     });
 
-    gateway.auth.password = password_value;
+    auth.password = password_value;
   }
+
+  gateway.auth = auth;
 
   const enableTailscale = await confirm({
     message: 'Enable Tailscale integration?',
@@ -766,8 +761,8 @@ async function setupGateway(existingGateway: any): Promise<any> {
   return gateway;
 }
 
-async function setupChannels(existingChannels: any): Promise<any> {
-  const channels: Record<string, any> = {};
+async function setupChannels(existingChannels: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const channels: Record<string, unknown> = {};
 
   console.log(chalk.gray('\n  Configure the channels you want to enable. You can skip any and configure later.\n'));
 
@@ -794,7 +789,7 @@ async function setupChannels(existingChannels: any): Promise<any> {
     });
 
     if (enableDmPolicy) {
-      channels.discord.dmPolicy = 'pairing';
+      (channels.discord as Record<string, unknown>).dmPolicy = 'pairing';
     }
   }
 
@@ -850,8 +845,8 @@ async function setupChannels(existingChannels: any): Promise<any> {
   return { ...existingChannels, ...channels };
 }
 
-async function setupSkills(existingSkills: any): Promise<any> {
-  const skills: Record<string, any> = {};
+async function setupSkills(existingSkills: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const skills: Record<string, unknown> = {};
 
   const recommendedSkills = [
     { name: 'Shell & Process Tools', value: 'shell', description: 'Execute commands and manage processes' },
@@ -928,7 +923,7 @@ export async function createWorkspaceTemplates(
   }
 }
 
-async function finalizeOnboarding(config: any, workspaceDir: string): Promise<void> {
+async function finalizeOnboarding(config: Record<string, unknown>, workspaceDir: string): Promise<void> {
   console.log('\n');
   
   console.log(boxen(
@@ -936,7 +931,7 @@ async function finalizeOnboarding(config: any, workspaceDir: string): Promise<vo
     chalk.white('Your TITAN configuration has been saved.') + '\n\n' +
     chalk.cyan('Next steps:') + '\n' +
     `1. Start the gateway: ${chalk.yellow('titan gateway')}\n` +
-    `2. Access dashboard: ${chalk.yellow(`http://localhost:${config.gateway?.port || 48420}`)}\n` +
+    `2. Access dashboard: ${chalk.yellow(`http://localhost:${(config.gateway as Record<string, unknown>)?.port || 48420}`)}\n` +
     `3. Review your workspace: ${chalk.yellow(workspaceDir)}\n\n` +
     chalk.gray('Need help? Visit https://docs.titanframework.ai'),
     {

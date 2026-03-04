@@ -4,9 +4,6 @@
  * Supports listing devices, controlling switches/lights, and checking status.
  */
 import { registerSkill } from '../registry.js';
-import logger from '../../utils/logger.js';
-
-const COMPONENT = 'SmartHome';
 
 interface HAEntity {
     entity_id: string;
@@ -28,7 +25,8 @@ interface HAStateResponse {
  * Parse a simple filter expression like "age > 30" or "status == 'active'"
  * Used for basic query operations
  */
-function evaluateExpression(expr: string, value: unknown): boolean {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _evaluateExpression(expr: string, value: unknown): boolean {
     const operators = ['>=', '<=', '!=', '==', '>', '<', 'contains'];
     for (const op of operators) {
         if (expr.includes(op)) {

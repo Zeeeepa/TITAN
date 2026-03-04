@@ -39,13 +39,14 @@ describe('MeshConfigSchema', () => {
 });
 
 describe('AgentConfigSchema', () => {
-    it('should have 4 default model aliases', () => {
+    it('should have 5 default model aliases', () => {
         const agent = AgentConfigSchema.parse({});
         expect(agent.modelAliases).toEqual({
             fast: 'openai/gpt-4o-mini',
             smart: 'anthropic/claude-sonnet-4-20250514',
             reasoning: 'openai/o3-mini',
             cheap: 'google/gemini-2.0-flash',
+            local: 'ollama/qwen3.5:4b',
         });
     });
 

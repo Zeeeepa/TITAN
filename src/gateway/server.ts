@@ -2,11 +2,10 @@
  * TITAN — Gateway Server
  * WebSocket + HTTP server: the control plane for all channels, agents, tools, and the web UI.
  */
-import express from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
 import fs from 'fs';
@@ -19,7 +18,7 @@ import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
 import { healthCheckAll, discoverAllModels, getModelAliases, chatStream } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
-import { WebChatChannel, getOutboundQueue } from '../channels/webchat.js';
+import { WebChatChannel } from '../channels/webchat.js';
 import { DiscordChannel } from '../channels/discord.js';
 import { TelegramChannel } from '../channels/telegram.js';
 import { SlackChannel } from '../channels/slack.js';
@@ -35,7 +34,7 @@ import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR } from '../utils/constants.js
 import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
 import { initSlashCommands, handleSlashCommand } from './slashCommands.js';
-import { initMcpServers, getMcpStatus } from '../mcp/registry.js';
+import { initMcpServers } from '../mcp/registry.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
@@ -295,7 +294,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
   function rateLimit(windowMs: number, maxRequests: number) {
-      return (req: any, res: any, next: any) => {
+      return (req: Request, res: Response, next: NextFunction) => {
           const key = req.ip || req.socket?.remoteAddress || 'unknown';
           const now = Date.now();
           const entry = rateLimitStore.get(key);
@@ -503,7 +502,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   // SSE streaming endpoint — real token-by-token delivery
   app.post('/api/chat/stream', rateLimit(60000, 30), async (req, res) => {
-    const { content, model, channel = 'api', userId = 'api-user' } = req.body;
+    const { content, model } = req.body;
     if (!content) { res.status(400).json({ error: 'content is required' }); return; }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -550,7 +549,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
     logger.info(COMPONENT, `Triggering update: ${command}`);
 
-    exec(command, (error, stdout, stderr) => {
+    exec(command, (error, stdout, _stderr) => {
       if (error) {
         logger.error(COMPONENT, `Update failed: ${error.message}`);
       } else {
@@ -791,7 +790,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/graphiti', (_req, res) => {
     try {
       const { nodes, edges } = getGraphData();
-      const { episodeCount, entityCount, edgeCount } = getGraphStats();
+      const { episodeCount } = getGraphStats();
       res.json({
         graphReady: true,
         episodeCount,
@@ -1155,7 +1154,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   }
 
   // Start server
-  httpServer.on('error', (err: any) => {
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       logger.warn(COMPONENT, `Port ${port} is already in use. Mission Control is likely already running in the background.`);
       logger.info(COMPONENT, `You can access it at http://${host}:${port}`);

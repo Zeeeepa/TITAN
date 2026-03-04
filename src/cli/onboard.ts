@@ -142,10 +142,11 @@ export async function runOnboard(_installDaemon?: boolean): Promise<boolean> {
             config.agent.model = chosen;
         } else {
             console.log(chalk.yellow('  ⚠️  No models detected (Ollama may not be running, or no models pulled yet).'));
-            console.log(chalk.gray('  Run: ollama pull llama3.1   to install a model\n'));
+            console.log(chalk.gray('  Run: ollama pull qwen3.5:4b   to install a model'));
+            console.log(chalk.gray('  See: docs/MODELS.md for GPU-tiered model recommendations\n'));
             const modelName = await input({
                 message: 'Enter the Ollama model name to use:',
-                default: 'llama3.1',
+                default: 'qwen3.5:4b',
             });
             config.agent.model = `ollama/${modelName}`;
         }

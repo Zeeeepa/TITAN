@@ -157,7 +157,6 @@ async function sendViaSMTP(
         function handleResponse(code: number, line: string): void {
             // Any 4xx/5xx (except after DATA where 3xx is used) is a hard error
             const ok2xx = code >= 200 && code < 300;
-            const ok3xx = code >= 300 && code < 400;
 
             switch (step) {
                 case 'greeting':
@@ -182,7 +181,7 @@ async function sendViaSMTP(
                     socket.removeAllListeners('close');
 
                     const tlsSocket = tlsConnect({
-                        socket: socket as any,
+                        socket: socket as ReturnType<typeof createConnection>,
                         host: cfg.host,
                         servername: cfg.host,
                         rejectUnauthorized: true,

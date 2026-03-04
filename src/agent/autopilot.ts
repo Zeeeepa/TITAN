@@ -15,7 +15,7 @@ import { dirname } from 'path';
 import { processMessage } from './agent.js';
 import { loadConfig } from '../config/config.js';
 import { getDailyTotal } from './costOptimizer.js';
-import { TITAN_HOME, AUTOPILOT_MD, AUTOPILOT_RUNS_PATH } from '../utils/constants.js';
+import { AUTOPILOT_MD, AUTOPILOT_RUNS_PATH } from '../utils/constants.js';
 import logger from '../utils/logger.js';
 import type { TitanConfig } from '../config/schema.js';
 
@@ -350,7 +350,7 @@ async function deliverResult(config: TitanConfig, run: AutopilotRun): Promise<bo
     try {
         // Dynamic import to avoid circular deps — channels register themselves
         const channelConfig = (config.channels as Record<string, unknown>)[channel];
-        if (channelConfig && typeof channelConfig === 'object' && (channelConfig as any).enabled) {
+        if (channelConfig && typeof channelConfig === 'object' && (channelConfig as Record<string, unknown>).enabled) {
             logger.info(COMPONENT, `Delivering ${run.classification} result to ${channel}`);
             // Channel delivery happens through the gateway broadcast
             // For now, log the intent — actual channel delivery hooks into server.ts broadcast

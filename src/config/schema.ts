@@ -81,12 +81,13 @@ export const AgentConfigSchema = z.object({
     systemPrompt: z.string().optional(),
     workspace: z.string().optional(),
     thinkingMode: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
-    /** Model aliases — e.g. { fast: "openai/gpt-4o-mini", smart: "anthropic/claude-sonnet-4-20250514", local: "ollama/llama3.1" } */
+    /** Model aliases — e.g. { fast: "openai/gpt-4o-mini", smart: "anthropic/claude-sonnet-4-20250514", local: "ollama/qwen3.5:4b" } */
     modelAliases: z.record(z.string(), z.string()).default({
         fast: 'openai/gpt-4o-mini',
         smart: 'anthropic/claude-sonnet-4-20250514',
         reasoning: 'openai/o3-mini',
         cheap: 'google/gemini-2.0-flash',
+        local: 'ollama/qwen3.5:4b',
     }),
     costOptimization: z.object({
         smartRouting: z.boolean().default(true),

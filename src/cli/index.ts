@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { TITAN_VERSION, TITAN_ASCII_LOGO, TITAN_FULL_NAME, TITAN_CONFIG_PATH, TITAN_LOGS_DIR } from '../utils/constants.js';
 import { setLogLevel, LogLevel, initFileLogger } from '../utils/logger.js';
 import { loadConfig, updateConfig } from '../config/config.js';
+import type { TitanConfig } from '../config/schema.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory } from '../memory/memory.js';
 import { initLearning } from '../memory/learning.js';
@@ -458,7 +459,7 @@ program
                 grouped.set(m.provider, list);
             }
 
-            for (const [_providerName, providerModels] of grouped) {
+            for (const [, providerModels] of grouped) {
                 const first = providerModels[0];
                 const liveTag = providerModels.some(m => m.source === 'live') ? chalk.green(' [LIVE]') : chalk.gray(' [static]');
                 console.log(chalk.white(`  ${first.displayName}${liveTag}:`));
@@ -585,7 +586,7 @@ program
             const secret = `TITAN-${randomBytes(2).toString('hex')}-${randomBytes(2).toString('hex')}-${randomBytes(2).toString('hex')}`;
             updateConfig({
                 mesh: { ...config.mesh, enabled: true, secret },
-            } as any);
+            } as Partial<TitanConfig>);
             const { getOrCreateNodeId } = await import('../mesh/identity.js');
             const nodeId = getOrCreateNodeId();
 
@@ -605,7 +606,7 @@ program
             }
             updateConfig({
                 mesh: { ...config.mesh, enabled: true, secret },
-            } as any);
+            } as Partial<TitanConfig>);
             const { getOrCreateNodeId } = await import('../mesh/identity.js');
             const nodeId = getOrCreateNodeId();
 
@@ -619,14 +620,14 @@ program
             if (!staticPeers.includes(addr)) staticPeers.push(addr);
             updateConfig({
                 mesh: { ...config.mesh, staticPeers },
-            } as any);
+            } as Partial<TitanConfig>);
             console.log(chalk.green(`\n✅ Added static peer: ${addr}`));
             console.log(chalk.gray('  Restart the gateway to connect.'));
 
         } else if (options.leave) {
             updateConfig({
                 mesh: { ...config.mesh, enabled: false, secret: undefined },
-            } as any);
+            } as Partial<TitanConfig>);
             console.log(chalk.green('\n✅ Left the mesh. Mesh networking disabled.'));
 
         } else if (options.status) {
@@ -685,7 +686,7 @@ program
             current[parts[parts.length - 1]] = value;
 
             try {
-                updateConfig(partial as any);
+                updateConfig(partial as Partial<TitanConfig>);
                 console.log(chalk.green(`✔ Set ${key} = ${JSON.stringify(value)}`));
             } catch (err) {
                 console.log(chalk.red(`Failed to set config: ${(err as Error).message}`));
@@ -895,12 +896,12 @@ program
             }
         } else if (options.enable) {
             const config = loadConfig();
-            updateConfig({ autopilot: { ...config.autopilot, enabled: true } } as any);
+            updateConfig({ autopilot: { ...config.autopilot, enabled: true } } as Partial<TitanConfig>);
             console.log(chalk.green('Autopilot enabled. Runs will start on next gateway boot.'));
             console.log(chalk.gray(`  Schedule: ${config.autopilot.schedule}`));
         } else if (options.disable) {
             const config = loadConfig();
-            updateConfig({ autopilot: { ...config.autopilot, enabled: false } } as any);
+            updateConfig({ autopilot: { ...config.autopilot, enabled: false } } as Partial<TitanConfig>);
             console.log(chalk.green('Autopilot disabled.'));
         } else {
             console.log(chalk.gray('Usage: titan autopilot --init | --run | --status | --history | --enable | --disable'));

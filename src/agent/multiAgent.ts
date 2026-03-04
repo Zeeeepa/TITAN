@@ -28,9 +28,6 @@ export interface AgentInstance {
 /** Active agent instances */
 const agents: Map<string, AgentInstance> = new Map();
 
-/** Default agent (always exists) */
-let _defaultAgentId: string | null = null;
-
 /** Initialize with a default agent */
 export function initAgents(): void {
     if (agents.size > 0) return;
@@ -47,7 +44,6 @@ export function initAgents(): void {
         lastActive: new Date().toISOString(),
     };
     agents.set('default', defaultAgent);
-    _defaultAgentId = 'default';
     logger.info(COMPONENT, 'Default agent initialized');
 }
 

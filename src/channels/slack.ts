@@ -11,7 +11,7 @@ export class SlackChannel extends ChannelAdapter {
     readonly name = 'slack';
     readonly displayName = 'Slack';
     private connected = false;
-    private boltClient: any = null;
+    private boltClient: unknown = null;
 
     async connect(): Promise<void> {
         const config = loadConfig();
@@ -30,20 +30,23 @@ export class SlackChannel extends ChannelAdapter {
                 appToken: channelConfig.apiKey || '',
             });
 
-            app.message(async ({ message }: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+            app.message(async ({ message }: { message: { subtype?: string; user?: string; ts: string; text?: string; channel?: string } }) => {
                 if (message.subtype) return;
                 // Attempt to resolve user display name from Slack user info
                 let userName: string | undefined;
                 try {
                     if (app.client && message.user) {
                         const info = await app.client.users.info({ user: message.user });
-                        userName = (info as any)?.user?.profile?.display_name
-                            || (info as any)?.user?.real_name
-                            || (info as any)?.user?.name;
+                        const infoObj = info as Record<string, unknown>;
+                        const userObj = (infoObj?.user ?? {}) as Record<string, unknown>;
+                        const profileObj = (userObj?.profile ?? {}) as Record<string, unknown>;
+                        userName = (profileObj?.display_name as string)
+                            || (userObj?.real_name as string)
+                            || (userObj?.name as string);
                     }
                 } catch { /* Fallback: userName stays undefined */ }
                 const inbound: InboundMessage = {
-                    id: message.ts, channel: 'slack', userId: message.user,
+                    id: message.ts, channel: 'slack', userId: message.user || 'unknown',
                     userName,
                     content: message.text || '', groupId: message.channel,
                     timestamp: new Date(parseFloat(message.ts) * 1000), raw: message,
@@ -77,7 +80,7 @@ export class SlackChannel extends ChannelAdapter {
             return;
         }
         try {
-            await this.boltClient.chat.postMessage({ channel, text: message.content });
+            await (this.boltClient as { chat: { postMessage(opts: { channel: string; text: string }): Promise<void> } }).chat.postMessage({ channel, text: message.content });
             logger.debug(COMPONENT, `Sent message to ${channel}`);
         } catch (error) {
             logger.error(COMPONENT, `Failed to send message: ${(error as Error).message}`);

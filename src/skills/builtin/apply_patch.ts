@@ -108,7 +108,6 @@ export function registerApplyPatchSkill(): void {
 
 /** Apply a simple patch without git diff headers */
 function applySimplePatch(patch: string, cwd: string): string {
-    const _oldFileMatch = patch.match(/^--- (.+)$/m);
     const newFileMatch = patch.match(/^\+\+\+ (.+)$/m);
 
     if (!newFileMatch) return 'Could not parse patch: no +++ line found.';

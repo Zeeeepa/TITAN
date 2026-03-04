@@ -10,7 +10,7 @@
  * by Jason Allen O'Neal (https://github.com/jason-allen-oneal/openclaw-skill-scanner)
  * Used with permission. Credit where credit is due.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import logger from '../utils/logger.js';
@@ -91,7 +91,7 @@ const LOW_PATTERNS: { rule: string; pattern: RegExp; description: string }[] = [
 
 // ─── Scanner ──────────────────────────────────────────────────────
 
-export function scanSkillCode(code: string, filename = 'skill.ts'): ScanResult {
+export function scanSkillCode(code: string, _filename = 'skill.ts'): ScanResult {
     const findings: ScanFinding[] = [];
     const lines = code.split('\n');
 

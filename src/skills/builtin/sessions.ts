@@ -4,7 +4,7 @@
  * Mirrors OpenClaw's sessions_* tools.
  */
 import { registerSkill } from '../registry.js';
-import { listSessions, getOrCreateSession, addMessage, getContextMessages, closeSession } from '../../agent/session.js';
+import { listSessions, getOrCreateSession, getContextMessages, closeSession } from '../../agent/session.js';
 import { processMessage } from '../../agent/agent.js';
 import logger from '../../utils/logger.js';
 

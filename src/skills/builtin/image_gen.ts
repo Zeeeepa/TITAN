@@ -82,7 +82,7 @@ export function registerImageGenSkill(): void {
                         return `Error: OpenAI API error (${response.status}): ${errorText}`;
                     }
 
-                    const data = (await response.json()) as any;
+                    const data = (await response.json()) as { data?: Array<{ url: string; revised_prompt: string }> };
 
                     if (!data.data || data.data.length === 0) {
                         return 'Error: No image data returned from OpenAI API';

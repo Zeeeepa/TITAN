@@ -88,19 +88,19 @@ function extractMetadataFromBuffer(buffer: Buffer): { pages: number; author?: st
 async function extractPdfText(filePath: string): Promise<string> {
     try {
         // Try to dynamically import pdf-parse (optional dependency)
-        const pdfParseModule = await (Function('return import("pdf-parse")')() as Promise<any>);
-        const pdfParse = pdfParseModule.default;
+        const pdfParseModule = await (Function('return import("pdf-parse")')() as Promise<Record<string, unknown>>);
+        const pdfParse = pdfParseModule.default as (buf: Buffer) => Promise<Record<string, unknown>>;
         const buffer = readFileSync(filePath);
         const pdfData = await pdfParse(buffer);
 
         let fullText = '';
-        for (const page of pdfData.pages || []) {
+        for (const page of (pdfData.pages as Array<{ text?: string }>) || []) {
             fullText += page.text || '';
             fullText += '\n---PAGE BREAK---\n';
         }
 
         return fullText.substring(0, 50000); // Truncate to 50k chars
-    } catch (parseError) {
+    } catch {
         logger.debug(COMPONENT, 'pdf-parse not available, falling back to buffer extraction');
 
         // Fallback: extract from buffer
@@ -115,17 +115,18 @@ async function extractPdfMetadata(
 ): Promise<{ pages: number; author?: string; title?: string }> {
     try {
         // Try to use pdf-parse for metadata (optional dependency)
-        const pdfParseModule = await (Function('return import("pdf-parse")')() as Promise<any>);
-        const pdfParse = pdfParseModule.default;
+        const pdfParseModule = await (Function('return import("pdf-parse")')() as Promise<Record<string, unknown>>);
+        const pdfParse = pdfParseModule.default as (buf: Buffer) => Promise<Record<string, unknown>>;
         const buffer = readFileSync(filePath);
         const pdfData = await pdfParse(buffer);
+        const pdfInfo = pdfData.info as Record<string, unknown> | undefined;
 
         return {
-            pages: pdfData.numpages || 0,
-            author: pdfData.info?.Author,
-            title: pdfData.info?.Title,
+            pages: (pdfData.numpages as number) || 0,
+            author: pdfInfo?.Author as string | undefined,
+            title: pdfInfo?.Title as string | undefined,
         };
-    } catch (parseError) {
+    } catch {
         logger.debug(COMPONENT, 'pdf-parse not available, falling back to buffer extraction');
 
         // Fallback: extract from buffer

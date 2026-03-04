@@ -4,11 +4,8 @@
  * No external dependencies — read files and compute stats natively.
  */
 import { registerSkill } from '../registry.js';
-import logger from '../../utils/logger.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-
-const COMPONENT = 'DataAnalysis';
 
 interface ParsedCSV {
     headers: string[];
@@ -444,7 +441,7 @@ export function registerDataAnalysisSkill(): void {
 /**
  * Evaluate a filter expression
  */
-function evaluateExpression(expr: string, cellValue: string): boolean {
+function evaluateExpression(expr: string, _cellValue: string): boolean {
     const operators = ['>=', '<=', '!=', '==', '>', '<', 'contains'];
     for (const op of operators) {
         if (expr.includes(op)) {

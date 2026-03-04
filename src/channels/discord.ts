@@ -43,7 +43,7 @@ export class DiscordChannel extends ChannelAdapter {
                 ],
             });
 
-            client.on(Events.MessageCreate, (message: any) => {
+            client.on(Events.MessageCreate, (message: { id: string; author: { id: string; username: string; bot: boolean } | null; content: string; guild?: { id: string }; createdAt: Date }) => {
                 if (!message.author || message.author.bot) return;
 
                 const inbound: InboundMessage = {
@@ -62,7 +62,7 @@ export class DiscordChannel extends ChannelAdapter {
 
             client.on(Events.ClientReady, () => {
                 this.connected = true;
-                logger.info(COMPONENT, `Connected as ${(client.user as any)?.tag}`);
+                logger.info(COMPONENT, `Connected as ${(client.user as unknown as Record<string, string>)?.tag}`);
             });
 
             await client.login(token);
@@ -75,7 +75,7 @@ export class DiscordChannel extends ChannelAdapter {
 
     async disconnect(): Promise<void> {
         if (this.client) {
-            (this.client as any).destroy();
+            (this.client as unknown as { destroy(): void }).destroy();
             this.connected = false;
             logger.info(COMPONENT, 'Disconnected');
         }
@@ -88,7 +88,7 @@ export class DiscordChannel extends ChannelAdapter {
         }
 
         try {
-            const client = this.client as any;
+            const client = this.client as unknown as { users: { fetch(id: string): Promise<{ createDM(): Promise<{ send(content: string): Promise<void> }> }> }; channels: { fetch(id: string): Promise<{ isTextBased(): boolean; send(content: string): Promise<void> } | null> } };
             if (message.userId) {
                 const user = await client.users.fetch(message.userId);
                 const dm = await user.createDM();

@@ -11,7 +11,7 @@ const COMPONENT = 'Shell';
 /** Execute a shell command and return output */
 function executeCommand(command: string, cwd?: string, timeout: number = 30000): Promise<string> {
     return new Promise((resolve, reject) => {
-        const proc = exec(command, {
+        exec(command, {
             cwd: cwd || process.cwd(),
             timeout,
             maxBuffer: 1024 * 1024 * 10, // 10MB

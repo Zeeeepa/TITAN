@@ -3,7 +3,7 @@
  * Create and manage HTTP webhook endpoints with persistence.
  */
 import { registerSkill } from '../registry.js';
-import { getDb, rememberFact, recallFact, searchMemories } from '../../memory/memory.js';
+import { getDb, rememberFact, searchMemories } from '../../memory/memory.js';
 import { v4 as uuid } from 'uuid';
 import logger from '../../utils/logger.js';
 

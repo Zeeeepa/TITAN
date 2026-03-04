@@ -265,3 +265,390 @@ describe('Security Sandbox', () => {
         });
     });
 });
+
+// ════════════════════════════════════════════════════════════════════
+// Extended Sandbox Tests (with resetModules for config overrides)
+// ════════════════════════════════════════════════════════════════════
+
+describe('auditSecurity — sandbox mode none', () => {
+    it('should report warning when sandbox mode is none', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'none',
+                    allowedTools: [],
+                    deniedTools: [],
+                    networkAllowlist: [],
+                    commandTimeout: 30000,
+                },
+                channels: {},
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.level === 'warn' && i.message.includes('Sandbox mode is disabled'))).toBe(true);
+    });
+});
+
+describe('auditSecurity — open DM policy channels', () => {
+    it('should report warning for enabled channels with open DM policy', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: ['something'],
+                    networkAllowlist: [],
+                    commandTimeout: 30000,
+                },
+                channels: {
+                    discord: { enabled: true, dmPolicy: 'open' },
+                    telegram: { enabled: false, dmPolicy: 'open' },
+                },
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        // Only enabled channels with open DM policy should trigger the warning
+        expect(issues.some(i => i.level === 'warn' && i.message.includes('discord') && i.message.includes('open DM policy'))).toBe(true);
+        // telegram is not enabled so should not trigger
+        expect(issues.some(i => i.message.includes('telegram'))).toBe(false);
+    });
+
+    it('should not report warning for channels with pairing DM policy', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: ['something'],
+                    networkAllowlist: [],
+                    commandTimeout: 30000,
+                },
+                channels: {
+                    discord: { enabled: true, dmPolicy: 'pairing' },
+                },
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.message.includes('open DM policy'))).toBe(false);
+    });
+});
+
+describe('auditSecurity — high command timeout', () => {
+    it('should report warning when command timeout exceeds 60000ms', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: ['something'],
+                    networkAllowlist: [],
+                    commandTimeout: 120000,
+                },
+                channels: {},
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.level === 'warn' && i.message.includes('Command timeout is very high'))).toBe(true);
+    });
+
+    it('should not report warning when command timeout is within bounds', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: ['something'],
+                    networkAllowlist: [],
+                    commandTimeout: 30000,
+                },
+                channels: {},
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.message.includes('Command timeout is very high'))).toBe(false);
+    });
+});
+
+describe('auditSecurity — unrestricted network', () => {
+    it('should report info when network allowlist contains wildcard', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: ['something'],
+                    networkAllowlist: ['*'],
+                    commandTimeout: 30000,
+                },
+                channels: {},
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.level === 'info' && i.message.includes('Network access is unrestricted'))).toBe(true);
+    });
+});
+
+describe('auditSecurity — no denied tools', () => {
+    it('should report info when deniedTools is empty', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: {
+                    sandboxMode: 'docker',
+                    allowedTools: [],
+                    deniedTools: [],
+                    networkAllowlist: [],
+                    commandTimeout: 30000,
+                },
+                channels: {},
+            })),
+        }));
+
+        const { auditSecurity: audit } = await import('../src/security/sandbox.js');
+        const issues = audit();
+
+        expect(issues.some(i => i.level === 'info' && i.message.includes('No tools are explicitly denied'))).toBe(true);
+    });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// enforceResourceLimits
+// ════════════════════════════════════════════════════════════════════
+
+describe('enforceResourceLimits', () => {
+    it('should return ok when no limits are provided', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+        const result = enforceResourceLimits();
+
+        expect(result.ok).toBe(true);
+        expect(result.violations).toEqual([]);
+    });
+
+    it('should return ok when undefined limits passed', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+        const result = enforceResourceLimits(undefined);
+
+        expect(result.ok).toBe(true);
+        expect(result.violations).toEqual([]);
+    });
+
+    it('should detect memory violation when RSS exceeds limit', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const originalMemoryUsage = process.memoryUsage;
+        process.memoryUsage = vi.fn().mockReturnValue({
+            rss: 3 * 1024 * 1024 * 1024, // 3 GB
+            heapTotal: 1024 * 1024 * 1024,
+            heapUsed: 512 * 1024 * 1024,
+            external: 0,
+            arrayBuffers: 0,
+        }) as any;
+
+        try {
+            const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+            const result = enforceResourceLimits({ maxMemoryMB: 2048 });
+
+            expect(result.ok).toBe(false);
+            expect(result.violations.length).toBeGreaterThan(0);
+            expect(result.violations[0]).toContain('Memory usage');
+            expect(result.violations[0]).toContain('exceeds limit');
+        } finally {
+            process.memoryUsage = originalMemoryUsage;
+        }
+    });
+
+    it('should return ok when memory is within limits', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const originalMemoryUsage = process.memoryUsage;
+        process.memoryUsage = vi.fn().mockReturnValue({
+            rss: 500 * 1024 * 1024, // 500 MB
+            heapTotal: 256 * 1024 * 1024,
+            heapUsed: 128 * 1024 * 1024,
+            external: 0,
+            arrayBuffers: 0,
+        }) as any;
+
+        try {
+            const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+            const result = enforceResourceLimits({ maxMemoryMB: 2048 });
+
+            expect(result.ok).toBe(true);
+            expect(result.violations).toEqual([]);
+        } finally {
+            process.memoryUsage = originalMemoryUsage;
+        }
+    });
+
+    it('should handle empty limits object gracefully', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+        const result = enforceResourceLimits({});
+
+        expect(result.ok).toBe(true);
+        expect(result.violations).toEqual([]);
+    });
+
+    it('should skip memory check when maxMemoryMB is zero', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+        const result = enforceResourceLimits({ maxMemoryMB: 0 });
+
+        expect(result.ok).toBe(true);
+        expect(result.violations).toEqual([]);
+    });
+
+    it('should detect subprocess limit violation', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        // Mock _getActiveHandles to return many ChildProcess handles
+        const fakeHandles = Array.from({ length: 20 }, () => ({
+            constructor: { name: 'ChildProcess' },
+        }));
+        const originalGetActiveHandles = (process as any)._getActiveHandles;
+        (process as any)._getActiveHandles = () => fakeHandles;
+
+        try {
+            const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+            const result = enforceResourceLimits({ maxSubprocesses: 5 });
+
+            expect(result.ok).toBe(false);
+            expect(result.violations.some(v => v.includes('Subprocess count'))).toBe(true);
+        } finally {
+            (process as any)._getActiveHandles = originalGetActiveHandles;
+        }
+    });
+
+    it('should handle disk write limit as advisory (no violation)', async () => {
+        vi.resetModules();
+        vi.doMock('../src/utils/logger.js', () => ({
+            default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        }));
+        vi.doMock('../src/config/config.js', () => ({
+            loadConfig: vi.fn().mockImplementation(() => ({
+                security: { sandboxMode: 'docker', allowedTools: [], deniedTools: [], networkAllowlist: [], commandTimeout: 30000 },
+                channels: {},
+            })),
+        }));
+
+        const { enforceResourceLimits } = await import('../src/security/sandbox.js');
+        // Disk write tracking is advisory only, so it should never produce violations
+        const result = enforceResourceLimits({ maxDiskWriteMB: 100 });
+
+        expect(result.ok).toBe(true);
+    });
+});

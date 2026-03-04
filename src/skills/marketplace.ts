@@ -95,12 +95,12 @@ export async function installFromClaWHub(
         );
         code = details.code;
         skillName = details.name || skillIdOrName;
-    } catch (e: any) {
+    } catch (e: unknown) {
         return {
             success: false,
             skillName,
             scanResult: { safe: false, score: 0, findings: [], recommendation: 'block' },
-            error: `Could not fetch skill from ClaWHub: ${e.message}`,
+            error: `Could not fetch skill from ClaWHub: ${(e as Error).message}`,
         };
     }
 
@@ -134,9 +134,9 @@ export async function installFromClaWHub(
     // Typecheck before activating
     try {
         execSync(`npx tsc --noEmit --skipLibCheck "${filePath}"`, { stdio: 'pipe' });
-    } catch (e: any) {
+    } catch (e: unknown) {
         // Non-fatal: skill may still work at runtime
-        logger.warn(COMPONENT, `Type errors in ${skillName}: ${e.message?.slice(0, 200)}`);
+        logger.warn(COMPONENT, `Type errors in ${skillName}: ${((e as Error).message ?? '').slice(0, 200)}`);
     }
 
     logger.info(COMPONENT, `✅ Installed skill: ${skillName} → ${filePath}`);
@@ -155,12 +155,12 @@ export async function installFromUrl(url: string, opts: { force?: boolean } = {}
         const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         code = await res.text();
-    } catch (e: any) {
+    } catch (e: unknown) {
         return {
             success: false,
             skillName,
             scanResult: { safe: false, score: 0, findings: [], recommendation: 'block' },
-            error: `Failed to fetch skill: ${e.message}`,
+            error: `Failed to fetch skill: ${(e as Error).message}`,
         };
     }
 

@@ -1,6 +1,7 @@
 /**
  * TITAN — Swarm Architecture Tests
- * Tests for src/agent/swarm.ts: getSwarmRouterTools, runSubAgent, domain mapping.
+ * Tests for src/agent/swarm.ts: getSwarmRouterTools, runSubAgent, domain mapping,
+ * multi-round execution, error handling, concurrent agents, and edge cases.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -26,6 +27,7 @@ vi.mock('../src/agent/toolRunner.js', () => ({
 import { getSwarmRouterTools, runSubAgent, type Domain } from '../src/agent/swarm.js';
 import { chat } from '../src/providers/router.js';
 import { executeTools, getToolDefinitions } from '../src/agent/toolRunner.js';
+import logger from '../src/utils/logger.js';
 
 describe('Swarm', () => {
     beforeEach(() => {
@@ -33,6 +35,13 @@ describe('Swarm', () => {
         // Reset default mock behaviors
         vi.mocked(chat).mockResolvedValue({ content: 'Sub-agent result', toolCalls: undefined });
         vi.mocked(executeTools).mockResolvedValue([]);
+        vi.mocked(getToolDefinitions).mockReturnValue([
+            { type: 'function', function: { name: 'read_file', description: 'Read a file', parameters: {} } },
+            { type: 'function', function: { name: 'write_file', description: 'Write a file', parameters: {} } },
+            { type: 'function', function: { name: 'web_search', description: 'Search the web', parameters: {} } },
+            { type: 'function', function: { name: 'shell', description: 'Run shell command', parameters: {} } },
+            { type: 'function', function: { name: 'memory_skill', description: 'Memory operations', parameters: {} } },
+        ]);
     });
 
     // ─── getSwarmRouterTools ────────────────────────────────────────
@@ -108,6 +117,65 @@ describe('Swarm', () => {
             expect(tools1.length).toBe(tools2.length);
             for (let i = 0; i < tools1.length; i++) {
                 expect(tools1[i].function.name).toBe(tools2[i].function.name);
+            }
+        });
+
+        it('file agent description mentions file system operations', () => {
+            const tools = getSwarmRouterTools();
+            const fileTool = tools.find(t => t.function.name === 'delegate_to_file_agent')!;
+            const desc = fileTool.function.description.toLowerCase();
+            expect(desc).toMatch(/file|read|writ|director/);
+        });
+
+        it('web agent description mentions web operations', () => {
+            const tools = getSwarmRouterTools();
+            const webTool = tools.find(t => t.function.name === 'delegate_to_web_agent')!;
+            const desc = webTool.function.description.toLowerCase();
+            expect(desc).toMatch(/web|search|url|browser/);
+        });
+
+        it('system agent description mentions shell or process operations', () => {
+            const tools = getSwarmRouterTools();
+            const sysTool = tools.find(t => t.function.name === 'delegate_to_system_agent')!;
+            const desc = sysTool.function.description.toLowerCase();
+            expect(desc).toMatch(/shell|command|process|os/);
+        });
+
+        it('memory agent description mentions memory or knowledge', () => {
+            const tools = getSwarmRouterTools();
+            const memTool = tools.find(t => t.function.name === 'delegate_to_memory_agent')!;
+            const desc = memTool.function.description.toLowerCase();
+            expect(desc).toMatch(/memory|fact|knowledge|sav/);
+        });
+
+        it('instruction parameter has type string', () => {
+            const tools = getSwarmRouterTools();
+            for (const tool of tools) {
+                const instrDef = (tool.function.parameters as any).properties.instruction;
+                expect(instrDef.type).toBe('string');
+            }
+        });
+
+        it('instruction parameter has a description', () => {
+            const tools = getSwarmRouterTools();
+            for (const tool of tools) {
+                const instrDef = (tool.function.parameters as any).properties.instruction;
+                expect(typeof instrDef.description).toBe('string');
+                expect(instrDef.description.length).toBeGreaterThan(0);
+            }
+        });
+
+        it('all tool names follow delegate_to_*_agent pattern', () => {
+            const tools = getSwarmRouterTools();
+            for (const tool of tools) {
+                expect(tool.function.name).toMatch(/^delegate_to_\w+_agent$/);
+            }
+        });
+
+        it('parameters use type "object"', () => {
+            const tools = getSwarmRouterTools();
+            for (const tool of tools) {
+                expect((tool.function.parameters as any).type).toBe('object');
             }
         });
     });
@@ -292,6 +360,278 @@ describe('Swarm', () => {
             const callArgs = vi.mocked(chat).mock.calls[0][0];
             expect(callArgs.tools).toBeUndefined();
         });
+
+        it('logs info when spawning a sub-agent', async () => {
+            await runSubAgent('file', 'Read something', 'openai/gpt-4o');
+            expect(logger.info).toHaveBeenCalledWith(
+                'Swarm',
+                expect.stringContaining('FILE Sub-Agent'),
+            );
+        });
+
+        it('logs debug for each round', async () => {
+            await runSubAgent('web', 'Search', 'openai/gpt-4o');
+            expect(logger.debug).toHaveBeenCalledWith(
+                'Swarm',
+                expect.stringContaining('Round 1'),
+            );
+        });
+
+        it('logs error when chat throws', async () => {
+            vi.mocked(chat).mockRejectedValueOnce(new Error('Connection refused'));
+            await runSubAgent('system', 'Run cmd', 'openai/gpt-4o');
+            expect(logger.error).toHaveBeenCalledWith(
+                'Swarm',
+                expect.stringContaining('Connection refused'),
+            );
+        });
+
+        it('system message includes the instruction text', async () => {
+            await runSubAgent('file', 'Read /etc/hosts file', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            const systemMsg = callArgs.messages.find((m: any) => m.role === 'system');
+            expect(systemMsg!.content).toContain('Read /etc/hosts file');
+        });
+
+        it('system message identifies the correct domain sub-agent', async () => {
+            for (const domain of ['file', 'web', 'system', 'memory'] as Domain[]) {
+                vi.clearAllMocks();
+                vi.mocked(chat).mockResolvedValue({ content: 'ok', toolCalls: undefined });
+                await runSubAgent(domain, 'test', 'openai/gpt-4o');
+                const callArgs = vi.mocked(chat).mock.calls[0][0];
+                const systemMsg = callArgs.messages.find((m: any) => m.role === 'system');
+                expect(systemMsg!.content).toContain(domain.toUpperCase());
+            }
+        });
+
+        it('assistant message with tool calls is added to conversation', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: 'Calling tool',
+                    toolCalls: [{ id: 'tc-1', type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+                })
+                .mockResolvedValueOnce({
+                    content: 'Done',
+                    toolCalls: undefined,
+                });
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'tc-1', name: 'read_file', content: 'data', success: true, durationMs: 5 },
+            ]);
+
+            await runSubAgent('file', 'Read file', 'openai/gpt-4o');
+
+            const secondCallMessages = vi.mocked(chat).mock.calls[1][0].messages;
+            const assistantMsg = secondCallMessages.find((m: any) => m.role === 'assistant' && m.toolCalls);
+            expect(assistantMsg).toBeDefined();
+            expect(assistantMsg!.toolCalls).toHaveLength(1);
+            expect(assistantMsg!.toolCalls![0].id).toBe('tc-1');
+        });
+
+        it('handles null content from chat gracefully', async () => {
+            vi.mocked(chat).mockResolvedValueOnce({
+                content: null as any,
+                toolCalls: undefined,
+            });
+            const result = await runSubAgent('file', 'Do something', 'openai/gpt-4o');
+            expect(result).toContain('Task completed silently');
+        });
+
+        it('handles executeTools returning failed results', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: 'Trying',
+                    toolCalls: [{ id: 'tc-fail', type: 'function', function: { name: 'shell', arguments: '{}' } }],
+                })
+                .mockResolvedValueOnce({
+                    content: 'Handled failure',
+                    toolCalls: undefined,
+                });
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'tc-fail', name: 'shell', content: 'Error: permission denied', success: false, durationMs: 5 },
+            ]);
+
+            const result = await runSubAgent('system', 'Run cmd', 'openai/gpt-4o');
+            expect(result).toContain('Handled failure');
+        });
+
+        it('preserves tool call ID in messages for proper correlation', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: '',
+                    toolCalls: [{ id: 'unique-id-123', type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+                })
+                .mockResolvedValueOnce({
+                    content: 'Final',
+                    toolCalls: undefined,
+                });
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'unique-id-123', name: 'read_file', content: 'data', success: true, durationMs: 5 },
+            ]);
+
+            await runSubAgent('file', 'Read', 'openai/gpt-4o');
+
+            const secondCallMessages = vi.mocked(chat).mock.calls[1][0].messages;
+            const toolMsg = secondCallMessages.find((m: any) => m.role === 'tool');
+            expect(toolMsg!.toolCallId).toBe('unique-id-123');
+        });
+
+        it('error in round 2 after successful round 1 returns error result', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: 'Round 1',
+                    toolCalls: [{ id: 'tc-1', type: 'function', function: { name: 'shell', arguments: '{}' } }],
+                })
+                .mockRejectedValueOnce(new Error('Round 2 failure'));
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'tc-1', name: 'shell', content: 'ok', success: true, durationMs: 5 },
+            ]);
+
+            const result = await runSubAgent('system', 'Multi step', 'openai/gpt-4o');
+            expect(result).toContain('error');
+            expect(result).toContain('Round 2 failure');
+        });
+
+        it('result format starts with [Sub-Agent Result', async () => {
+            const result = await runSubAgent('file', 'Test', 'openai/gpt-4o');
+            expect(result).toMatch(/^\[Sub-Agent Result/);
+        });
+
+        it('each tool result is added as separate message', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: 'Multi tools',
+                    toolCalls: [
+                        { id: 'tc-a', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+                        { id: 'tc-b', type: 'function', function: { name: 'write_file', arguments: '{}' } },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    content: 'Done',
+                    toolCalls: undefined,
+                });
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'tc-a', name: 'read_file', content: 'data-a', success: true, durationMs: 5 },
+                { toolCallId: 'tc-b', name: 'write_file', content: 'data-b', success: true, durationMs: 5 },
+            ]);
+
+            await runSubAgent('file', 'Multi', 'openai/gpt-4o');
+
+            const secondCallMessages = vi.mocked(chat).mock.calls[1][0].messages;
+            const toolMsgs = secondCallMessages.filter((m: any) => m.role === 'tool');
+            expect(toolMsgs).toHaveLength(2);
+            expect(toolMsgs[0].content).toBe('data-a');
+            expect(toolMsgs[1].content).toBe('data-b');
+        });
+
+        it('exactly 3 rounds of tool calls returns max rounds message', async () => {
+            vi.mocked(chat).mockResolvedValue({
+                content: 'working',
+                toolCalls: [{ id: 'tc', type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+            });
+            vi.mocked(executeTools).mockResolvedValue([
+                { toolCallId: 'tc', name: 'read_file', content: 'ok', success: true, durationMs: 5 },
+            ]);
+
+            const result = await runSubAgent('file', 'Lots of work', 'openai/gpt-4o');
+            expect(vi.mocked(chat)).toHaveBeenCalledTimes(3);
+            expect(result).toContain('Max sub-agent rounds reached');
+            expect(result).toContain('Partial results');
+        });
+
+        it('completes in 2 rounds if tool calls stop on round 2', async () => {
+            vi.mocked(chat)
+                .mockResolvedValueOnce({
+                    content: 'round 1',
+                    toolCalls: [{ id: 'tc1', type: 'function', function: { name: 'shell', arguments: '{}' } }],
+                })
+                .mockResolvedValueOnce({
+                    content: 'Final result after 2 rounds',
+                    toolCalls: undefined,
+                });
+            vi.mocked(executeTools).mockResolvedValueOnce([
+                { toolCallId: 'tc1', name: 'shell', content: 'ok', success: true, durationMs: 5 },
+            ]);
+
+            const result = await runSubAgent('system', 'Two step task', 'openai/gpt-4o');
+            expect(vi.mocked(chat)).toHaveBeenCalledTimes(2);
+            expect(result).toContain('Final result after 2 rounds');
+            expect(result).not.toContain('Max sub-agent rounds');
+        });
+    });
+
+    // ─── Concurrent sub-agents ─────────────────────────────────────
+    describe('concurrent sub-agents', () => {
+        it('multiple sub-agents can run in parallel', async () => {
+            vi.mocked(chat).mockResolvedValue({ content: 'Result from agent', toolCalls: undefined });
+
+            const results = await Promise.all([
+                runSubAgent('file', 'Read /a', 'openai/gpt-4o'),
+                runSubAgent('web', 'Search B', 'openai/gpt-4o'),
+                runSubAgent('system', 'Run cmd', 'openai/gpt-4o'),
+                runSubAgent('memory', 'Save fact', 'openai/gpt-4o'),
+            ]);
+
+            expect(results).toHaveLength(4);
+            expect(results[0]).toContain('Domain: file');
+            expect(results[1]).toContain('Domain: web');
+            expect(results[2]).toContain('Domain: system');
+            expect(results[3]).toContain('Domain: memory');
+            expect(vi.mocked(chat)).toHaveBeenCalledTimes(4);
+        });
+
+        it('one failing sub-agent does not block others', async () => {
+            let callCount = 0;
+            vi.mocked(chat).mockImplementation(async () => {
+                callCount++;
+                if (callCount === 2) throw new Error('One agent failed');
+                return { content: 'Success', toolCalls: undefined };
+            });
+
+            const results = await Promise.all([
+                runSubAgent('file', 'Read', 'openai/gpt-4o'),
+                runSubAgent('web', 'Search', 'openai/gpt-4o'),
+                runSubAgent('system', 'Run', 'openai/gpt-4o'),
+            ]);
+
+            // All should resolve (no unhandled rejections)
+            expect(results).toHaveLength(3);
+            expect(results[0]).toContain('Success');
+            expect(results[1]).toContain('error');
+            expect(results[2]).toContain('Success');
+        });
+
+        it('concurrent agents use independent message histories', async () => {
+            let fileCallCount = 0;
+            let webCallCount = 0;
+
+            vi.mocked(chat).mockImplementation(async (args: any) => {
+                const systemMsg = args.messages.find((m: any) => m.role === 'system');
+                if (systemMsg?.content?.includes('FILE')) {
+                    fileCallCount++;
+                    if (fileCallCount === 1) {
+                        return {
+                            content: 'File tool',
+                            toolCalls: [{ id: 'tc-file', type: 'function', function: { name: 'read_file', arguments: '{}' } }],
+                        };
+                    }
+                    return { content: 'File done', toolCalls: undefined };
+                }
+                webCallCount++;
+                return { content: 'Web done immediately', toolCalls: undefined };
+            });
+
+            vi.mocked(executeTools).mockResolvedValue([
+                { toolCallId: 'tc-file', name: 'read_file', content: 'data', success: true, durationMs: 5 },
+            ]);
+
+            const [fileResult, webResult] = await Promise.all([
+                runSubAgent('file', 'Read file', 'openai/gpt-4o'),
+                runSubAgent('web', 'Search web', 'openai/gpt-4o'),
+            ]);
+
+            expect(fileResult).toContain('File done');
+            expect(webResult).toContain('Web done immediately');
+        });
     });
 
     // ─── Domain mapping ─────────────────────────────────────────────
@@ -389,6 +729,159 @@ describe('Swarm', () => {
                 const toolNames = callArgs.tools.map((t: any) => t.function.name);
                 // unknown_tool defaults to 'file' domain
                 expect(toolNames).toContain('unknown_tool');
+            }
+        });
+
+        it('file domain does not include shell', async () => {
+            await runSubAgent('file', 'Read file', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('shell');
+            }
+        });
+
+        it('file domain does not include memory_skill', async () => {
+            await runSubAgent('file', 'Read file', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('memory_skill');
+            }
+        });
+
+        it('web domain does not include read_file', async () => {
+            await runSubAgent('web', 'Search', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('read_file');
+            }
+        });
+
+        it('web domain does not include memory_skill', async () => {
+            await runSubAgent('web', 'Search', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('memory_skill');
+            }
+        });
+
+        it('system domain does not include web_search', async () => {
+            await runSubAgent('system', 'Run', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('web_search');
+            }
+        });
+
+        it('system domain does not include memory_skill', async () => {
+            await runSubAgent('system', 'Run', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('memory_skill');
+            }
+        });
+
+        it('memory domain does not include shell', async () => {
+            await runSubAgent('memory', 'Save', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                expect(toolNames).not.toContain('shell');
+            }
+        });
+
+        it('unrecognized tools do NOT appear in web domain', async () => {
+            vi.mocked(getToolDefinitions).mockReturnValueOnce([
+                { type: 'function', function: { name: 'unknown_tool', description: 'Unknown', parameters: {} } },
+                { type: 'function', function: { name: 'web_search', description: 'Search', parameters: {} } },
+            ]);
+            await runSubAgent('web', 'Search', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            if (callArgs.tools && callArgs.tools.length > 0) {
+                const toolNames = callArgs.tools.map((t: any) => t.function.name);
+                // unknown_tool defaults to file domain, should NOT appear in web
+                expect(toolNames).not.toContain('unknown_tool');
+            }
+        });
+
+        it('all known file domain tools are included for file agent', async () => {
+            vi.mocked(getToolDefinitions).mockReturnValueOnce([
+                { type: 'function', function: { name: 'read_file', description: 'Read', parameters: {} } },
+                { type: 'function', function: { name: 'write_file', description: 'Write', parameters: {} } },
+                { type: 'function', function: { name: 'edit_file', description: 'Edit', parameters: {} } },
+                { type: 'function', function: { name: 'list_dir', description: 'List', parameters: {} } },
+                { type: 'function', function: { name: 'filesystem', description: 'FS', parameters: {} } },
+            ]);
+            await runSubAgent('file', 'Work with files', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            expect(callArgs.tools).toBeDefined();
+            expect(callArgs.tools!.length).toBe(5);
+        });
+
+        it('all known web domain tools are included for web agent', async () => {
+            vi.mocked(getToolDefinitions).mockReturnValueOnce([
+                { type: 'function', function: { name: 'web_search', description: 'Search', parameters: {} } },
+                { type: 'function', function: { name: 'web_fetch', description: 'Fetch', parameters: {} } },
+                { type: 'function', function: { name: 'webhook', description: 'Hook', parameters: {} } },
+                { type: 'function', function: { name: 'browser', description: 'Browser', parameters: {} } },
+            ]);
+            await runSubAgent('web', 'Web tasks', 'openai/gpt-4o');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            expect(callArgs.tools).toBeDefined();
+            expect(callArgs.tools!.length).toBe(4);
+        });
+    });
+
+    // ─── Edge cases ────────────────────────────────────────────────
+    describe('edge cases', () => {
+        it('handles very long instruction string', async () => {
+            const longInstruction = 'A'.repeat(10000);
+            const result = await runSubAgent('file', longInstruction, 'openai/gpt-4o');
+            expect(result).toContain('Domain: file');
+        });
+
+        it('handles empty string instruction', async () => {
+            const result = await runSubAgent('file', '', 'openai/gpt-4o');
+            expect(result).toContain('Domain: file');
+        });
+
+        it('handles instruction with special characters', async () => {
+            const result = await runSubAgent('file', 'Read file with <html> & "quotes"', 'openai/gpt-4o');
+            expect(result).toContain('Domain: file');
+            const callArgs = vi.mocked(chat).mock.calls[0][0];
+            const userMsg = callArgs.messages.find((m: any) => m.role === 'user');
+            expect(userMsg!.content).toContain('<html>');
+        });
+
+        it('handles chat returning empty toolCalls array', async () => {
+            vi.mocked(chat).mockResolvedValueOnce({
+                content: 'No tools needed',
+                toolCalls: [],
+            });
+            const result = await runSubAgent('file', 'Simple task', 'openai/gpt-4o');
+            expect(result).toContain('No tools needed');
+            expect(vi.mocked(executeTools)).not.toHaveBeenCalled();
+        });
+
+        it('handles different model strings correctly', async () => {
+            const models = [
+                'openai/gpt-4o',
+                'anthropic/claude-sonnet-4-20250514',
+                'google/gemini-pro',
+                'kimi-k2.5:cloud',
+            ];
+            for (const model of models) {
+                vi.clearAllMocks();
+                vi.mocked(chat).mockResolvedValue({ content: 'ok', toolCalls: undefined });
+                await runSubAgent('file', 'Test', model);
+                expect(vi.mocked(chat)).toHaveBeenCalledWith(
+                    expect.objectContaining({ model }),
+                );
             }
         });
     });

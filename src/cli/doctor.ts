@@ -133,7 +133,31 @@ export async function runDoctor(options?: { fix?: boolean }): Promise<void> {
         }
     }
 
-    // 8. Security audit
+    // 8. Cloudflare Tunnel (when enabled)
+    if (configExists()) {
+        try {
+            const cfg = loadConfig();
+            if (cfg.tunnel?.enabled) {
+                let tunnelAvailable = false;
+                try {
+                    const { execSync } = await import('child_process');
+                    execSync('cloudflared --version', { stdio: 'ignore' });
+                    tunnelAvailable = true;
+                } catch {
+                    // not installed
+                }
+                checks.push({
+                    name: 'Cloudflare Tunnel (cloudflared)',
+                    status: tunnelAvailable ? 'pass' : 'fail',
+                    message: tunnelAvailable ? 'cloudflared binary found' : 'cloudflared not installed (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)',
+                });
+            }
+        } catch {
+            // config load failed — handled elsewhere
+        }
+    }
+
+    // 9. Security audit
     if (configExists()) {
         const securityIssues = auditSecurity();
         for (const issue of securityIssues) {

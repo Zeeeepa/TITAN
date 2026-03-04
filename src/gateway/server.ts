@@ -50,6 +50,7 @@ import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 import { invalidateCacheForModel } from '../agent/responseCache.js';
 import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
+import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 
 const COMPONENT = 'Gateway';
 
@@ -823,6 +824,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // ── Tunnel ─────────────────────────────────────────────────
+  app.get('/api/tunnel/status', (_req, res) => {
+    res.json(getTunnelStatus());
+  });
+
   // ── API Documentation ────────────────────────────────────
   app.get('/api/docs', (_req, res) => {
     const spec = {
@@ -867,6 +873,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/mesh/peers':         { get:  { summary: 'List mesh peers',                        tags: ['Mesh'] } },
         '/api/mesh/models':        { get:  { summary: 'List mesh models',                       tags: ['Mesh'] } },
         '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
+        '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['System'] } },
         '/api/docs':               { get:  { summary: 'OpenAPI spec (JSON)',                    tags: ['Docs'] } },
         '/docs':                   { get:  { summary: 'API documentation page',                 tags: ['Docs'] } },
       },
@@ -1162,6 +1169,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   const gracefulShutdown = async (signal: string) => {
     logger.info(COMPONENT, `Received ${signal} — shutting down gracefully...`);
     stopAutopilot();
+    stopTunnel();
     await stopGateway();
     logger.info(COMPONENT, 'Gateway stopped. Goodbye.');
     process.exit(0);
@@ -1177,5 +1185,12 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
     logger.info(COMPONENT, `\nChannels: ${Array.from(channels.values()).map((c) => `${c.displayName} (${c.getStatus().connected ? '✅' : '❌'})`).join(', ')}`);
     logger.info(COMPONENT, `Skills: ${getSkills().length} loaded`);
     logger.info(COMPONENT, `Tools: ${getRegisteredTools().length} registered`);
+
+    // Start Cloudflare Tunnel if enabled
+    if (config.tunnel?.enabled) {
+      startTunnel(port, config.tunnel).catch((e) => {
+        logger.error(COMPONENT, `Tunnel start failed: ${(e as Error).message}`);
+      });
+    }
   });
 }

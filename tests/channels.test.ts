@@ -137,7 +137,7 @@ describe('WebChatChannel', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// GoogleChat Channel (stub adapter)
+// GoogleChat Channel (webhook adapter)
 // ══════════════════════════════════════════════════════════════════════════
 
 import { GoogleChatChannel } from '../src/channels/googlechat.js';
@@ -164,25 +164,34 @@ describe('GoogleChatChannel', () => {
         expect(channel.getStatus().connected).toBe(false);
     });
 
-    it('connect when enabled should still not connect (stub)', async () => {
+    it('connect with valid webhook URL should set connected=true', async () => {
+        currentConfig = makeConfig({ googlechat: { enabled: true, token: 'https://chat.googleapis.com/v1/spaces/test/messages?key=abc' } });
+        await channel.connect();
+        expect(channel.getStatus().connected).toBe(true);
+    });
+
+    it('connect with no token should not connect', async () => {
         currentConfig = makeConfig({ googlechat: { enabled: true } });
         await channel.connect();
         expect(channel.getStatus().connected).toBe(false);
     });
 
     it('disconnect should set connected = false', async () => {
+        currentConfig = makeConfig({ googlechat: { enabled: true, token: 'https://chat.googleapis.com/v1/spaces/test/messages?key=abc' } });
+        await channel.connect();
+        expect(channel.getStatus().connected).toBe(true);
         await channel.disconnect();
         expect(channel.getStatus().connected).toBe(false);
     });
 
-    it('send should throw "not yet implemented" error', async () => {
+    it('send when not connected should not throw', async () => {
         await expect(channel.send({ channel: 'googlechat', content: 'test' }))
-            .rejects.toThrow('Google Chat adapter is not yet implemented');
+            .resolves.toBeUndefined();
     });
 
-    it('getStatus should include error field', () => {
+    it('getStatus should include error when not connected', () => {
         const status = channel.getStatus();
-        expect(status.error).toContain('not yet implemented');
+        expect(status.error).toBe('Webhook URL not configured');
     });
 });
 

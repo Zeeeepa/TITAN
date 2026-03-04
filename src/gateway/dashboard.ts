@@ -301,6 +301,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" data-panel="sessions"><span class="icon">🔗</span>Sessions</div>
     <div class="nav-item" data-panel="learning"><span class="icon">🧠</span>Learning</div>
     <div class="nav-section">System</div>
+    <div class="nav-item" data-panel="autopilot" data-load="autopilot"><span class="icon">🚁</span>Autopilot</div>
     <div class="nav-item" data-panel="security"><span class="icon">🔒</span>Security</div>
     <div class="nav-item" data-panel="logs" data-load="logs"><span class="icon">📜</span>Logs</div>
     <div class="nav-item" data-panel="graphiti" data-load="graphiti"><span class="icon">🕸️</span>Memory Graph</div>
@@ -437,6 +438,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div><span style="color:var(--text-dim);font-size:12px">Model</span><div style="font-weight:600;margin-top:4px;font-size:13px" id="h-model">—</div></div>
           <div><span style="color:var(--text-dim);font-size:12px">Autonomy</span><div style="font-weight:600;margin-top:4px" id="h-autonomy">—</div></div>
           <div><span style="color:var(--text-dim);font-size:12px">Tokens Used</span><div style="font-weight:600;margin-top:4px" id="h-tokens">—</div></div>
+          <div><span style="color:var(--text-dim);font-size:12px">Tunnel</span><div style="font-weight:600;margin-top:4px;font-size:13px" id="h-tunnel">Disabled</div></div>
         </div>
       </div>
       <div class="card" id="update-card" style="display:none;background:rgba(6,182,212,0.1);border:1px solid var(--accent);margin-top:20px;justify-content:space-between;align-items:center">
@@ -823,6 +825,35 @@ tr:hover{background:rgba(6,182,212,.03)}
         <div id="graphiti-node-list" style="display:none;margin-top:16px"></div>
       </div>
     </div>
+
+    <!-- Autopilot Panel -->
+    <div id="panel-autopilot" class="panel">
+      <div class="card-grid">
+        <div class="stat-card cyan"><div class="stat-label">Status</div><div class="stat-value" id="ap-status" style="font-size:18px">—</div></div>
+        <div class="stat-card purple"><div class="stat-label">Schedule</div><div class="stat-value" id="ap-schedule" style="font-size:14px">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Total Runs</div><div class="stat-value" id="ap-total">—</div></div>
+        <div class="stat-card amber"><div class="stat-label">Last Run</div><div class="stat-value" id="ap-last" style="font-size:14px">—</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">🚁 Autopilot</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn" data-action="refresh-autopilot" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+            <button class="btn" data-action="run-autopilot" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff">▶ Run Now</button>
+          </div>
+        </div>
+        <div id="autopilot-info" style="color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
+          Autopilot runs tasks on a schedule using your <code style="background:var(--bg);padding:2px 6px;border-radius:4px">AUTOPILOT.md</code> checklist. Configure in Settings or <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan.json</code>.
+        </div>
+        <table class="table" id="autopilot-history-table">
+          <thead><tr><th>Run</th><th>Started</th><th>Duration</th><th>Tasks</th><th>Result</th></tr></thead>
+          <tbody id="autopilot-history"></tbody>
+        </table>
+        <div id="autopilot-empty" style="display:none;text-align:center;color:var(--text-dim);padding:40px 20px;font-size:13px">
+          No autopilot runs yet. Click "Run Now" or enable the schedule in Settings.
+        </div>
+      </div>
+    </div>
   </div>
   <div class="footer-bar">
     <span><span class="footer-dot on" id="footer-ws-dot"></span><span id="footer-status">Connected</span> · v<span id="footer-ver">—</span></span>
@@ -911,6 +942,7 @@ document.addEventListener('click', (e) => {
     if (target.dataset.load === 'config') { loadConfig(); populateModels(); loadProfileTab(); }
     if (target.dataset.load === 'logs') startLogs();
     if (target.dataset.load === 'graphiti') loadGraphiti();
+    if (target.dataset.load === 'autopilot') loadAutopilot();
     // Close sidebar on mobile
     document.getElementById('sidebar')?.classList.remove('open');
   }
@@ -942,6 +974,8 @@ document.addEventListener('click', (e) => {
     if (a === 'test-ollama') testOllamaConnection();
     if (a === 'refresh-logs') loadLogs();
     if (a === 'refresh-graphiti') loadGraphiti();
+    if (a === 'refresh-autopilot') loadAutopilot();
+    if (a === 'run-autopilot') runAutopilotNow();
     if (a === 'trigger-update') triggerUpdate();
     if (a === 'close-session-modal') closeSessionModal();
     if (a === 'save-channel') saveChannelSettings(action.dataset.channel);
@@ -982,7 +1016,7 @@ const panelTitles = {
   overview:'📊 Overview', chat:'💬 WebChat', agents:'🤖 Agents',
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
   sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
-  logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph'
+  logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot'
 };
 
 function showPanel(name, el) {
@@ -1446,6 +1480,22 @@ async function fetchData() {
       } catch(e) {}
     }
 
+    // Tunnel status
+    try {
+      const tun = await fetch('/api/tunnel/status', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({}));
+      const tEl = document.getElementById('h-tunnel');
+      if (tEl) {
+        if (tun.active) {
+          tEl.innerHTML = '<a href="' + escHtml(tun.url) + '" target="_blank" style="color:var(--accent);text-decoration:none;font-size:12px">' + escHtml(tun.url) + '</a>';
+        } else if (tun.error) {
+          tEl.textContent = 'Error';
+          tEl.style.color = 'var(--error)';
+        } else {
+          tEl.textContent = 'Disabled';
+        }
+      }
+    } catch(e) {}
+
     // Sessions
     if (Array.isArray(sessions) && sessions.length > 0) {
       document.getElementById('sessions-list').innerHTML =
@@ -1645,6 +1695,65 @@ async function submitOnboarding() {
     toast('Failed to save setup', 'error');
     btn.textContent = 'Try Again';
     btn.disabled = false;
+  }
+}
+
+// ── Autopilot ─────────────────────────────────────────────────────
+async function loadAutopilot() {
+  try {
+    const [status, history] = await Promise.all([
+      fetch('/api/autopilot/status', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/autopilot/history', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
+    ]);
+    const sEl = document.getElementById('ap-status');
+    if (sEl) sEl.textContent = status.enabled ? (status.running ? 'Running' : 'Enabled') : 'Disabled';
+    const schEl = document.getElementById('ap-schedule');
+    if (schEl) schEl.textContent = status.schedule || '—';
+    const totEl = document.getElementById('ap-total');
+    if (totEl) totEl.textContent = Array.isArray(history) ? history.length : '0';
+    const lastEl = document.getElementById('ap-last');
+    if (lastEl) {
+      if (Array.isArray(history) && history.length > 0) {
+        const last = history[0];
+        lastEl.textContent = last.startedAt ? new Date(last.startedAt).toLocaleString() : '—';
+      } else {
+        lastEl.textContent = 'Never';
+      }
+    }
+    const tbody = document.getElementById('autopilot-history');
+    const empty = document.getElementById('autopilot-empty');
+    const table = document.getElementById('autopilot-history-table');
+    if (Array.isArray(history) && history.length > 0) {
+      if (table) table.style.display = '';
+      if (empty) empty.style.display = 'none';
+      if (tbody) tbody.innerHTML = history.slice(0, 20).map((r, i) => {
+        const dur = r.durationMs ? (r.durationMs / 1000).toFixed(1) + 's' : '—';
+        const result = r.error ? '<span class="badge error">Error</span>' : '<span class="badge active">OK</span>';
+        const started = r.startedAt ? new Date(r.startedAt).toLocaleString() : '—';
+        return '<tr><td>#' + (history.length - i) + '</td><td style="font-size:12px">' + escHtml(started) + '</td><td>' + escHtml(dur) + '</td><td>' + (r.tasksCompleted || 0) + '</td><td>' + result + '</td></tr>';
+      }).join('');
+    } else {
+      if (table) table.style.display = 'none';
+      if (empty) empty.style.display = '';
+    }
+  } catch(e) {
+    toast('Failed to load autopilot data', 'error');
+  }
+}
+
+async function runAutopilotNow() {
+  try {
+    toast('Starting autopilot run...', 'info');
+    const res = await fetch('/api/autopilot/run', {method:'POST', headers:authHeaders()});
+    if (res.ok) {
+      toast('Autopilot run completed', 'success');
+      loadAutopilot();
+    } else {
+      const err = await res.json().catch(()=>({}));
+      toast('Autopilot run failed: ' + (err.error || 'unknown'), 'error');
+    }
+  } catch(e) {
+    toast('Autopilot run failed', 'error');
   }
 }
 

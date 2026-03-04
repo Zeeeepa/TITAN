@@ -515,6 +515,9 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
 
 ### Recently Shipped (v2026.5.x)
+- **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,600+ tests
+- **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
+- **v2026.5.5**: Autopilot Mode — hands-free scheduled agent runs with cron
 - **v2026.5.4**: Encrypted secrets vault, tamper-evident audit log, self-healing doctor (`--fix`), 3 new providers (Venice AI, AWS Bedrock, LiteLLM), resource limits, 2,100+ tests
 - **v2026.5.3**: 20 runtime bug fixes (Batches 1-2), 1,523 tests, 66.88% coverage
 - Email skill (IMAP/SMTP via Nodemailer)
@@ -530,9 +533,7 @@ See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are comp
 ### Upcoming
 - **Vector Search & RAG Pipeline** — SQLite FTS5 + embeddings for semantic memory search
 - **Code Interpreter** — Sandboxed JavaScript/Python execution for data analysis
-- **Skyvern Browser AI** — AI-powered browser automation via MCP (natural language + self-healing selectors)
 - **Plugin Marketplace** — Community skill sharing and discovery
-- **Tunnel Support** — Cloudflare Tunnel / ngrok for remote access
 - **Team Mode & RBAC** — Role-based access control for multi-user deployments
 
 ---
@@ -549,7 +550,7 @@ See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are comp
 
 ## The Future of TITAN
 
-TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, Skyvern browser AI, tunnel support, team mode with RBAC, and much more.
+TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, plugin marketplace, team mode with RBAC, and much more.
 
 This is just the beginning. If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
 

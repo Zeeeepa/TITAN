@@ -112,6 +112,19 @@ export const MeshConfigSchema = z.object({
     maxRemoteTasks: z.number().default(3),
 });
 
+export const TunnelConfigSchema = z.object({
+    /** Enable Cloudflare Tunnel */
+    enabled: z.boolean().default(false),
+    /** Tunnel mode: 'quick' (free trycloudflare.com URL) or 'named' (custom domain) */
+    mode: z.enum(['quick', 'named']).default('quick'),
+    /** Tunnel ID for named tunnels */
+    tunnelId: z.string().optional(),
+    /** Cloudflare tunnel token (for named tunnels) */
+    token: z.string().optional(),
+    /** Custom hostname for named tunnels */
+    hostname: z.string().optional(),
+});
+
 export const TitanConfigSchema = z.object({
     agent: AgentConfigSchema.default({}),
     providers: z.object({
@@ -191,6 +204,7 @@ export const TitanConfigSchema = z.object({
             end: z.number().min(0).max(23).default(23),
         }).optional(),
     }).default({}),
+    tunnel: TunnelConfigSchema.default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
         mode: z.enum(['autonomous', 'supervised', 'locked']).default('supervised'),
@@ -211,3 +225,4 @@ export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type MeshConfig = z.infer<typeof MeshConfigSchema>;
 export type AutopilotConfig = TitanConfig['autopilot'];
+export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;

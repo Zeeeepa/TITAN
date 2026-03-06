@@ -54,7 +54,7 @@ program
     .command('gateway')
     .description('Start the TITAN gateway server')
     .option('-p, --port <port>', 'Gateway port', '48420')
-    .option('-H, --host <host>', 'Gateway host', '127.0.0.1')
+    .option('-H, --host <host>', 'Gateway host')
     .option('-v, --verbose', 'Enable verbose logging')
     .action(async (options) => {
         console.log(chalk.cyan(TITAN_ASCII_LOGO));

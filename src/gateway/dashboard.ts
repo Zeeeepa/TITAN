@@ -441,6 +441,10 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div><span style="color:var(--text-dim);font-size:12px">Tunnel</span><div style="font-weight:600;margin-top:4px;font-size:13px" id="h-tunnel">Disabled</div></div>
         </div>
       </div>
+      <div class="card" id="cost-card" style="display:none;margin-top:20px">
+        <h3>Cost Breakdown</h3>
+        <div id="cost-breakdown" style="font-size:13px;color:var(--text-dim)">Loading...</div>
+      </div>
       <div class="card" id="update-card" style="display:none;background:rgba(6,182,212,0.1);border:1px solid var(--accent);margin-top:20px;justify-content:space-between;align-items:center">
         <div>
           <h3 style="color:var(--accent);margin:0"><span style="font-size:18px">🚀</span> Update Available</h3>
@@ -584,7 +588,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="form-group">
             <label>Ollama Base URL</label>
             <div style="display:flex;gap:8px">
-              <input type="text" id="cfg-ollama-url" placeholder="http://localhost:11434" style="flex:1"/>
+              <input type="text" id="cfg-ollama-url" placeholder="http://&lt;host&gt;:11434 (e.g. http://192.168.1.100:11434)" style="flex:1"/>
               <button class="btn" data-action="test-ollama">Test ⚡</button>
             </div>
             <span id="cfg-ollama-status" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:block"></span>
@@ -804,7 +808,11 @@ tr:hover{background:rgba(6,182,212,.03)}
       <div class="card" style="margin-top:16px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
           <h3 style="margin:0">🕸️ Memory Graph</h3>
-          <button class="btn" data-action="refresh-graphiti" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn" data-action="refresh-graphiti" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+            <button class="btn danger" data-action="clear-graph" style="font-size:12px;padding:6px 14px">🗑 Clear Graph</button>
+            <button class="btn danger" data-action="clear-all-data" style="font-size:12px;padding:6px 14px">⚠ Reset All Data</button>
+          </div>
         </div>
         <div id="graphiti-status" style="display:none;color:var(--text-dim);font-size:13px;margin-bottom:16px;padding:10px;background:var(--bg3);border-radius:var(--radius-sm)">
           Run <code style="background:var(--bg);padding:2px 6px;border-radius:4px">titan graphiti --init</code> to initialize the native graph memory.
@@ -974,6 +982,8 @@ document.addEventListener('click', (e) => {
     if (a === 'test-ollama') testOllamaConnection();
     if (a === 'refresh-logs') loadLogs();
     if (a === 'refresh-graphiti') loadGraphiti();
+    if (a === 'clear-graph') clearGraphData();
+    if (a === 'clear-all-data') clearAllData();
     if (a === 'refresh-autopilot') loadAutopilot();
     if (a === 'run-autopilot') runAutopilotNow();
     if (a === 'trigger-update') triggerUpdate();
@@ -1409,7 +1419,7 @@ async function triggerUpdate() {
 
 async function fetchData() {
   try {
-    const [stats, sessions, skills, channelStatus, security, agents, learning, updateInfo] = await Promise.all([
+    const [stats, sessions, skills, channelStatus, security, agents, learning, updateInfo, costs] = await Promise.all([
       fetch('/api/stats', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
       fetch('/api/sessions', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
       fetch('/api/skills', {headers:authHeaders()}).then(r=>r.json()).catch(()=>[]),
@@ -1418,6 +1428,7 @@ async function fetchData() {
       fetch('/api/agents', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({agents:[],capacity:{current:0,max:5}})),
       fetch('/api/learning', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
       fetch('/api/update', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
+      fetch('/api/costs', {headers:authHeaders()}).then(r=>r.json()).catch(()=>({})),
     ]);
 
     // Overview stats
@@ -1492,6 +1503,25 @@ async function fetchData() {
           tEl.style.color = 'var(--error)';
         } else {
           tEl.textContent = 'Disabled';
+        }
+      }
+    } catch(e) {}
+
+    // Cost breakdown
+    try {
+      const costCard = document.getElementById('cost-card');
+      const costDiv = document.getElementById('cost-breakdown');
+      if (costCard && costDiv && costs && typeof costs === 'object') {
+        const entries = Object.entries(costs);
+        if (entries.length > 0) {
+          costCard.style.display = 'block';
+          costDiv.innerHTML = '<table style="width:100%;font-size:13px"><thead><tr><th style="text-align:left">Session</th><th>Calls</th><th>Tokens</th><th>Est. USD</th></tr></thead><tbody>' +
+            entries.slice(0, 10).map(([sid, c]) => {
+              const cost = c;
+              return '<tr><td style="font-family:monospace;font-size:11px">' + escHtml(sid.slice(0,12)) + '</td><td style="text-align:center">' + (cost.calls||0) + '</td><td style="text-align:center">' + ((cost.inputTokens||0)+(cost.outputTokens||0)).toLocaleString() + '</td><td style="text-align:right">$' + (cost.estimatedUsd||0).toFixed(5) + '</td></tr>';
+            }).join('') + '</tbody></table>';
+        } else {
+          costCard.style.display = 'none';
         }
       }
     } catch(e) {}
@@ -1808,6 +1838,27 @@ async function loadGraphiti() {
     // Attach click handler for entity detail card
     canvas.onclick = (evt) => showEntityDetail(data.nodes, data.edges, canvas, evt);
   } catch(e) { toast('Failed to load Memory Graph', 'error'); console.error('Graph load error', e); }
+}
+
+async function clearGraphData() {
+  if (!confirm('Clear the entire memory graph? This deletes all entities, edges, and episodes. This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/graphiti', {method:'DELETE', headers:authHeaders()});
+    const data = await r.json();
+    if (data.success) { toast('Graph cleared successfully'); loadGraphiti(); }
+    else { toast(data.error || 'Failed to clear graph', 'error'); }
+  } catch(e) { toast('Failed to clear graph', 'error'); }
+}
+
+async function clearAllData() {
+  if (!confirm('WARNING: This will delete ALL TITAN data (graph, knowledge, memory). Are you absolutely sure?')) return;
+  if (!confirm('This is irreversible. Type OK to confirm... (Click OK to proceed)')) return;
+  try {
+    const r = await fetch('/api/data', {method:'DELETE', headers:authHeaders()});
+    const data = await r.json();
+    if (data.success) { toast(data.message || 'All data cleared'); loadGraphiti(); }
+    else { toast(data.error || 'Failed to clear data', 'error'); }
+  } catch(e) { toast('Failed to clear data', 'error'); }
 }
 
 // ── Graph zoom/pan state ──────────────────────────────────────────

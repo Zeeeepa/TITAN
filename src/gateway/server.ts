@@ -7,6 +7,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import net from 'net';
 import { join } from 'path';
+import { homedir } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
 import fs from 'fs';
@@ -42,7 +43,7 @@ import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
 import { initLearning, getLearningStats } from '../memory/learning.js';
-import { initGraph, getGraphData, getGraphStats } from '../memory/graph.js';
+import { initGraph, getGraphData, getGraphStats, clearGraph } from '../memory/graph.js';
 import { getLogFilePath } from '../utils/logger.js';
 import { closeSession } from '../agent/session.js';
 import { initCronScheduler } from '../skills/builtin/cron.js';
@@ -857,6 +858,38 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // Clear memory graph
+  app.delete('/api/graphiti', (_req, res) => {
+    try {
+      clearGraph();
+      logger.info(COMPONENT, 'Memory graph cleared via API');
+      res.json({ success: true, message: 'Graph cleared' });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // Full data reset (graph + knowledge + titan-data)
+  app.delete('/api/data', (_req, res) => {
+    try {
+      const titanHome = join(homedir(), '.titan');
+      const files = ['graph.json', 'knowledge.json', 'titan-data.json'];
+      const deleted: string[] = [];
+      for (const f of files) {
+        const p = join(titanHome, f);
+        if (fs.existsSync(p)) {
+          fs.unlinkSync(p);
+          deleted.push(f);
+        }
+      }
+      clearGraph();
+      logger.info(COMPONENT, `Full data reset via API: deleted ${deleted.join(', ') || 'none'}`);
+      res.json({ success: true, message: `Deleted: ${deleted.join(', ') || 'none'}. Restart recommended.` });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   // ── Autopilot ───────────────────────────────────────────────
   app.get('/api/autopilot/status', (_req, res) => {
     res.json(getAutopilotStatus());
@@ -920,7 +953,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/profile':            { get:  { summary: 'Get personal profile',                   tags: ['Memory'] },
                                      post: { summary: 'Update personal profile',                tags: ['Memory'] } },
         '/api/learning':           { get:  { summary: 'Learning engine stats',                  tags: ['Memory'] } },
-        '/api/graphiti':           { get:  { summary: 'Memory graph data',                      tags: ['Memory'] } },
+        '/api/graphiti':           { get:  { summary: 'Memory graph data',                      tags: ['Memory'] },
+                                     delete: { summary: 'Clear memory graph',                     tags: ['Memory'] } },
+        '/api/data':               { delete: { summary: 'Full data reset (graph+knowledge+memory)', tags: ['Memory'] } },
         '/api/mesh/hello':         { get:  { summary: 'Mesh hello/handshake',                   tags: ['Mesh'] } },
         '/api/mesh/peers':         { get:  { summary: 'List mesh peers',                        tags: ['Mesh'] } },
         '/api/mesh/models':        { get:  { summary: 'List mesh models',                       tags: ['Mesh'] } },
@@ -989,7 +1024,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         { method: 'GET',  path: '/api/profile',          desc: 'Get personal profile' },
         { method: 'POST', path: '/api/profile',          desc: 'Update profile' },
         { method: 'GET',  path: '/api/learning',         desc: 'Learning engine stats' },
-        { method: 'GET',  path: '/api/graphiti',         desc: 'Memory graph data' },
+        { method: 'GET',    path: '/api/graphiti',         desc: 'Memory graph data' },
+        { method: 'DELETE', path: '/api/graphiti',         desc: 'Clear memory graph' },
+        { method: 'DELETE', path: '/api/data',             desc: 'Full data reset' },
       ]},
       { cat: 'Autopilot', routes: [
         { method: 'GET',  path: '/api/autopilot/status', desc: 'Autopilot status' },

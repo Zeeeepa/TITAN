@@ -139,7 +139,7 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         const response = await routerChat({
             model: config.agent.model,
             messages: [{ role: 'user', content: prompt }],
-            maxTokens: 512,
+            maxTokens: 1024,
             temperature: 0.1,
             thinking: false,
         });
@@ -163,24 +163,47 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         }
 
         // Try to repair common JSON issues from small models
-        const jsonStr = match[0]
+        let jsonStr = match[0]
             .replace(/,\s*]/g, ']')        // trailing commas in arrays
             .replace(/,\s*}/g, '}')         // trailing commas in objects
             .replace(/'/g, '"');            // single quotes to double
 
-        try {
-            const parsed = JSON.parse(jsonStr);
-            if (!Array.isArray(parsed)) {
-                logger.warn(COMPONENT, `Extraction parsed but not array: ${typeof parsed}`);
-                return [];
+        // Attempt parse, with truncated JSON recovery on failure
+        const tryParse = (str: string): unknown[] | null => {
+            try {
+                const parsed = JSON.parse(str);
+                return Array.isArray(parsed) ? parsed : null;
+            } catch { return null; }
+        };
+
+        let parsed = tryParse(jsonStr);
+
+        // If parse failed, try closing truncated brackets (LLM output cut off mid-JSON)
+        if (!parsed) {
+            // Remove any trailing incomplete object (after last complete }, or ,)
+            let recovered = jsonStr.replace(/,\s*\{[^}]*$/, '');
+            // Close any unclosed brackets
+            const opens = (recovered.match(/\[/g) || []).length;
+            const closes = (recovered.match(/\]/g) || []).length;
+            const openBraces = (recovered.match(/\{/g) || []).length;
+            const closeBraces = (recovered.match(/\}/g) || []).length;
+            recovered += '}'.repeat(Math.max(0, openBraces - closeBraces));
+            // Clean trailing commas before closing
+            recovered = recovered.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
+            recovered += ']'.repeat(Math.max(0, opens - (recovered.match(/\]/g) || []).length));
+            parsed = tryParse(recovered);
+            if (parsed) {
+                logger.info(COMPONENT, `Recovered truncated JSON (${jsonStr.length} → ${recovered.length} chars)`);
             }
-            const filtered = parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
-            logger.info(COMPONENT, `Extraction parsed ${parsed.length} items, ${filtered.length} valid entities`);
-            return filtered;
-        } catch (parseErr) {
-            logger.warn(COMPONENT, `Entity extraction JSON parse failed: ${(parseErr as Error).message}, raw: ${jsonStr.slice(0, 200)}`);
+        }
+
+        if (!parsed) {
+            logger.warn(COMPONENT, `Entity extraction JSON parse failed, raw: ${jsonStr.slice(0, 200)}`);
             return [];
         }
+        const filtered = parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
+        logger.info(COMPONENT, `Extraction parsed ${parsed.length} items, ${filtered.length} valid entities`);
+        return filtered;
     } catch (err) {
         logger.warn(COMPONENT, `Entity extraction failed: ${(err as Error).message}`);
         return [];
@@ -191,16 +214,42 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
 function findOrCreateEntity(name: string, type: string, facts: string[]): Entity {
     const nameLower = name.toLowerCase().trim();
 
-    // Search by name and aliases
-    const existing = graph.entities.find((e) => {
+    // Search by exact name and aliases
+    let existing = graph.entities.find((e) => {
         if (e.name.toLowerCase() === nameLower) return true;
         if (Array.isArray(e.aliases) && e.aliases.some((a) => a.toLowerCase() === nameLower)) return true;
         return false;
     });
 
+    // Fuzzy match: if "Tony" and "Tony Elliott" refer to the same entity, merge them
+    if (!existing) {
+        existing = graph.entities.find((e) => {
+            if (e.type !== type && type !== 'topic') return false; // only merge same-type entities
+            const eLower = e.name.toLowerCase();
+            // Check if one name contains the other (partial name match)
+            if (eLower.includes(nameLower) || nameLower.includes(eLower)) return true;
+            // Check aliases too
+            if (Array.isArray(e.aliases) && e.aliases.some((a) => {
+                const aLower = a.toLowerCase();
+                return aLower.includes(nameLower) || nameLower.includes(aLower);
+            })) return true;
+            return false;
+        });
+        if (existing) {
+            // Add the shorter name as an alias if not already present
+            const shorter = nameLower.length < existing.name.toLowerCase().length ? name : existing.name;
+            const longer = nameLower.length >= existing.name.toLowerCase().length ? name : existing.name;
+            existing.name = longer; // prefer the longer, more specific name
+            if (!existing.aliases.some((a) => a.toLowerCase() === shorter.toLowerCase())) {
+                existing.aliases.push(shorter);
+            }
+            logger.debug(COMPONENT, `Fuzzy-merged "${name}" into entity "${existing.name}"`);
+        }
+    }
+
     if (existing) {
         // Merge new facts
-        const newFacts = facts.filter((f) => !existing.facts.includes(f));
+        const newFacts = facts.filter((f) => !existing!.facts.includes(f));
         if (newFacts.length > 0) existing.facts.push(...newFacts);
         existing.lastSeen = new Date().toISOString();
         return existing;

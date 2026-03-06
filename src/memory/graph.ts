@@ -115,6 +115,8 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         const SKIP_MODELS = ['llama3.2:1b', 'tinyllama', 'phi-2'];
         if (SKIP_MODELS.some(m => model.includes(m))) return [];
 
+        logger.info(COMPONENT, `Extracting entities from ${content.length} char episode via ${config.agent.model}`);
+
         const prompt = `Extract entities from this text as a JSON array. Each item: {"name":"...","type":"person|topic|project|place|fact","facts":["fact1","fact2"]}. Return ONLY the JSON array, no other text.\n\nText: ${content.slice(0, 500)}`;
 
         const response = await routerChat({
@@ -136,9 +138,10 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         }
 
         const text = response.content || '';
+        logger.info(COMPONENT, `Extraction response: ${text.length} chars`);
         const match = text.match(/\[[\s\S]*\]/);
         if (!match) {
-            logger.debug(COMPONENT, `No JSON array found in extraction response (${text.length} chars)`);
+            logger.warn(COMPONENT, `No JSON array found in extraction response: ${text.slice(0, 200)}`);
             return [];
         }
 
@@ -250,7 +253,7 @@ export async function addEpisode(content: string, source: string): Promise<Episo
             graph.entities = graph.entities.slice(0, 1000);
         }
         saveGraph();
-        logger.debug(COMPONENT, `Episode ${episode.id.slice(0, 8)}: extracted ${extracted.length} entities, ${graph.edges.length} edges`);
+        logger.info(COMPONENT, `Episode ${episode.id.slice(0, 8)}: extracted ${extracted.length} entities, total ${graph.entities.length} entities, ${graph.edges.length} edges`);
     }).catch((err) => logger.warn(COMPONENT, `Background entity extraction failed: ${(err as Error).message}`));
 
     return episode;

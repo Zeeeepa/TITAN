@@ -38,7 +38,7 @@ async function pollTask(taskId: string, maxWaitMs: number = 120_000): Promise<Re
     const startTime = Date.now();
     const pollInterval = 3000;
     while (Date.now() - startTime < maxWaitMs) {
-        const result = await skyvernFetch(`/api/v2/tasks/${taskId}`);
+        const result = await skyvernFetch(`/api/v1/tasks/${taskId}`);
         const status = result.status as string;
         if (status === 'completed' || status === 'failed' || status === 'terminated') {
             return result;
@@ -73,7 +73,7 @@ export function registerSkyvernSkill(): void {
                     if (args.extraction_schema) body.data_extraction_goal = args.prompt;
                     if (args.extraction_schema) body.extracted_information_schema = args.extraction_schema;
 
-                    const task = await skyvernFetch('/api/v2/tasks', {
+                    const task = await skyvernFetch('/api/v1/tasks', {
                         method: 'POST',
                         body: JSON.stringify(body),
                     });
@@ -119,7 +119,7 @@ export function registerSkyvernSkill(): void {
                     };
                     if (args.schema) body.extracted_information_schema = args.schema;
 
-                    const task = await skyvernFetch('/api/v2/tasks', {
+                    const task = await skyvernFetch('/api/v1/tasks', {
                         method: 'POST',
                         body: JSON.stringify(body),
                     });
@@ -159,17 +159,17 @@ export function registerSkyvernSkill(): void {
                 try {
                     const action = args.action as string;
                     if (action === 'create') {
-                        const session = await skyvernFetch('/api/v2/browser_sessions', {
+                        const session = await skyvernFetch('/v1/browser_sessions', {
                             method: 'POST',
                             body: JSON.stringify({}),
                         });
                         return JSON.stringify({ session_id: session.browser_session_id, status: 'created' }, null, 2);
                     } else if (action === 'list') {
-                        const sessions = await skyvernFetch('/api/v2/browser_sessions');
+                        const sessions = await skyvernFetch('/v1/browser_sessions/history/');
                         return JSON.stringify(sessions, null, 2);
                     } else if (action === 'close') {
                         if (!args.session_id) return 'Error: session_id is required for close action';
-                        await skyvernFetch(`/api/v2/browser_sessions/${args.session_id}`, { method: 'DELETE' });
+                        await skyvernFetch(`/v1/browser_sessions/${args.session_id}/close`, { method: 'POST' });
                         return JSON.stringify({ session_id: args.session_id, status: 'closed' }, null, 2);
                     }
                     return `Error: Unknown action "${action}". Use create, list, or close.`;

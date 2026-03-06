@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-04
-**Current Version:** 2026.5.9
+**Last Updated:** 2026-03-06
+**Current Version:** 2026.5.11
 **Author:** Tony Elliott (Djtony707)
 
 ---
@@ -51,6 +51,7 @@
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,612 tests
 - **v2026.5.8**: Ollama model guide, 147→0 ESLint warnings, `local` model alias, 2,838 tests across 67 files
 - **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction, Ollama think:false, configurable stall detector, GPU auto-detection, config get key, slash commands via API, config validation, graph JSON repair, concurrent LLM limit, +244 tests (2,856 total across 69 files)
+- **v2026.5.10**: Tool fallback (provider failover hardening), Skyvern browser automation tools, CPU/GPU auto-tune (hardware detection)
 
 ---
 

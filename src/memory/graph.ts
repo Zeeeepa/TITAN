@@ -74,11 +74,20 @@ function loadGraph(): void {
     if (existsSync(GRAPH_PATH)) {
         try {
             const raw = readFileSync(GRAPH_PATH, 'utf-8');
-            const parsed = JSON.parse(raw) as TitanGraph;
+            const parsed = JSON.parse(raw);
+            const rawEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+            // Normalize edges that use source/target/label (legacy) to from/to/relation
+            const edges: Edge[] = rawEdges.map((e: Record<string, unknown>) => ({
+                id: (e.id as string) || uuid(),
+                from: (e.from as string) || (e.source as string) || '',
+                to: (e.to as string) || (e.target as string) || '',
+                relation: (e.relation as string) || (e.label as string) || 'related',
+                createdAt: (e.createdAt as string) || new Date().toISOString(),
+            }));
             graph = {
                 episodes: Array.isArray(parsed.episodes) ? parsed.episodes : [],
                 entities: Array.isArray(parsed.entities) ? parsed.entities : [],
-                edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+                edges,
             };
         } catch (e) {
             logger.warn(COMPONENT, `Failed to parse graph.json, starting fresh: ${(e as Error).message}`);
@@ -216,6 +225,12 @@ export async function addEpisode(content: string, source: string): Promise<Episo
     // Background entity extraction (non-blocking)
     extractEntities(content).then((extracted) => {
         if (!extracted || extracted.length === 0) return;
+
+        // Ensure graph arrays exist (defensive against race conditions)
+        if (!Array.isArray(graph.edges)) graph.edges = [];
+        if (!Array.isArray(graph.entities)) graph.entities = [];
+        if (!Array.isArray(graph.episodes)) graph.episodes = [];
+
         for (const e of extracted) {
             if (!e.name) continue;
             const entity = findOrCreateEntity(e.name, e.type || 'topic', e.facts || []);
@@ -230,7 +245,7 @@ export async function addEpisode(content: string, source: string): Promise<Episo
                     const fromId = episode.entities[i];
                     const toId = episode.entities[j];
                     const exists = graph.edges.some(
-                        e => (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId)
+                        (edge) => (edge.from === fromId && edge.to === toId) || (edge.from === toId && edge.to === fromId)
                     );
                     if (!exists) {
                         graph.edges.push({

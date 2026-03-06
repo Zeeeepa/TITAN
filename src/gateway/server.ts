@@ -52,6 +52,8 @@ import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 import { invalidateCacheForModel } from '../agent/responseCache.js';
 import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
+import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
+import { TITAN_WORKSPACE } from '../utils/constants.js';
 
 const COMPONENT = 'Gateway';
 
@@ -631,6 +633,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         google: { configured: Boolean(cfg.providers.google?.apiKey) },
         ollama: { baseUrl: cfg.providers.ollama?.baseUrl || 'http://localhost:11434' },
       },
+      oauth: {
+        google: {
+          clientIdSet: Boolean(cfg.oauth?.google?.clientId),
+          clientSecretSet: Boolean(cfg.oauth?.google?.clientSecret),
+        },
+      },
       channels: Object.fromEntries(
         Object.entries(cfg.channels).map(([k, v]) => {
           const ch = v as { enabled?: boolean; token?: string; dmPolicy?: string };
@@ -657,6 +665,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       if (body.openaiKey !== undefined) { cfg.providers.openai.apiKey = body.openaiKey as string; changedFields.push('providers.openai.apiKey'); }
       if (body.googleKey !== undefined) { cfg.providers.google.apiKey = body.googleKey as string; changedFields.push('providers.google.apiKey'); }
       if (body.ollamaUrl !== undefined) { cfg.providers.ollama.baseUrl = body.ollamaUrl as string; changedFields.push('providers.ollama.baseUrl'); }
+      // Google OAuth
+      if (body.googleOAuthClientId !== undefined) {
+        if (!cfg.oauth) (cfg as Record<string, unknown>).oauth = { google: {} };
+        cfg.oauth.google.clientId = body.googleOAuthClientId as string;
+        changedFields.push('oauth.google.clientId');
+      }
+      if (body.googleOAuthClientSecret !== undefined) {
+        if (!cfg.oauth) (cfg as Record<string, unknown>).oauth = { google: {} };
+        cfg.oauth.google.clientSecret = body.googleOAuthClientSecret as string;
+        changedFields.push('oauth.google.clientSecret');
+      }
       // Agent settings
       if (body.maxTokens !== undefined) { cfg.agent.maxTokens = Number(body.maxTokens); changedFields.push('agent.maxTokens'); }
       if (body.temperature !== undefined) { cfg.agent.temperature = Number(body.temperature); changedFields.push('agent.temperature'); }
@@ -912,6 +931,114 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // ── Tunnel ─────────────────────────────────────────────────
   app.get('/api/tunnel/status', (_req, res) => {
     res.json(getTunnelStatus());
+  });
+
+  // ── Google OAuth Endpoints ───────────────────────────────
+  app.get('/api/auth/google/status', (_req, res) => {
+    res.json({ connected: isGoogleConnected(), email: getGoogleEmail() });
+  });
+
+  app.get('/api/auth/google/start', (req, res) => {
+    try {
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers.host || `127.0.0.1:${port}`;
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+      const url = getConsentUrl(redirectUri);
+      res.redirect(url);
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  app.get('/api/auth/google/callback', async (req, res) => {
+    const code = req.query.code as string;
+    if (!code) { res.status(400).send('Missing authorization code'); return; }
+    try {
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers.host || `127.0.0.1:${port}`;
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+      await exchangeCode(code, redirectUri);
+      // Redirect back to dashboard
+      res.redirect('/?google_connected=1');
+    } catch (err) {
+      res.status(500).send(`OAuth failed: ${(err as Error).message}`);
+    }
+  });
+
+  app.post('/api/auth/google/disconnect', (_req, res) => {
+    disconnectGoogle();
+    res.json({ ok: true });
+  });
+
+  // ── SOUL.md Endpoints ───────────────────────────────────
+  app.get('/api/soul', (_req, res) => {
+    try {
+      const cfg = loadConfig();
+      const soulPath = join(cfg.agent.workspace || TITAN_WORKSPACE, 'SOUL.md');
+      if (fs.existsSync(soulPath)) {
+        res.json({ content: fs.readFileSync(soulPath, 'utf-8') });
+      } else {
+        res.json({ content: '' });
+      }
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/soul', (req, res) => {
+    try {
+      const cfg = loadConfig();
+      const workspace = cfg.agent.workspace || TITAN_WORKSPACE;
+      const soulPath = join(workspace, 'SOUL.md');
+
+      // Ensure workspace directory exists
+      if (!fs.existsSync(workspace)) fs.mkdirSync(workspace, { recursive: true });
+
+      const { content, aboutMe, personality, userName } = req.body as {
+        content?: string;
+        aboutMe?: string;
+        personality?: string;
+        userName?: string;
+      };
+
+      if (content !== undefined) {
+        // Raw content save (from Settings editor)
+        fs.writeFileSync(soulPath, content, 'utf-8');
+      } else if (aboutMe || personality) {
+        // Generate from onboarding template
+        const soulContent = [
+          '# SOUL.md - Who You Are',
+          '',
+          '## About Your Human',
+          aboutMe || '(Not yet described)',
+          '',
+          '## Your Personality',
+          personality || '(Not yet defined)',
+          '',
+          '## Core Principles',
+          '- Be genuinely helpful, not performatively helpful',
+          '- Have opinions and preferences',
+          '- Be resourceful before asking',
+          '- Earn trust through competence',
+          '',
+          '## Boundaries',
+          '- Private things stay private',
+          '- Ask before acting externally',
+          '- Never send half-baked replies to messaging surfaces',
+          '',
+          `_This file evolves as you learn. Update it when you discover new preferences._`,
+        ].join('\n');
+        fs.writeFileSync(soulPath, soulContent, 'utf-8');
+      } else {
+        res.status(400).json({ error: 'Provide either "content" or "aboutMe"/"personality"' });
+        return;
+      }
+
+      logger.info(COMPONENT, 'SOUL.md updated via API');
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
   });
 
   // ── API Documentation ────────────────────────────────────

@@ -10,6 +10,7 @@ import { getContextMessages } from '../agent/session.js';
 import { forceCompactContext } from '../agent/contextManager.js';
 import { resolveModel, getModelAliases } from '../providers/router.js';
 import { isModelAllowed } from '../providers/router.js';
+import { getDeliberation, cancelDeliberation, analyze, generatePlan, formatPlanForApproval } from '../agent/deliberation.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION } from '../utils/constants.js';
 
@@ -192,6 +193,45 @@ export function initSlashCommands(): void {
         ];
 
         return { handled: true, response: lines.join('\n') };
+    });
+
+    // ── /plan [goal|status|cancel] ──
+    registerSlashCommand('plan', async (args, channel, userId) => {
+        const session = getOrCreateSession(channel, userId, 'default');
+
+        if (!args || args.toLowerCase() === 'status') {
+            const delib = getDeliberation(session.id);
+            if (!delib) {
+                return { handled: true, response: '📋 No active deliberation plan for this session.' };
+            }
+            const statusLines = [
+                `📋 **Deliberation Status**: \`${delib.stage}\``,
+                `**Goal**: ${delib.originalMessage.slice(0, 100)}`,
+                `**Tasks completed**: ${delib.results.filter(r => r.success).length}/${delib.results.length}`,
+            ];
+            if (delib.planMarkdown) statusLines.push('', delib.planMarkdown);
+            return { handled: true, response: statusLines.join('\n') };
+        }
+
+        if (args.toLowerCase() === 'cancel') {
+            const cancelled = cancelDeliberation(session.id);
+            return { handled: true, response: cancelled ? '✅ Deliberation cancelled.' : '❌ No active deliberation to cancel.' };
+        }
+
+        // Force deliberation mode with the given goal
+        const config = loadConfig();
+        try {
+            const state = await analyze(args, session.id, config);
+            if (state.stage === 'planning') {
+                const planned = await generatePlan(state, config);
+                if (planned.planMarkdown) {
+                    return { handled: true, response: planned.planMarkdown };
+                }
+            }
+            return { handled: true, response: `❌ Deliberation failed: ${state.error || 'Could not generate a plan.'}` };
+        } catch (e) {
+            return { handled: true, response: `❌ Error: ${(e as Error).message}` };
+        }
     });
 
     logger.info(COMPONENT, `Registered ${commands.size} slash commands`);

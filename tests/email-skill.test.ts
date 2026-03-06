@@ -662,6 +662,11 @@ describe('Email Skill — email_search', () => {
             default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         }));
 
+        vi.doMock('../src/auth/google.js', () => ({
+            isGoogleConnected: vi.fn().mockReturnValue(false),
+            gmailFetch: vi.fn(),
+        }));
+
         const handlers = new Map<string, any>();
         vi.doMock('../src/skills/registry.js', () => ({
             registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
@@ -677,28 +682,15 @@ describe('Email Skill — email_search', () => {
         searchHandler = handlers.get('email_search');
     });
 
-    it('should return OAuth2 setup instructions', async () => {
+    it('should return not-connected message when Google is not connected', async () => {
         const result = await searchHandler.execute({ query: 'from:boss@company.com' });
-        expect(result).toContain('OAuth2');
-        expect(result).toContain('console.cloud.google.com');
-        expect(result).toContain('Gmail API');
-    });
-
-    it('should include the query in the response', async () => {
-        const result = await searchHandler.execute({ query: 'is:unread subject:report' });
-        expect(result).toContain('is:unread subject:report');
-    });
-
-    it('should mention GMAIL_OAUTH_CLIENT_ID in setup steps', async () => {
-        const result = await searchHandler.execute({ query: 'test' });
-        expect(result).toContain('GMAIL_OAUTH_CLIENT_ID');
-        expect(result).toContain('GMAIL_OAUTH_CLIENT_SECRET');
-        expect(result).toContain('GMAIL_OAUTH_REFRESH_TOKEN');
+        expect(result).toContain('Gmail not connected');
+        expect(result).toContain('Settings');
     });
 
     it('should handle empty query gracefully', async () => {
         const result = await searchHandler.execute({ query: '' });
-        expect(result).toContain('OAuth2');
+        expect(result).toContain('Gmail not connected');
     });
 });
 
@@ -716,6 +708,11 @@ describe('Email Skill — email_read', () => {
             default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         }));
 
+        vi.doMock('../src/auth/google.js', () => ({
+            isGoogleConnected: vi.fn().mockReturnValue(false),
+            gmailFetch: vi.fn(),
+        }));
+
         const handlers = new Map<string, any>();
         vi.doMock('../src/skills/registry.js', () => ({
             registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
@@ -731,25 +728,14 @@ describe('Email Skill — email_read', () => {
         readHandler = handlers.get('email_read');
     });
 
-    it('should return OAuth2 setup instructions', async () => {
+    it('should return not-connected message when Google is not connected', async () => {
         const result = await readHandler.execute({ messageId: 'msg-123' });
-        expect(result).toContain('OAuth2');
+        expect(result).toContain('Gmail not connected');
     });
 
-    it('should include the message ID in the response', async () => {
-        const result = await readHandler.execute({ messageId: 'abc-456-def' });
-        expect(result).toContain('abc-456-def');
-    });
-
-    it('should include the Gmail API URL with the message ID', async () => {
-        const result = await readHandler.execute({ messageId: 'msg-789' });
-        expect(result).toContain('gmail.googleapis.com');
-        expect(result).toContain('msg-789');
-    });
-
-    it('should handle empty messageId gracefully', async () => {
+    it('should return error for empty messageId', async () => {
         const result = await readHandler.execute({ messageId: '' });
-        expect(result).toContain('OAuth2');
+        expect(result).toContain('Error');
     });
 });
 
@@ -767,6 +753,11 @@ describe('Email Skill — email_list', () => {
             default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         }));
 
+        vi.doMock('../src/auth/google.js', () => ({
+            isGoogleConnected: vi.fn().mockReturnValue(false),
+            gmailFetch: vi.fn(),
+        }));
+
         const handlers = new Map<string, any>();
         vi.doMock('../src/skills/registry.js', () => ({
             registerSkill: vi.fn().mockImplementation((_meta: any, handler: any) => {
@@ -782,39 +773,10 @@ describe('Email Skill — email_list', () => {
         listHandler = handlers.get('email_list');
     });
 
-    it('should return setup instructions', async () => {
+    it('should return not-connected message when Google is not connected', async () => {
         const result = await listHandler.execute({});
-        expect(result).toContain('OAuth2');
-        expect(result).toContain('IMAP');
-    });
-
-    it('should default folder to "inbox"', async () => {
-        const result = await listHandler.execute({});
-        expect(result).toContain('"inbox"');
-    });
-
-    it('should use provided folder parameter', async () => {
-        const result = await listHandler.execute({ folder: 'sent' });
-        expect(result).toContain('"sent"');
-        expect(result).toContain('SENT');
-    });
-
-    it('should use provided count parameter', async () => {
-        const result = await listHandler.execute({ folder: 'spam', count: 25 });
-        expect(result).toContain('25');
-        expect(result).toContain('"spam"');
-    });
-
-    it('should mention both Option A (OAuth2) and Option B (app password)', async () => {
-        const result = await listHandler.execute({});
-        expect(result).toContain('Option A');
-        expect(result).toContain('Option B');
-    });
-
-    it('should mention IMAP support is planned', async () => {
-        const result = await listHandler.execute({});
-        expect(result).toContain('IMAP support');
-        expect(result).toContain('planned');
+        expect(result).toContain('Gmail not connected');
+        expect(result).toContain('Settings');
     });
 });
 

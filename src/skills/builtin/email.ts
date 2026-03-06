@@ -11,6 +11,7 @@
 import { createConnection } from 'net';
 import { connect as tlsConnect, type TLSSocket } from 'tls';
 import { registerSkill } from '../registry.js';
+import { isGoogleConnected, gmailFetch } from '../../auth/google.js';
 import logger from '../../utils/logger.js';
 
 const COMPONENT = 'EmailSkill';
@@ -383,6 +384,71 @@ function resolveSmtpConfig(): SmtpResolved | null {
 }
 
 // ---------------------------------------------------------------------------
+// Gmail API helpers (native fetch, zero deps)
+// ---------------------------------------------------------------------------
+
+/** Decode base64url-encoded content */
+function decodeBase64Url(data: string): string {
+    const base64 = data.replace(/-/g, '+').replace(/_/g, '/');
+    return Buffer.from(base64, 'base64').toString('utf-8');
+}
+
+/** Walk MIME parts to extract the email body */
+function extractBody(payload: { mimeType?: string; body?: { data?: string; size?: number }; parts?: unknown[] }): string {
+    // Direct body content
+    if (payload.body?.data) {
+        return decodeBase64Url(payload.body.data);
+    }
+
+    // Walk parts recursively, preferring text/plain over text/html
+    if (payload.parts && Array.isArray(payload.parts)) {
+        let plainText = '';
+        let htmlText = '';
+
+        for (const part of payload.parts as Array<typeof payload>) {
+            if (part.mimeType === 'text/plain' && part.body?.data) {
+                plainText = decodeBase64Url(part.body.data);
+            } else if (part.mimeType === 'text/html' && part.body?.data) {
+                htmlText = decodeBase64Url(part.body.data);
+            } else if (part.parts) {
+                const nested = extractBody(part);
+                if (nested) plainText = plainText || nested;
+            }
+        }
+
+        if (plainText) return plainText;
+        if (htmlText) {
+            // Strip HTML tags for readability
+            return htmlText
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/p>/gi, '\n\n')
+                .replace(/<[^>]+>/g, '')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .trim();
+        }
+    }
+
+    return '';
+}
+
+/** Get a header value from Gmail message headers */
+function getHeader(headers: Array<{ name: string; value: string }>, name: string): string {
+    return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value || '';
+}
+
+/** Encode raw RFC5322 message as base64url for Gmail send API */
+function toBase64Url(str: string): string {
+    return Buffer.from(str, 'utf-8').toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+
+// ---------------------------------------------------------------------------
 // Skill registrations
 // ---------------------------------------------------------------------------
 
@@ -468,18 +534,6 @@ export function registerEmailSkill(): void {
                 }
 
                 // ----------------------------------------------------------
-                // Resolve SMTP config
-                // ----------------------------------------------------------
-                const resolved = resolveSmtpConfig();
-                if (!resolved) {
-                    return (
-                        'Error: No email configuration found. ' +
-                        'Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD environment variables for Gmail, ' +
-                        'or SMTP_HOST, SMTP_USER, SMTP_PASS (and optionally SMTP_PORT) for a custom SMTP server.'
-                    );
-                }
-
-                // ----------------------------------------------------------
                 // Rate-limit warning
                 // ----------------------------------------------------------
                 emailsSentThisSession++;
@@ -495,17 +549,59 @@ export function registerEmailSkill(): void {
                 }
 
                 // ----------------------------------------------------------
-                // All recipients for RCPT TO (To + CC + BCC)
+                // Try Gmail API first (if connected), then fall back to SMTP
                 // ----------------------------------------------------------
+                if (isGoogleConnected()) {
+                    try {
+                        const raw = buildRawMessage({
+                            from: 'me',
+                            to: toResult.valid,
+                            cc: ccResult.valid.length > 0 ? ccResult.valid : undefined,
+                            bcc: bccResult.valid.length > 0 ? bccResult.valid : undefined,
+                            subject,
+                            body,
+                            html: isHtml,
+                        });
+
+                        const encodedRaw = toBase64Url(raw);
+                        const gmailRes = await gmailFetch('/gmail/v1/users/me/messages/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ raw: encodedRaw }),
+                        });
+
+                        if (gmailRes.ok) {
+                            const result = await gmailRes.json() as { id: string };
+                            const recipientSummary = `To: ${toResult.valid.join(', ')}`;
+                            logger.info(COMPONENT, `Email sent via Gmail API — id=${result.id}`);
+                            return `Email sent successfully via Gmail API.\nSubject: ${subject}\n${recipientSummary}\nMessage ID: ${result.id}`;
+                        }
+                        // Gmail API failed, try SMTP fallback
+                        logger.warn(COMPONENT, `Gmail API send failed (${gmailRes.status}), trying SMTP fallback`);
+                    } catch (err) {
+                        logger.warn(COMPONENT, `Gmail API error: ${(err as Error).message}, trying SMTP fallback`);
+                    }
+                }
+
+                // ----------------------------------------------------------
+                // SMTP fallback
+                // ----------------------------------------------------------
+                const resolved = resolveSmtpConfig();
+                if (!resolved) {
+                    return (
+                        'Error: No email configuration found. ' +
+                        'Connect your Google account in Dashboard Settings, or ' +
+                        'set GMAIL_ADDRESS and GMAIL_APP_PASSWORD environment variables for Gmail, ' +
+                        'or SMTP_HOST, SMTP_USER, SMTP_PASS (and optionally SMTP_PORT) for a custom SMTP server.'
+                    );
+                }
+
                 const allRecipients = [
                     ...toResult.valid,
                     ...ccResult.valid,
                     ...bccResult.valid,
                 ];
 
-                // ----------------------------------------------------------
-                // Build raw RFC 5322 message
-                // ----------------------------------------------------------
                 const raw = buildRawMessage({
                     from: resolved.from,
                     to: toResult.valid,
@@ -516,9 +612,6 @@ export function registerEmailSkill(): void {
                     html: isHtml,
                 });
 
-                // ----------------------------------------------------------
-                // Send via SMTP
-                // ----------------------------------------------------------
                 logger.info(
                     COMPONENT,
                     `Sending email to ${toResult.valid.join(', ')} via ${resolved.cfg.host}:${resolved.cfg.port}`,
@@ -544,7 +637,6 @@ export function registerEmailSkill(): void {
                     );
                 } catch (err) {
                     const msg = (err as Error).message;
-                    // Never echo credentials in error messages
                     logger.error(COMPONENT, `SMTP send failed: ${msg}`);
                     return `Error sending email: ${msg}`;
                 }
@@ -588,29 +680,35 @@ export function registerEmailSkill(): void {
 
                 logger.info(COMPONENT, `email_search called — query="${query}" maxResults=${maxResults}`);
 
-                // Gmail API requires an OAuth2 access token, which involves a
-                // browser-based consent flow that cannot be automated inline.
-                // Until an OAuth2 helper is wired into TITAN config, we return
-                // clear setup instructions.
-                return [
-                    'Gmail API search requires OAuth2 authentication, which has not been configured yet.',
-                    '',
-                    'To enable Gmail search and read functionality:',
-                    '  1. Go to https://console.cloud.google.com/ and create a project.',
-                    '  2. Enable the "Gmail API" for the project.',
-                    '  3. Create OAuth 2.0 credentials (type: Desktop app).',
-                    '  4. Download the credentials JSON and run the authorisation flow to obtain',
-                    '     a refresh token.',
-                    '  5. Set the following environment variables:',
-                    '       GMAIL_OAUTH_CLIENT_ID=<your-client-id>',
-                    '       GMAIL_OAUTH_CLIENT_SECRET=<your-client-secret>',
-                    '       GMAIL_OAUTH_REFRESH_TOKEN=<your-refresh-token>',
-                    '',
-                    'Alternatively, use an IMAP-capable email client with the email_list tool once',
-                    'IMAP support is added in a future TITAN release.',
-                    '',
-                    `Your query was: "${query}"`,
-                ].join('\n');
+                if (!isGoogleConnected()) {
+                    return 'Gmail not connected. Connect your Google account in Dashboard → Settings → Providers to enable email search.';
+                }
+
+                try {
+                    const searchRes = await gmailFetch(`/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${maxResults}`);
+                    if (!searchRes.ok) return `Gmail API error: ${searchRes.status}`;
+
+                    const data = await searchRes.json() as { messages?: Array<{ id: string }>; resultSizeEstimate?: number };
+                    if (!data.messages || data.messages.length === 0) return `No emails found for query: "${query}"`;
+
+                    // Fetch metadata for each message
+                    const results: string[] = [`Found ${data.resultSizeEstimate || data.messages.length} result(s) for "${query}":\n`];
+
+                    for (const msg of data.messages.slice(0, maxResults)) {
+                        const metaRes = await gmailFetch(`/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
+                        if (!metaRes.ok) continue;
+                        const meta = await metaRes.json() as { id: string; snippet: string; payload?: { headers: Array<{ name: string; value: string }> } };
+                        const headers = meta.payload?.headers || [];
+                        const subject = getHeader(headers, 'Subject') || '(no subject)';
+                        const from = getHeader(headers, 'From') || 'unknown';
+                        const date = getHeader(headers, 'Date') || '';
+                        results.push(`[${msg.id}] ${subject}\n  From: ${from} | ${date}\n  ${meta.snippet || ''}\n`);
+                    }
+
+                    return results.join('\n');
+                } catch (err) {
+                    return `Error searching Gmail: ${(err as Error).message}`;
+                }
             },
         },
     );
@@ -646,16 +744,47 @@ export function registerEmailSkill(): void {
 
                 logger.info(COMPONENT, `email_read called — messageId="${messageId}"`);
 
-                return [
-                    'Reading individual Gmail messages requires OAuth2 authentication, which has not been configured yet.',
-                    '',
-                    'To enable this feature, follow the OAuth2 setup instructions returned by email_search.',
-                    '',
-                    `Requested message ID: ${messageId}`,
-                    '',
-                    'Once OAuth2 is configured, this tool will call:',
-                    `  GET https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}`,
-                ].join('\n');
+                if (!messageId) return 'Error: messageId is required.';
+
+                if (!isGoogleConnected()) {
+                    return 'Gmail not connected. Connect your Google account in Dashboard → Settings → Providers to read emails.';
+                }
+
+                try {
+                    const res = await gmailFetch(`/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`);
+                    if (!res.ok) return `Gmail API error: ${res.status}`;
+
+                    const msg = await res.json() as {
+                        id: string;
+                        snippet: string;
+                        payload: {
+                            mimeType?: string;
+                            headers: Array<{ name: string; value: string }>;
+                            body?: { data?: string };
+                            parts?: unknown[];
+                        };
+                        labelIds?: string[];
+                    };
+
+                    const headers = msg.payload?.headers || [];
+                    const subject = getHeader(headers, 'Subject') || '(no subject)';
+                    const from = getHeader(headers, 'From') || 'unknown';
+                    const to = getHeader(headers, 'To') || '';
+                    const date = getHeader(headers, 'Date') || '';
+                    const body = extractBody(msg.payload);
+
+                    return [
+                        `**Subject:** ${subject}`,
+                        `**From:** ${from}`,
+                        `**To:** ${to}`,
+                        `**Date:** ${date}`,
+                        `**Labels:** ${(msg.labelIds || []).join(', ')}`,
+                        '',
+                        body || msg.snippet || '(empty body)',
+                    ].join('\n');
+                } catch (err) {
+                    return `Error reading email: ${(err as Error).message}`;
+                }
             },
         },
     );
@@ -695,25 +824,35 @@ export function registerEmailSkill(): void {
 
                 logger.info(COMPONENT, `email_list called — folder="${folder}" count=${count}`);
 
-                return [
-                    `Listing emails from "${folder}" requires either Gmail OAuth2 or IMAP authentication,`,
-                    'neither of which has been configured yet.',
-                    '',
-                    'Options:',
-                    '',
-                    'Option A — Gmail OAuth2 (search/read via Gmail API):',
-                    '  Follow the OAuth2 setup instructions returned by email_search.',
-                    '  Once configured, this tool will call:',
-                    `  GET https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=${folder.toUpperCase()}&maxResults=${count}`,
-                    '',
-                    'Option B — Gmail app password (sending only, already supported):',
-                    '  Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD to use email_send without OAuth2.',
-                    '  Note: App passwords only enable SMTP sending; reading requires OAuth2 or IMAP.',
-                    '',
-                    'IMAP support (read/list without OAuth2) is planned for a future TITAN release.',
-                    '',
-                    `Requested: ${count} email(s) from "${folder}"`,
-                ].join('\n');
+                if (!isGoogleConnected()) {
+                    return 'Gmail not connected. Connect your Google account in Dashboard → Settings → Providers to list emails.';
+                }
+
+                try {
+                    const labelId = folder.toUpperCase();
+                    const res = await gmailFetch(`/gmail/v1/users/me/messages?labelIds=${encodeURIComponent(labelId)}&maxResults=${count}`);
+                    if (!res.ok) return `Gmail API error: ${res.status}`;
+
+                    const data = await res.json() as { messages?: Array<{ id: string }>; resultSizeEstimate?: number };
+                    if (!data.messages || data.messages.length === 0) return `No emails found in "${folder}".`;
+
+                    const results: string[] = [`${data.messages.length} email(s) in "${folder}":\n`];
+
+                    for (const msg of data.messages) {
+                        const metaRes = await gmailFetch(`/gmail/v1/users/me/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`);
+                        if (!metaRes.ok) continue;
+                        const meta = await metaRes.json() as { id: string; snippet: string; payload?: { headers: Array<{ name: string; value: string }> } };
+                        const headers = meta.payload?.headers || [];
+                        const subject = getHeader(headers, 'Subject') || '(no subject)';
+                        const from = getHeader(headers, 'From') || 'unknown';
+                        const date = getHeader(headers, 'Date') || '';
+                        results.push(`[${msg.id}] ${subject}\n  From: ${from} | ${date}\n`);
+                    }
+
+                    return results.join('\n');
+                } catch (err) {
+                    return `Error listing emails: ${(err as Error).message}`;
+                }
             },
         },
     );

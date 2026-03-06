@@ -36,6 +36,7 @@ export const SOUL_MD = join(TITAN_WORKSPACE, 'SOUL.md');
 export const TOOLS_MD = join(TITAN_WORKSPACE, 'TOOLS.md');
 export const AUTOPILOT_MD = join(TITAN_HOME, 'AUTOPILOT.md');
 export const AUTOPILOT_RUNS_PATH = join(TITAN_HOME, 'autopilot-runs.jsonl');
+export const TITAN_CREDENTIALS_DIR = join(TITAN_HOME, 'credentials');
 
 // Gateway defaults
 export const DEFAULT_GATEWAY_HOST = '127.0.0.1';

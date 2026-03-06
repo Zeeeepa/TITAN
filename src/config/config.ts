@@ -94,6 +94,8 @@ function applyEnvOverrides(config: Record<string, unknown>): void {
         DISCORD_TOKEN: (val) => setNested(config, 'channels.discord.token', val),
         TELEGRAM_TOKEN: (val) => setNested(config, 'channels.telegram.token', val),
         SLACK_TOKEN: (val) => setNested(config, 'channels.slack.token', val),
+        GOOGLE_OAUTH_CLIENT_ID: (val) => setNested(config, 'oauth.google.clientId', val),
+        GOOGLE_OAUTH_CLIENT_SECRET: (val) => setNested(config, 'oauth.google.clientSecret', val),
     };
 
     for (const [envKey, setter] of Object.entries(envMap)) {

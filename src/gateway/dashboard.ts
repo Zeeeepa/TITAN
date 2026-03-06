@@ -341,6 +341,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="ob-dot active" id="dot-1"></div>
           <div class="ob-dot" id="dot-2"></div>
           <div class="ob-dot" id="dot-3"></div>
+          <div class="ob-dot" id="dot-4"></div>
         </div>
       </div>
     </div>
@@ -363,9 +364,23 @@ tr:hover{background:rgba(6,182,212,.03)}
         </div>
       </div>
 
-      <!-- Step 2: Provider -->
+      <!-- Step 2: Soul -->
       <div class="ob-step" id="ob-step-2">
-        <div class="ob-step-title">2. Choose Your Engine</div>
+        <div class="ob-step-title">2. Define TITAN's Personality</div>
+        <div class="ob-step-desc">Tell TITAN about yourself and how you want it to behave. This becomes its SOUL.md — the core personality prompt injected into every conversation.</div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label>About You (what should TITAN know?)</label>
+          <textarea id="ob-about-me" rows="4" placeholder="e.g. I'm a music producer and developer. I run a homelab with 6 machines. I like direct, no-fluff answers." style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit"></textarea>
+        </div>
+        <div class="form-group">
+          <label>How should TITAN act?</label>
+          <textarea id="ob-personality" rows="4" placeholder="e.g. Be a technical partner, not a tutor. Think like an architect. Suggest better approaches proactively. Be concise." style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit"></textarea>
+        </div>
+      </div>
+
+      <!-- Step 3: Provider -->
+      <div class="ob-step" id="ob-step-3">
+        <div class="ob-step-title">3. Choose Your Engine</div>
         <div class="ob-step-desc">Select where TITAN should run its core reasoning loop.</div>
         
         <div class="provider-box selected" data-action="select-provider" data-radio="ob-prov-local">
@@ -387,9 +402,9 @@ tr:hover{background:rgba(6,182,212,.03)}
         </div>
       </div>
 
-      <!-- Step 3: Autonomy -->
-      <div class="ob-step" id="ob-step-3">
-        <div class="ob-step-title">3. Set Guardrails</div>
+      <!-- Step 4: Autonomy -->
+      <div class="ob-step" id="ob-step-4">
+        <div class="ob-step-title">4. Set Guardrails</div>
         <div class="ob-step-desc">Establish how much freedom TITAN has on your machine.</div>
         <div class="form-group">
           <label>Autonomy Mode</label>
@@ -593,7 +608,24 @@ tr:hover{background:rgba(6,182,212,.03)}
             </div>
             <span id="cfg-ollama-status" style="font-size:12px;color:var(--text-dim);margin-top:4px;display:block"></span>
           </div>
-          <div class="form-actions">
+          <div style="border-top:1px solid var(--border);margin-top:20px;padding-top:20px">
+            <h4 style="font-size:14px;margin-bottom:12px;color:var(--text-bright)">📧 Google Account (Gmail OAuth)</h4>
+            <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">Connect your Google account to enable Gmail search, read, and send via Gmail API.</p>
+            <div id="google-oauth-status" style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">Checking...</div>
+            <div class="form-group" style="margin-bottom:8px">
+              <label>Google OAuth Client ID</label>
+              <input type="password" id="cfg-google-oauth-id" placeholder="From Google Cloud Console" style="font-size:12px"/>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label>Google OAuth Client Secret</label>
+              <input type="password" id="cfg-google-oauth-secret" placeholder="From Google Cloud Console" style="font-size:12px"/>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" id="google-connect-btn" data-action="connect-google">🔗 Connect Google Account</button>
+              <button class="btn" id="google-disconnect-btn" data-action="disconnect-google" style="display:none;border-color:var(--error);color:var(--error)">Disconnect</button>
+            </div>
+          </div>
+          <div class="form-actions" style="margin-top:16px">
             <button class="btn primary" data-action="save-providers">💾 Save Provider Settings</button>
           </div>
         </div>
@@ -729,8 +761,16 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="form-group" style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--text-dim)">
             <span id="cfg-profile-stats">Loading profile stats...</span>
           </div>
-          <div class="form-actions">
+          <div class="form-actions" style="margin-bottom:20px">
             <button class="btn primary" data-action="save-profile">💾 Save Profile</button>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:20px">
+            <h4 style="font-size:14px;margin-bottom:8px;color:var(--text-bright)">🧬 SOUL.md — Personality Prompt</h4>
+            <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">This file is injected into every conversation. Edit it to shape how TITAN behaves.</p>
+            <textarea id="cfg-soul-content" rows="12" placeholder="# SOUL.md\n\nDefine TITAN's personality here..." style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:'JetBrains Mono','Fira Code',monospace;line-height:1.5"></textarea>
+            <div class="form-actions" style="margin-top:8px">
+              <button class="btn primary" data-action="save-soul">💾 Save SOUL.md</button>
+            </div>
           </div>
         </div>
       </div>
@@ -987,6 +1027,9 @@ document.addEventListener('click', (e) => {
     if (a === 'refresh-autopilot') loadAutopilot();
     if (a === 'run-autopilot') runAutopilotNow();
     if (a === 'trigger-update') triggerUpdate();
+    if (a === 'connect-google') connectGoogle();
+    if (a === 'disconnect-google') disconnectGoogleAccount();
+    if (a === 'save-soul') saveSoulMd();
     if (a === 'close-session-modal') closeSessionModal();
     if (a === 'save-channel') saveChannelSettings(action.dataset.channel);
     if (a === 'ob-prev') obPrevStep();
@@ -1357,6 +1400,8 @@ async function loadProfileTab() {
     const statsEl = document.getElementById('cfg-profile-stats');
     if (statsEl) statsEl.textContent = 'Projects tracked: ' + (profile.projectCount || 0) + ' | Goals in progress: ' + (profile.goalCount || 0);
   } catch(e) { console.error('loadProfileTab error:', e); }
+  loadGoogleStatus();
+  loadSoulMd();
 }
 
 async function saveProfileSettings() {
@@ -1367,6 +1412,76 @@ async function saveProfileSettings() {
   const r = await fetch('/api/profile', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
   const data = await r.json();
   if (data.ok) toast('Profile saved');
+  else toast(data.error || 'Save failed', 'error');
+}
+
+// ── Google OAuth ──────────────────────────────────────────────────
+async function loadGoogleStatus() {
+  try {
+    const r = await fetch('/api/auth/google/status', {headers:authHeaders()});
+    const data = await r.json();
+    const statusEl = document.getElementById('google-oauth-status');
+    const connectBtn = document.getElementById('google-connect-btn');
+    const disconnectBtn = document.getElementById('google-disconnect-btn');
+    if (data.connected) {
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent3)">✅ Connected</span>' + (data.email ? ' — ' + data.email : '');
+      if (connectBtn) connectBtn.style.display = 'none';
+      if (disconnectBtn) disconnectBtn.style.display = '';
+    } else {
+      if (statusEl) statusEl.textContent = '❌ Not connected';
+      if (connectBtn) connectBtn.style.display = '';
+      if (disconnectBtn) disconnectBtn.style.display = 'none';
+    }
+  } catch(e) {}
+}
+
+async function connectGoogle() {
+  // First save OAuth credentials if provided
+  const clientId = document.getElementById('cfg-google-oauth-id').value.trim();
+  const clientSecret = document.getElementById('cfg-google-oauth-secret').value.trim();
+  if (clientId || clientSecret) {
+    const body = {};
+    if (clientId) body.googleOAuthClientId = clientId;
+    if (clientSecret) body.googleOAuthClientSecret = clientSecret;
+    await fetch('/api/config', {method:'POST', headers:authHeaders(), body:JSON.stringify(body)});
+  }
+  // Open consent flow in new window
+  window.open('/api/auth/google/start', '_blank', 'width=600,height=700');
+  // Poll for connection status
+  const poll = setInterval(async () => {
+    const r = await fetch('/api/auth/google/status', {headers:authHeaders()});
+    const data = await r.json();
+    if (data.connected) {
+      clearInterval(poll);
+      loadGoogleStatus();
+      toast('Google account connected!', 'success');
+    }
+  }, 3000);
+  setTimeout(() => clearInterval(poll), 300000);
+}
+
+async function disconnectGoogleAccount() {
+  if (!confirm('Disconnect your Google account? This will remove Gmail access.')) return;
+  await fetch('/api/auth/google/disconnect', {method:'POST', headers:authHeaders()});
+  loadGoogleStatus();
+  toast('Google account disconnected');
+}
+
+// ── SOUL.md ───────────────────────────────────────────────────────
+async function loadSoulMd() {
+  try {
+    const r = await fetch('/api/soul', {headers:authHeaders()});
+    const data = await r.json();
+    const el = document.getElementById('cfg-soul-content');
+    if (el) el.value = data.content || '';
+  } catch(e) {}
+}
+
+async function saveSoulMd() {
+  const content = document.getElementById('cfg-soul-content').value;
+  const r = await fetch('/api/soul', {method:'POST', headers:authHeaders(), body:JSON.stringify({content})});
+  const data = await r.json();
+  if (data.success) toast('SOUL.md saved');
   else toast(data.error || 'Save failed', 'error');
 }
 
@@ -1637,7 +1752,7 @@ function closeSessionModal() {
 
 // ── Onboarding Logic ──────────────────────────────────────────────
 let obCurrentStep = 1;
-const obTotalSteps = 3;
+const obTotalSteps = 4;
 
 function updateObDots() {
   for (let i = 1; i <= obTotalSteps; i++) {
@@ -1703,7 +1818,22 @@ async function submitOnboarding() {
       })
     });
 
-    // 2. Save Config (Provider + Autonomy)
+    // 2. Save Soul (personality)
+    const aboutMe = document.getElementById('ob-about-me').value.trim();
+    const personality = document.getElementById('ob-personality').value.trim();
+    if (aboutMe || personality) {
+      await fetch('/api/soul', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          aboutMe,
+          personality,
+          userName: document.getElementById('ob-name').value.trim()
+        })
+      });
+    }
+
+    // 3. Save Config (Provider + Autonomy)
     const providerStr = document.getElementById('ob-prov-local').checked ? 'ollama/kimi-k2.5:cloud' : 'anthropic/claude-sonnet-4-20250514';
     await fetch('/api/config', {
       method: 'POST',
@@ -2116,6 +2246,12 @@ function startLogs() {
 
 function stopLogs() {
   if (logsInterval) { clearInterval(logsInterval); logsInterval = null; }
+}
+
+// Check for Google OAuth callback redirect
+if (window.location.search.includes('google_connected=1')) {
+  window.history.replaceState({}, '', '/');
+  setTimeout(() => toast('Google account connected successfully!', 'success'), 500);
 }
 
 // Check if we need to show onboarding

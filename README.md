@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode. 20 providers. 55+ tools. 2,850+ tests. Pure JavaScript — no native compilation.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 20 providers. 60+ tools. 2,860+ tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-20-purple" alt="20 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-55+-orange" alt="55+ Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-60+-orange" alt="60+ Tools"/></a>
 </p>
 
 <p align="center">
@@ -29,17 +29,17 @@
 ---
 
 > **WARNING — EXPERIMENTAL SOFTWARE**
-> TITAN is experimental, actively developed software. It can execute shell commands, modify files, access the network, and take autonomous actions on your system. **Use at your own risk.** The author and contributors provide this software "as is" without warranty of any kind. By installing or running TITAN, you accept full responsibility for any consequences, including but not limited to data loss, system instability, unintended actions, API charges, or security issues. Always review TITAN's configuration, run it in supervised mode first, and never grant it access to systems or credentials you cannot afford to lose. See [LICENSE](LICENSE) for the full legal terms.
+> TITAN is experimental, actively developed software. It can execute shell commands, modify files, access the network, and take autonomous actions on your system. **Use at your own risk.** Think of it less as "software you install" and more as "a very motivated intern with root access." The author and contributors provide this software "as is" without warranty of any kind. By installing or running TITAN, you accept full responsibility for any consequences, including but not limited to data loss, system instability, unintended actions, API charges, or security issues. Always review TITAN's configuration, run it in supervised mode first, and never grant it access to systems or credentials you cannot afford to lose. See [LICENSE](LICENSE) for the full legal terms.
 
 ---
 
 ## Quick Start
 
-**Requirements:** Node.js >= 20
+**Requirements:** Node.js >= 20, an API key, and a healthy sense of adventure.
 
 ```bash
 npm install -g titan-agent
-titan onboard             # Interactive setup (pick a provider, paste your API key)
+titan onboard             # Interactive setup (pick a provider, paste your API key, give TITAN a soul)
 titan gateway             # Launch Mission Control at http://localhost:48420
 titan agent -m "Hello"    # Talk to your agent from the terminal
 ```
@@ -59,20 +59,43 @@ npm run dev:gateway        # Start in dev mode
 
 | | TITAN | Typical AI agent frameworks |
 |---|---|---|
-| **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation |
-| **Native compilation** | None — all pure JS deps | Often require node-gyp, system libraries |
+| **Setup** | `npm i -g titan-agent && titan onboard` | Docker, Python venvs, native compilation, 3 hours of your life |
+| **Native compilation** | None — all pure JS deps | Often require node-gyp, system libraries, and a blood sacrifice |
 | **Providers** | 20 (70+ preconfigured models) with automatic failover | 1-4 providers, no failover |
-| **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | Minimal or none |
+| **Reasoning** | Deliberative multi-stage reasoning with plan approval | Single-shot responses |
+| **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 55+ built-in + drop-in YAML/JS creation | Fixed tool set |
-| **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend |
-| **GUI** | 12-panel Mission Control dashboard | CLI only or basic web UI |
-| **Codebase** | ~25K lines TypeScript | 50K-200K+ lines |
+| **Skills** | 60+ built-in + drop-in YAML/JS creation | Fixed tool set |
+| **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
+| **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend (surprise!) |
+| **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
+| **Personality** | SOUL.md onboarding — your agent knows who you are | Generic "I'm a helpful assistant" |
+| **Codebase** | ~27K lines TypeScript | 50K-200K+ lines |
 
 ---
 
 ## Features
+
+### Deliberative Reasoning
+
+Most agents give you a single-shot answer and call it a day. TITAN actually *thinks*.
+
+When TITAN detects an ambitious request — "figure out how to monetize this homelab," "build me an automated content pipeline," "come up with a strategy for X" — it doesn't just wing it. Instead, it enters a multi-stage deliberation loop:
+
+1. **Analyze** — Examines the request from multiple angles using a reasoning model with high thinking
+2. **Plan** — Generates a structured, dependency-aware execution plan
+3. **Approve** — Presents the plan for your review (because autonomy without oversight is how sci-fi movies start)
+4. **Execute** — Runs each task step-by-step, reporting progress in real-time via WebSocket
+5. **Adapt** — If a step fails, re-analyzes and adjusts the plan
+
+```bash
+/plan figure out how to make money with my homelab    # Force deliberation mode
+/plan status                                            # Check progress
+/plan cancel                                            # Abort mission
+```
+
+Or just ask something ambitious and TITAN will detect it automatically. The detection is configurable — you can tune the complexity threshold, require approval, set max plan steps, or disable it entirely if you prefer your agents impulsive.
 
 ### 20 AI Providers, 70+ Models
 
@@ -88,7 +111,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 55+ Built-in Tools
+### 60+ Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -97,7 +120,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Web** | `web_search`, `web_fetch`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` (Playwright) |
 | **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
 | **GitHub** | `github_repos`, `github_issues`, `github_prs`, `github_commits`, `github_files` |
-| **Email** | `email_send`, `email_search`, `email_read`, `email_list` |
+| **Email** | `email_send`, `email_search`, `email_read`, `email_list` (Gmail OAuth + SMTP) |
 | **Computer Use** | `screenshot`, `mouse_click`, `mouse_move`, `keyboard_type`, `keyboard_press`, `screen_read` |
 | **Data & Documents** | `data_analysis`, `csv_parse`, `csv_stats`, `pdf_read`, `pdf_info` |
 | **Smart Home** | `ha_devices`, `ha_control`, `ha_status` |
@@ -105,6 +128,43 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
+
+### Gmail OAuth Integration
+
+Full Gmail access via OAuth2 — search, read, list, and send email. No extra npm packages. No `googleapis`. Just native `fetch` and the Gmail REST API, the way nature intended.
+
+- **Dashboard OAuth flow** — Click "Connect Google Account" in Settings, complete consent, done
+- **Real Gmail API** — `email_search`, `email_read`, `email_list` use the Gmail REST API with automatic token refresh
+- **Smart sending** — `email_send` tries Gmail API first, falls back to SMTP if OAuth isn't configured
+- **Zero dependencies** — Everything through native `fetch` (we don't believe in `node_modules` bloat)
+
+```bash
+# Or set credentials via environment variables
+export GOOGLE_OAUTH_CLIENT_ID="your-client-id"
+export GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret"
+```
+
+Token storage: `~/.titan/credentials/google.json` — separate from config, because credentials deserve their own apartment.
+
+### SOUL.md — Personality That Persists
+
+TITAN isn't just another "helpful assistant." It has a soul. Literally — it's a file called `SOUL.md`.
+
+During onboarding, TITAN asks who you are and how you want it to behave. Your answers generate a personalized SOUL.md that's injected into every LLM system prompt:
+
+```markdown
+# SOUL.md - Who You Are
+
+## About Your Human
+Music producer and developer. Runs a homelab with 6 machines.
+Prefers direct, no-fluff answers.
+
+## Your Personality
+Technical partner, not a tutor. Think like an architect.
+Suggest better approaches proactively. Be concise.
+```
+
+Edit it anytime from Mission Control Settings → Profile → SOUL.md editor. Because your AI should know that you hate verbose explanations. *(The irony of this README's length is not lost on us.)*
 
 ### Temporal Knowledge Graph
 
@@ -122,7 +182,7 @@ titan graphiti --stats    # View entity/episode counts
 
 ### Multi-Agent System
 
-Run up to 5 concurrent agents, each with its own model and personality.
+Run up to 5 concurrent agents, each with its own model and personality. It's like having a team, except nobody argues about the thermostat.
 
 ```bash
 titan agents --spawn researcher --model openai/gpt-4o
@@ -137,7 +197,7 @@ Two-layer defense against prompt injection attacks:
 - **Heuristic engine** — Detects "ignore previous instructions", system prompt extraction, developer mode exploits
 - **Strict mode** — Keyword density analysis and tail manipulation detection
 
-Combined with the separate **DM pairing** system, which requires new senders to be approved before they can interact with your agent.
+Combined with the separate **DM pairing** system, which requires new senders to be approved before they can interact with your agent. Because not everyone deserves to talk to your AI.
 
 ### Loop Detection & Circuit Breaker
 
@@ -146,7 +206,7 @@ Three detection algorithms prevent runaway tool loops:
 - **Repeat detection** — Same tool, same arguments, called repeatedly
 - **No-progress detection** — Tool returns identical output on consecutive calls
 - **Ping-pong detection** — Alternating tool patterns with no forward progress
-- **Global circuit breaker** — Hard stop after configurable threshold
+- **Global circuit breaker** — Hard stop after configurable threshold (your wallet says thanks)
 
 ### Task Planner
 
@@ -162,6 +222,7 @@ Automatic goal decomposition with dependency-aware execution:
 - Auto-summarizes conversation history to stay within token budgets
 - Routes simple queries to cheaper models automatically
 - Per-session cost tracking with configurable daily budgets
+- Classifies messages as simple/moderate/complex/ambitious for intelligent routing
 
 ### Continuous Learning
 
@@ -177,6 +238,7 @@ TITAN gets smarter the more you use it:
 - Persistent user profile that survives restarts
 - Remembers your name, preferences, work context
 - Personal continuity across all sessions
+- Enhanced by SOUL.md personality definition
 
 ### Encrypted Secrets Vault
 
@@ -194,11 +256,11 @@ HMAC-SHA256 chained JSONL audit trail at `~/.titan/audit.jsonl`. Tracks tool exe
 
 ### Self-Healing Doctor
 
-`titan doctor --fix` automatically diagnoses and repairs common issues: missing directories, invalid configs, broken channels, stale logs, orphaned sessions, and file permissions.
+`titan doctor --fix` automatically diagnoses and repairs common issues: missing directories, invalid configs, broken channels, stale logs, orphaned sessions, and file permissions. It's basically `have you tried turning it off and on again`, but automated.
 
 ### Autopilot Mode
 
-TITAN runs hands-free on a schedule, evaluates a checklist of standing instructions, takes autonomous action, and reports results — inspired by Polsia, OpenClaw, Devin, and CrewAI.
+TITAN runs hands-free on a schedule, evaluates a checklist of standing instructions, takes autonomous action, and reports results.
 
 ```bash
 titan autopilot --init           # Create ~/.titan/AUTOPILOT.md checklist
@@ -236,7 +298,7 @@ The MCP integration adds `skyvern_act`, `skyvern_validate`, credential managemen
 
 ## Providers
 
-TITAN supports 20 AI providers out of the box. Add your API key and go.
+TITAN supports 20 AI providers out of the box. Add your API key and go. Or add all 20. We won't judge.
 
 | Provider | Models | Type |
 |----------|--------|------|
@@ -261,7 +323,7 @@ TITAN supports 20 AI providers out of the box. Add your API key and go.
 | **DeepInfra** | LLaMA 3.3, Mixtral 8x22B, Qwen 2.5, DeepSeek-R1 | Cloud (Fast inference) |
 | **SambaNova** | LLaMA 3.3, DeepSeek-R1 Distill, Qwen 2.5 | Cloud (Fast inference) |
 
-All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider.
+All providers support automatic failover. If one goes down, TITAN seamlessly routes to the next available provider. Your agent stays up even when OpenAI doesn't.
 
 ```bash
 # Configure via CLI
@@ -277,7 +339,7 @@ export OPENROUTER_API_KEY="sk-or-..."
 
 ## Mission Control
 
-A 12-panel dark-mode dashboard at `http://localhost:48420`.
+A 12-panel dark-mode dashboard at `http://localhost:48420`. It's like NASA mission control, but for your AI agent, and with fewer rocket explosions.
 
 | Panel | Description |
 |-------|-------------|
@@ -293,6 +355,15 @@ A 12-panel dark-mode dashboard at `http://localhost:48420`.
 | **Security** | Audit log and DM pairing management |
 | **Logs** | Color-coded real-time log viewer with filtering |
 | **Memory Graph** | Visual force-directed graph of entities and relationships |
+
+**New in Settings:**
+- **Providers tab** — Google OAuth connection (connect/disconnect with one click, manage client ID/secret)
+- **Profile tab** — SOUL.md live editor (edit your agent's personality without touching the filesystem)
+
+**New in Onboarding:**
+- 4-step wizard: Profile → Soul → Provider → Autonomy
+- Step 2 asks about you and how you want TITAN to behave
+- Generates a personalized SOUL.md automatically
 
 All settings are editable live without restarting the gateway.
 
@@ -383,7 +454,7 @@ export default {
 titan skills --create "a tool that converts CSV files to JSON"
 ```
 
-TITAN writes, compiles, and hot-loads the skill instantly.
+TITAN writes, compiles, and hot-loads the skill instantly. Because why write code when you can make your AI write code?
 
 ### Skill Auto-Generation
 
@@ -422,6 +493,7 @@ Reusable multi-step workflows triggered by slash commands.
 /explain         # Explain code in plain English
 /brainstorm      # Generate ideas on a topic
 /debug           # Debug errors with guided analysis
+/plan            # Deliberative reasoning with plan approval
 ```
 
 Recipes support parameterized prompts (`{{variable}}`), optional tool-direct steps, and confirmation gates.
@@ -432,7 +504,7 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 
 | Command | Description |
 |---------|-------------|
-| `titan onboard` | Interactive setup wizard |
+| `titan onboard` | Interactive setup wizard (now with soul onboarding) |
 | `titan gateway` | Start Mission Control |
 | `titan agent -m "..."` | Send a message to your agent |
 | `titan send --to ch:id -m "..."` | Message a specific channel |
@@ -477,6 +549,8 @@ All state lives in `~/.titan/`:
 | `vault.enc` | Encrypted secrets vault |
 | `audit.jsonl` | Tamper-evident audit trail |
 | `node-id` | Mesh networking node identity |
+| `credentials/` | OAuth tokens (Google, etc.) |
+| `workspace/SOUL.md` | Agent personality definition |
 | `logs/` | Daily log files |
 | `plans/` | Persistent task planner state |
 | `skills/` | Custom user skills (YAML, JS) |
@@ -488,7 +562,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (2,850+ tests, 69 files)
+npm run test           # vitest (2,860+ tests, 70 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -499,17 +573,18 @@ npm run test:coverage  # Coverage report (78%+ with 55% threshold)
 
 ```
 src/
-  agent/        Core agent loop, multi-agent, swarm, planner, autonomy
+  agent/        Core agent loop, multi-agent, swarm, planner, autonomy, deliberation, cost optimizer
+  auth/         OAuth token managers (Google)
   channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       55+ built-in tools + user skill loader
+  skills/       60+ built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
-  gateway/      HTTP/WS server + Mission Control dashboard
+  gateway/      HTTP/WS server + Mission Control dashboard + OAuth endpoints
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
   recipes/      Workflow engine + persistence
   mcp/          Model Context Protocol client
-  config/       Zod schema + loader
+  config/       Zod schema + loader (with deliberation + OAuth config)
   cli/          Commander.js CLI (16 commands), self-healing doctor
   utils/        Constants, logger, helpers
 ```
@@ -524,15 +599,18 @@ src/
 | `supervised` | Asks before dangerous operations (default) |
 | `locked` | Asks permission for every tool call |
 
+Email tools are classified by risk: `email_search`, `email_read`, `email_list` are safe; `email_send` is moderate (because sending emails on someone's behalf without asking is how you lose friends).
+
 Configure via `titan config set autonomy.mode supervised` or Mission Control Settings.
 
 ---
 
 ## Roadmap
 
-See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are complete; Phase 5 (competitive dominance) is in progress.
+See [TASKS.md](TASKS.md) for the full development roadmap.
 
 ### Recently Shipped (v2026.5.x)
+- **v2026.5.11**: Deliberative Reasoning (analyze→plan→approve→execute), Gmail OAuth integration (native fetch, zero deps), Soul Onboarding (4-step wizard with SOUL.md generation), SOUL.md live editor in dashboard, `/plan` slash command, ambitious message complexity detection, Google OAuth dashboard controls, 2,860+ tests
 - **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction (<8B models get 7 core tools), Ollama `think:false`, configurable stall detector with GPU auto-detection, `titan config [key]`, slash commands via REST API, config validation, graph entity extraction hardening, concurrent LLM request limiting, 2,850+ tests
 - **v2026.5.8**: Ollama model guide (`docs/MODELS.md`), 147→0 ESLint warnings, `local` model alias, 2,830+ tests
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,600+ tests
@@ -566,13 +644,17 @@ See [TASKS.md](TASKS.md) for the full development roadmap. Phases 1-4.5 are comp
 4. Push (`git push origin feat/my-feature`)
 5. Open a Pull Request
 
+We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
+
 ---
 
 ## The Future of TITAN
 
 TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, plugin marketplace, team mode with RBAC, and much more.
 
-This is just the beginning. If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
+It started as "what if I made an AI agent that actually does stuff" and evolved into a 27K-line TypeScript framework with 20 providers, 60+ tools, deliberative reasoning, Gmail OAuth, mesh networking, and a personality system. We're not entirely sure when it became sentient, but the SOUL.md file is a good suspect.
+
+If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
 
 Star the repo, join the journey, and help shape what autonomous AI agents look like.
 

@@ -55,6 +55,14 @@ vi.mock('../src/providers/router.js', () => ({
     isModelAllowed: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock('../src/agent/deliberation.js', () => ({
+    getDeliberation: vi.fn().mockReturnValue(undefined),
+    cancelDeliberation: vi.fn().mockReturnValue(false),
+    analyze: vi.fn(),
+    generatePlan: vi.fn(),
+    formatPlanForApproval: vi.fn().mockReturnValue('mock plan'),
+}));
+
 import { registerSlashCommand, handleSlashCommand, initSlashCommands } from '../src/gateway/slashCommands.js';
 
 describe('Slash Commands', () => {

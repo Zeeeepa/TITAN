@@ -16,6 +16,7 @@ import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimi
 import { getCachedResponse, setCachedResponse } from './responseCache.js';
 import { buildSmartContext } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
+import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanForApproval, formatPlanResults } from './deliberation.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import logger from '../utils/logger.js';
@@ -156,6 +157,55 @@ export async function processMessage(
     const session = getOrCreateSession(channel, userId);
 
     logger.info(COMPONENT, `Processing message in session ${session.id} (${channel}/${userId})`);
+
+    // ── Deliberation intercept ─────────────────────────────────
+    const existingDelib = getDeliberation(session.id);
+
+    // Handle approval/cancellation of pending deliberation
+    if (existingDelib?.stage === 'awaiting_approval') {
+        const lower = message.trim().toLowerCase();
+        if (lower === 'yes' || lower === 'y' || lower === 'approve') {
+            addMessage(session, 'user', message);
+            const state = handleApproval(session.id, true)!;
+            const updatedState = await executePlan(state, config);
+            const content = formatPlanResults(updatedState);
+            addMessage(session, 'assistant', content, { model: config.agent.model, tokenCount: 0 });
+            return { content, sessionId: session.id, toolsUsed: ['deliberation'], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
+        } else if (lower === 'no' || lower === 'n' || lower === 'cancel') {
+            addMessage(session, 'user', message);
+            handleApproval(session.id, false);
+            const content = 'Plan cancelled. Let me know if you want to try a different approach.';
+            addMessage(session, 'assistant', content, { model: config.agent.model, tokenCount: 0 });
+            return { content, sessionId: session.id, toolsUsed: [], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
+        }
+        // If neither yes/no, treat as a modification — cancel and fall through to normal processing
+        cancelDeliberation(session.id);
+    }
+
+    // Don't start a new deliberation if one is already executing
+    if (existingDelib?.stage === 'executing') {
+        // Fall through to normal processing
+    } else if (shouldDeliberate(message, config)) {
+        addMessage(session, 'user', message);
+        const state = await analyze(message, session.id, config);
+        if (state.stage === 'planning') {
+            const planned = await generatePlan(state, config);
+            if (planned.stage === 'awaiting_approval' && planned.planMarkdown) {
+                const content = planned.planMarkdown;
+                addMessage(session, 'assistant', content, { model: config.agent.model, tokenCount: 0 });
+                return { content, sessionId: session.id, toolsUsed: ['deliberation'], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
+            } else if (planned.stage === 'executing') {
+                const executed = await executePlan(planned, config);
+                const content = formatPlanResults(executed);
+                addMessage(session, 'assistant', content, { model: config.agent.model, tokenCount: 0 });
+                return { content, sessionId: session.id, toolsUsed: ['deliberation'], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
+            } else {
+                // Planning failed, fall through to normal processing
+                const content = `I tried to create a deliberative plan but it didn't work out: ${planned.error || 'unknown error'}. Let me try answering directly instead.`;
+                logger.warn(COMPONENT, `Deliberation failed, falling through: ${planned.error}`);
+            }
+        }
+    }
 
     // Add user message to session history
     addMessage(session, 'user', message);

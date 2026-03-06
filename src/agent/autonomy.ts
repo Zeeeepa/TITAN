@@ -36,6 +36,10 @@ const TOOL_RISK_MAP: Record<string, RiskLevel> = {
     process_poll: 'safe',
     process_log: 'safe',
     plan_status: 'safe',
+    plan_task: 'safe',
+    email_search: 'safe',
+    email_read: 'safe',
+    email_list: 'safe',
 
     // Moderate — writes data but generally safe
     write_file: 'moderate',
@@ -50,6 +54,7 @@ const TOOL_RISK_MAP: Record<string, RiskLevel> = {
     browser_screenshot: 'moderate',
     cron_create: 'moderate',
     cron_remove: 'moderate',
+    email_send: 'moderate',
 
     // Dangerous — system-level, destructive, or network-affecting
     exec: 'dangerous',

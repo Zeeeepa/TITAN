@@ -126,6 +126,30 @@ export const TunnelConfigSchema = z.object({
     hostname: z.string().optional(),
 });
 
+export const DeliberationConfigSchema = z.object({
+    /** Enable deliberative reasoning for complex requests */
+    enabled: z.boolean().default(true),
+    /** Auto-detect ambitious requests that need deliberation */
+    autoDetect: z.boolean().default(true),
+    /** Model override for reasoning phase (falls back to agent.modelAliases.reasoning) */
+    reasoningModel: z.string().optional(),
+    /** Require user approval before executing a plan */
+    approvalRequired: z.boolean().default(true),
+    /** Maximum number of steps in a generated plan */
+    maxPlanSteps: z.number().default(10),
+});
+
+export const OAuthConfigSchema = z.object({
+    google: z.object({
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(),
+        scopes: z.array(z.string()).default([
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/gmail.readonly',
+        ]),
+    }).default({}),
+});
+
 export const TitanConfigSchema = z.object({
     agent: AgentConfigSchema.default({}),
     providers: z.object({
@@ -206,6 +230,8 @@ export const TitanConfigSchema = z.object({
         }).optional(),
     }).default({}),
     tunnel: TunnelConfigSchema.default({}),
+    deliberation: DeliberationConfigSchema.default({}),
+    oauth: OAuthConfigSchema.default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
         mode: z.enum(['autonomous', 'supervised', 'locked']).default('supervised'),

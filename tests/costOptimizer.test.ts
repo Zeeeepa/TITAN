@@ -85,8 +85,8 @@ describe('CostOptimizer', () => {
             expect(classifyComplexity('Debug and fix the broken authentication code in the server')).toBe('complex');
         });
 
-        it('classifies "plan" and "strategy" as complex (2 patterns)', () => {
-            expect(classifyComplexity('Create a plan and strategy roadmap for the migration project')).toBe('complex');
+        it('classifies strategic planning as ambitious', () => {
+            expect(classifyComplexity('Create a plan and strategy roadmap for the migration project')).toBe('ambitious');
         });
 
         it('classifies very long messages (>200 chars) as complex', () => {

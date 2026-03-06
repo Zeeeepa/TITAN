@@ -41,6 +41,13 @@ const COMPLEX_PATTERNS = [
     /\bcode\b|\bscript\b|\bfunction\b|\bclass\b|\bapi\b/i,
 ];
 
+const AMBITIOUS_PATTERNS = [
+    /\b(figure out|come up with|make money|monetize|strategy|build a system)\b/i,
+    /\b(step by step|automate|end.to.end|full pipeline|from scratch)\b/i,
+    /\b(business plan|launch|scale|optimize everything|overhaul)\b/i,
+    /\b(how (can|do|should) (i|we) .{20,})\b/i,
+];
+
 const SIMPLE_PATTERNS = [
     /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|sure|got it)[.!?]?$/i,
     /^what (time|day|date)/i,
@@ -48,11 +55,13 @@ const SIMPLE_PATTERNS = [
     /^.{1,20}$/, // very short messages are usually simple
 ];
 
-export type MessageComplexity = 'simple' | 'moderate' | 'complex';
+export type MessageComplexity = 'simple' | 'moderate' | 'complex' | 'ambitious';
 
 export function classifyComplexity(message: string): MessageComplexity {
     const trimmed = message.trim();
     if (SIMPLE_PATTERNS.some((p) => p.test(trimmed))) return 'simple';
+    const ambitiousMatches = AMBITIOUS_PATTERNS.filter((p) => p.test(trimmed)).length;
+    if (ambitiousMatches >= 1 && trimmed.length > 30) return 'ambitious';
     const complexMatches = COMPLEX_PATTERNS.filter((p) => p.test(trimmed)).length;
     if (complexMatches >= 2 || trimmed.length > 200) return 'complex';
     return 'moderate';

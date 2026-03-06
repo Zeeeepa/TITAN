@@ -137,6 +137,18 @@ vi.mock('../src/memory/graph.js', () => ({
     getGraphContext: mockGetGraphContext,
 }));
 
+vi.mock('../src/agent/deliberation.js', () => ({
+    shouldDeliberate: vi.fn().mockReturnValue(false),
+    analyze: vi.fn(),
+    generatePlan: vi.fn(),
+    executePlan: vi.fn(),
+    handleApproval: vi.fn(),
+    getDeliberation: vi.fn().mockReturnValue(undefined),
+    cancelDeliberation: vi.fn(),
+    formatPlanForApproval: vi.fn(),
+    formatPlanResults: vi.fn(),
+}));
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function makeDefaultConfig() {
@@ -151,6 +163,7 @@ function makeDefaultConfig() {
         },
         gateway: { port: 48420 },
         security: { sandboxMode: 'host' },
+        deliberation: { enabled: false, autoDetect: false, approvalRequired: true, maxPlanSteps: 10 },
     };
 }
 

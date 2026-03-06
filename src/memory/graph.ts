@@ -84,9 +84,17 @@ function loadGraph(): void {
                 relation: (e.relation as string) || (e.label as string) || 'related',
                 createdAt: (e.createdAt as string) || new Date().toISOString(),
             }));
+            // Normalize entities to ensure all required fields exist
+            const entities = (Array.isArray(parsed.entities) ? parsed.entities : []).map(
+                (e: Record<string, unknown>) => ({
+                    ...e,
+                    aliases: Array.isArray(e.aliases) ? e.aliases : [],
+                    summary: (e.summary as string) || '',
+                })
+            );
             graph = {
                 episodes: Array.isArray(parsed.episodes) ? parsed.episodes : [],
-                entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+                entities,
                 edges,
             };
         } catch (e) {
@@ -181,7 +189,7 @@ function findOrCreateEntity(name: string, type: string, facts: string[]): Entity
     // Search by name and aliases
     const existing = graph.entities.find((e) => {
         if (e.name.toLowerCase() === nameLower) return true;
-        if (e.aliases.some((a) => a.toLowerCase() === nameLower)) return true;
+        if (Array.isArray(e.aliases) && e.aliases.some((a) => a.toLowerCase() === nameLower)) return true;
         return false;
     });
 
@@ -302,7 +310,7 @@ export function getEntity(name: string): Entity | null {
     const nameLower = name.toLowerCase().trim();
     return graph.entities.find((e) =>
         e.name.toLowerCase() === nameLower ||
-        e.aliases.some((a) => a.toLowerCase() === nameLower)
+        (Array.isArray(e.aliases) && e.aliases.some((a) => a.toLowerCase() === nameLower))
     ) || null;
 }
 

@@ -122,6 +122,7 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
             messages: [{ role: 'user', content: prompt }],
             maxTokens: 512,
             temperature: 0.1,
+            thinking: false,
         });
 
         // Track LLM costs for entity extraction so cost optimizer sees them
@@ -136,7 +137,10 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
 
         const text = response.content || '';
         const match = text.match(/\[[\s\S]*\]/);
-        if (!match) return [];
+        if (!match) {
+            logger.debug(COMPONENT, `No JSON array found in extraction response (${text.length} chars)`);
+            return [];
+        }
 
         // Try to repair common JSON issues from small models
         const jsonStr = match[0]

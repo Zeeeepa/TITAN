@@ -170,10 +170,15 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
 
         try {
             const parsed = JSON.parse(jsonStr);
-            if (!Array.isArray(parsed)) return [];
-            return parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
-        } catch {
-            logger.debug(COMPONENT, 'Entity extraction JSON repair failed, skipping');
+            if (!Array.isArray(parsed)) {
+                logger.warn(COMPONENT, `Extraction parsed but not array: ${typeof parsed}`);
+                return [];
+            }
+            const filtered = parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
+            logger.info(COMPONENT, `Extraction parsed ${parsed.length} items, ${filtered.length} valid entities`);
+            return filtered;
+        } catch (parseErr) {
+            logger.warn(COMPONENT, `Entity extraction JSON parse failed: ${(parseErr as Error).message}, raw: ${jsonStr.slice(0, 200)}`);
             return [];
         }
     } catch (err) {

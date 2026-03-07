@@ -16,6 +16,12 @@ const peerConnections = new Map<string, WebSocket>();
 const pendingRequests = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
 const reconnectState = new Map<string, { attempts: number }>();
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+let activeRemoteTasks = 0;
+
+/** Get current number of active remote tasks being processed */
+export function getActiveRemoteTaskCount(): number {
+    return activeRemoteTasks;
+}
 
 /** Mesh message format */
 export interface MeshMessage {
@@ -227,7 +233,9 @@ export function handleMeshWebSocket(
             }
 
             if (msg.action === 'task_request' && onTaskRequest && msg.requestId) {
+                activeRemoteTasks++;
                 onTaskRequest(msg, (payload) => {
+                    activeRemoteTasks = Math.max(0, activeRemoteTasks - 1);
                     const reply: MeshMessage = {
                         type: 'mesh',
                         action: 'task_response',
@@ -261,14 +269,18 @@ export function handleMeshWebSocket(
 }
 
 /** Start sending periodic heartbeats to all connected peers */
-export function startHeartbeat(localNodeId: string, payload?: Record<string, unknown>): void {
+export function startHeartbeat(
+    localNodeId: string,
+    payload?: Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>),
+): void {
     if (heartbeatInterval) return; // Already running
-    heartbeatInterval = setInterval(() => {
+    heartbeatInterval = setInterval(async () => {
+        const resolved = typeof payload === 'function' ? await payload() : (payload || {});
         const msg: MeshMessage = {
             type: 'mesh',
             action: 'heartbeat',
             fromNodeId: localNodeId,
-            payload: payload || {},
+            payload: resolved,
             timestamp: new Date().toISOString(),
         };
         broadcastToMesh(msg);

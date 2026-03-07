@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 78 tools. 3,168 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 86 tools. 3,171 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-78-orange" alt="78 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-86-orange" alt="78 Tools"/></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 78 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
+| **Skills** | 86 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
@@ -111,7 +111,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 78 Built-in Tools
+### 86 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -306,7 +306,7 @@ The MCP integration adds `skyvern_act`, `skyvern_validate`, credential managemen
 
 ## Providers
 
-TITAN supports 20 AI providers out of the box. Add your API key and go. Or add all 21. We won't judge.
+TITAN supports 21 AI providers out of the box. Add your API key and go. Or add all 21. We won't judge.
 
 | Provider | Models | Type |
 |----------|--------|------|
@@ -379,26 +379,74 @@ All settings are editable live without restarting the gateway.
 
 ## Mesh Networking
 
-Deploy TITAN across multiple computers with zero configuration. Machines auto-discover each other and share models.
+Deploy TITAN across up to **5 computers** working in tandem. Machines auto-discover each other on the LAN and ask you before connecting — no surprise connections.
 
-### LAN Discovery (mDNS)
-
-Machines on the same network find each other automatically via Bonjour/mDNS.
+### Quick Start
 
 ```bash
-# On machine 1
-titan mesh --init        # Generates a shared secret
+# On machine 1 — initialize mesh and get a secret
+titan mesh --init
 
-# On machine 2
-titan mesh --join "your-secret-here"
+# On machine 2 — join with the secret
+titan mesh --join "TITAN-xxxx-xxxx-xxxx"
 
-# Check connectivity
-titan mesh --status
+# Both machines start their gateways
+titan gateway
+```
+
+When machine 2 discovers machine 1 (via mDNS), you'll see a notification in the dashboard and CLI:
+
+```
+New TITAN node discovered: titan-pc (192.168.1.100:48420) — approve via dashboard or CLI
+```
+
+### Approve or Reject Peers
+
+Discovered peers wait in a pending queue until you approve them:
+
+```bash
+# See who's waiting
+titan mesh --pending
+
+# Approve a peer (starts WebSocket connection + model sharing)
+titan mesh --approve <nodeId>
+
+# Reject a peer
+titan mesh --reject <nodeId>
+
+# Disconnect and revoke a previously approved peer
+titan mesh --revoke <nodeId>
+```
+
+Or use the dashboard API:
+```bash
+curl -X POST localhost:48420/api/mesh/approve/<nodeId>
+curl -X POST localhost:48420/api/mesh/reject/<nodeId>
+```
+
+Approved peers are remembered across restarts (`~/.titan/approved-peers.json`).
+
+### Auto-Approve Mode
+
+If you trust your LAN and want peers to connect automatically:
+
+```bash
+titan mesh --auto-approve    # Toggle on/off
+```
+
+Or in `~/.titan/titan.json`:
+```json
+{
+  "mesh": {
+    "enabled": true,
+    "autoApprove": true
+  }
+}
 ```
 
 ### Tailscale Integration
 
-If you run Tailscale, TITAN automatically discovers peers on your VPN — works across networks, data centers, and cloud instances.
+If you run Tailscale, TITAN discovers peers on your VPN — works across networks, data centers, and cloud instances.
 
 ```json
 {
@@ -411,7 +459,34 @@ If you run Tailscale, TITAN automatically discovers peers on your VPN — works 
 
 ### Remote Model Routing
 
-When a requested model isn't available locally, TITAN automatically routes to a peer that has it. Load-balanced across all available nodes.
+When a requested model isn't available locally, TITAN automatically routes to a mesh peer that has it. Load-balanced across all available nodes.
+
+**Example:** Your Titan PC has an RTX 5090 running `ollama/llama3.3:70b`. Your mini PC has cloud API keys. Either machine can use models from the other — the router checks mesh peers after a local provider fails.
+
+### Configuration
+
+```json
+{
+  "mesh": {
+    "enabled": true,
+    "secret": "TITAN-xxxx-xxxx-xxxx",
+    "mdns": true,
+    "tailscale": true,
+    "maxPeers": 5,
+    "autoApprove": false,
+    "allowRemoteModels": true,
+    "maxRemoteTasks": 3,
+    "staticPeers": []
+  }
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `maxPeers` | 5 | Maximum connected peers |
+| `autoApprove` | false | Skip approval for discovered peers |
+| `allowRemoteModels` | true | Let other nodes use this node's models |
+| `maxRemoteTasks` | 3 | Max concurrent tasks from remote peers |
 
 ---
 
@@ -522,7 +597,12 @@ Recipes support parameterized prompts (`{{variable}}`), optional tool-direct ste
 | `titan model --alias <name>=<model>` | Create a model alias |
 | `titan agents` | Multi-agent management |
 | `titan mesh --init` | Initialize mesh networking |
-| `titan mesh --status` | View mesh peers and models |
+| `titan mesh --status` | View mesh peers, pending, and models |
+| `titan mesh --pending` | Show peers waiting for approval |
+| `titan mesh --approve <id>` | Approve a discovered peer |
+| `titan mesh --reject <id>` | Reject a pending peer |
+| `titan mesh --revoke <id>` | Disconnect an approved peer |
+| `titan mesh --auto-approve` | Toggle auto-approve mode |
 | `titan skills` | List installed skills |
 | `titan skills --create "..."` | Generate a skill with AI |
 | `titan pairing` | Manage DM access control |
@@ -570,7 +650,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (3,168 tests, 81 files)
+npm run test           # vitest (3,171 tests, 81 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -586,7 +666,7 @@ src/
   channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       78 built-in tools + user skill loader
+  skills/       86 built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard + OAuth endpoints
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
@@ -618,7 +698,8 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap.
 
 ### Recently Shipped (v2026.5.x)
-- **v2026.5.14**: Income Automation Skills (income_tracker, freelance_monitor, content_publisher, lead_scorer — 16 new tools), Autopilot Playbook templates, per-skill enable/disable toggle in Mission Control, skill-to-tool mapping, 3,168 tests
+- **v2026.5.17**: GitHub-hosted Skills Marketplace ([Djtony707/titan-skills](https://github.com/Djtony707/titan-skills) — 12 curated skills), dynamic model dropdown showing all 21 providers, marketplace REST API, stale docs cleanup, 3,171 tests
+- **v2026.5.14**: Income Automation Skills (income_tracker, freelance_monitor, content_publisher, lead_scorer — 16 new tools), Autopilot Playbook templates, per-skill enable/disable toggle in Mission Control, skill-to-tool mapping
 - **v2026.5.13**: Kimi K2.5 provider, memory flush hook, web_read + web_act tools for local-LLM browsing
 - **v2026.5.11**: Deliberative Reasoning (analyze→plan→approve→execute), Gmail OAuth integration (native fetch, zero deps), Soul Onboarding (4-step wizard with SOUL.md generation), SOUL.md live editor in dashboard, `/plan` slash command, ambitious message complexity detection, Google OAuth dashboard controls, 2,860+ tests
 - **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction (<8B models get 7 core tools), Ollama `think:false`, configurable stall detector with GPU auto-detection, `titan config [key]`, slash commands via REST API, config validation, graph entity extraction hardening, concurrent LLM request limiting, 2,850+ tests
@@ -641,7 +722,6 @@ See [TASKS.md](TASKS.md) for the full development roadmap.
 ### Upcoming
 - **Vector Search & RAG Pipeline** — SQLite FTS5 + embeddings for semantic memory search
 - **Code Interpreter** — Sandboxed JavaScript/Python execution for data analysis
-- **Plugin Marketplace** — Community skill sharing and discovery
 - **Team Mode & RBAC** — Role-based access control for multi-user deployments
 
 ---
@@ -662,7 +742,7 @@ We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
 
 TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, plugin marketplace, team mode with RBAC, and much more.
 
-It started as "what if I made an AI agent that actually does stuff" and evolved into a 27K-line TypeScript framework with 21 providers, 78 tools, deliberative reasoning, Gmail OAuth, mesh networking, and a personality system. We're not entirely sure when it became sentient, but the SOUL.md file is a good suspect.
+It started as "what if I made an AI agent that actually does stuff" and evolved into a 27K-line TypeScript framework with 21 providers, 86 tools, deliberative reasoning, Gmail OAuth, mesh networking, and a personality system. We're not entirely sure when it became sentient, but the SOUL.md file is a good suspect.
 
 If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
 

@@ -2,14 +2,22 @@
  * TITAN — Mesh Peer Discovery
  * Auto-discovers TITAN instances on the local network (mDNS/Bonjour)
  * and across Tailscale VPN networks.
+ *
+ * Discovery is two-stage:
+ *   1. Discovered peers land in a "pending" queue
+ *   2. User approves (or autoApprove is on) → peer moves to "approved" and WebSocket connects
+ *   3. Approved peer IDs are persisted to ~/.titan/approved-peers.json for restarts
  */
 import { execFileSync } from 'child_process';
 import { hostname } from 'os';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import logger from '../utils/logger.js';
-import { TITAN_VERSION } from '../utils/constants.js';
+import { TITAN_HOME, TITAN_VERSION } from '../utils/constants.js';
 
 const COMPONENT = 'MeshDiscovery';
 const PROBE_TIMEOUT = 2000;
+const APPROVED_PEERS_PATH = join(TITAN_HOME, 'approved-peers.json');
 
 export interface MeshPeer {
     nodeId: string;
@@ -42,12 +50,50 @@ interface BonjourService {
     addresses?: string[];
 }
 
-// ── Peer store ─────────────────────────────────────────────────
-const peers = new Map<string, MeshPeer>();
+// ── Peer stores ─────────────────────────────────────────────────
+const peers = new Map<string, MeshPeer>();          // Approved & connected
+const pendingPeers = new Map<string, MeshPeer>();   // Discovered, awaiting approval
 let bonjourInstance: BonjourInstance | null = null;
 let bonjourBrowser: BonjourBrowser | null = null;
 let tailscaleInterval: ReturnType<typeof setInterval> | null = null;
 let peerPruneInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Callback fired when a new peer is discovered (for dashboard notifications) */
+let onPeerDiscovered: ((peer: MeshPeer) => void) | null = null;
+
+/** Callback to initiate WebSocket connection to an approved peer */
+let connectApprovedPeer: ((peer: MeshPeer) => void) | null = null;
+
+// ── Persisted approved peer IDs ─────────────────────────────────
+let approvedNodeIds: Set<string> = new Set();
+
+function loadApprovedPeers(): void {
+    try {
+        mkdirSync(TITAN_HOME, { recursive: true });
+        if (existsSync(APPROVED_PEERS_PATH)) {
+            const data = JSON.parse(readFileSync(APPROVED_PEERS_PATH, 'utf-8'));
+            approvedNodeIds = new Set(Array.isArray(data) ? data : []);
+        }
+    } catch {
+        approvedNodeIds = new Set();
+    }
+}
+
+function saveApprovedPeers(): void {
+    try {
+        mkdirSync(TITAN_HOME, { recursive: true });
+        writeFileSync(APPROVED_PEERS_PATH, JSON.stringify([...approvedNodeIds], null, 2), 'utf-8');
+    } catch (err) {
+        logger.warn(COMPONENT, `Failed to save approved peers: ${(err as Error).message}`);
+    }
+}
+
+/** Check if a peer is already approved (persisted) */
+export function isPeerApproved(nodeId: string): boolean {
+    return approvedNodeIds.has(nodeId);
+}
+
+// ── Public API ──────────────────────────────────────────────────
 
 export function getPeers(): MeshPeer[] {
     return Array.from(peers.values());
@@ -61,26 +107,110 @@ export function removePeer(nodeId: string): void {
     peers.delete(nodeId);
 }
 
-/** Register a peer (from any discovery source) */
-export function registerPeer(peer: MeshPeer): void {
+export function getPendingPeers(): MeshPeer[] {
+    return Array.from(pendingPeers.values());
+}
+
+/** Set callback for when new peers are discovered (null to disable approval flow) */
+export function setOnPeerDiscovered(cb: ((peer: MeshPeer) => void) | null): void {
+    onPeerDiscovered = cb;
+}
+
+/** Set callback for initiating WebSocket connections */
+export function setConnectApprovedPeer(cb: ((peer: MeshPeer) => void) | null): void {
+    connectApprovedPeer = cb;
+}
+
+/** Register a peer (from any discovery source). Routes through approval. */
+export function registerPeer(peer: MeshPeer, options?: { skipApproval?: boolean }): void {
+    // Already an active approved peer — just update
     const existing = peers.get(peer.nodeId);
     if (existing) {
-        // Merge — update mutable fields
         existing.models = peer.models;
         existing.agentCount = peer.agentCount;
         existing.load = peer.load;
         existing.lastSeen = Date.now();
         existing.version = peer.version;
-    } else {
+        return;
+    }
+
+    // Skip approval for: already-approved peers, manual adds, explicit skip,
+    // or when no approval listener is registered (no gateway/UI watching)
+    if (options?.skipApproval || approvedNodeIds.has(peer.nodeId) || !onPeerDiscovered) {
         peer.lastSeen = Date.now();
         peers.set(peer.nodeId, peer);
         logger.info(COMPONENT, `New peer: ${peer.hostname} (${peer.address}:${peer.port}) via ${peer.discoveredVia}`);
+        return;
     }
+
+    // New discovery — add to pending (don't connect yet)
+    if (!pendingPeers.has(peer.nodeId)) {
+        peer.lastSeen = Date.now();
+        pendingPeers.set(peer.nodeId, peer);
+        logger.info(COMPONENT, `New peer discovered: ${peer.hostname} (${peer.address}:${peer.port}) — awaiting approval`);
+        onPeerDiscovered(peer);
+    } else {
+        // Update pending peer info
+        const p = pendingPeers.get(peer.nodeId)!;
+        p.models = peer.models;
+        p.lastSeen = Date.now();
+    }
+}
+
+/** Set the max peers limit (called from server on startup) */
+let maxPeersLimit = 5;
+export function setMaxPeers(n: number): void {
+    maxPeersLimit = n;
+}
+
+/** Approve a pending peer — persist, move to active, initiate connection */
+export function approvePeer(nodeId: string): MeshPeer | null {
+    const peer = pendingPeers.get(nodeId);
+    if (!peer) return null;
+
+    if (peers.size >= maxPeersLimit) {
+        logger.warn(COMPONENT, `Cannot approve peer — at max capacity (${maxPeersLimit} peers)`);
+        return null;
+    }
+
+    pendingPeers.delete(nodeId);
+    approvedNodeIds.add(nodeId);
+    saveApprovedPeers();
+
+    peer.lastSeen = Date.now();
+    peers.set(nodeId, peer);
+    logger.info(COMPONENT, `Peer approved: ${peer.hostname} (${peer.nodeId.slice(0, 8)}...)`);
+
+    // Trigger WebSocket connection
+    if (connectApprovedPeer) connectApprovedPeer(peer);
+
+    return peer;
+}
+
+/** Reject a pending peer — remove from pending */
+export function rejectPeer(nodeId: string): boolean {
+    return pendingPeers.delete(nodeId);
+}
+
+/** Revoke a previously approved peer — disconnect and remove from trusted list */
+export function revokePeer(nodeId: string): boolean {
+    const removed = peers.delete(nodeId);
+    approvedNodeIds.delete(nodeId);
+    saveApprovedPeers();
+    if (removed) {
+        logger.info(COMPONENT, `Peer revoked: ${nodeId.slice(0, 8)}...`);
+    }
+    return removed;
+}
+
+/** Get count of approved (active) peers */
+export function getApprovedPeerCount(): number {
+    return peers.size;
 }
 
 // ── mDNS / Bonjour ─────────────────────────────────────────────
 
-async function startMdns(nodeId: string, port: number): Promise<void> {
+async function startMdns(nodeId: string, port: number, autoApprove: boolean): Promise<void> {
     try {
         const { Bonjour } = await import('bonjour-service');
         bonjourInstance = new Bonjour() as unknown as BonjourInstance;
@@ -109,7 +239,7 @@ async function startMdns(nodeId: string, port: number): Promise<void> {
             // Probe the peer to get its capabilities
             const info = await probePeer(address, service.port);
             if (info) {
-                registerPeer({
+                const peer: MeshPeer = {
                     nodeId: peerNodeId,
                     hostname: service.txt?.hostname || service.name,
                     address,
@@ -120,13 +250,21 @@ async function startMdns(nodeId: string, port: number): Promise<void> {
                     load: info.load || 0,
                     discoveredVia: 'mdns',
                     lastSeen: Date.now(),
-                });
+                };
+                registerPeer(peer);
+                // Auto-approve if configured or previously approved
+                if (autoApprove || approvedNodeIds.has(peerNodeId)) {
+                    if (pendingPeers.has(peerNodeId)) approvePeer(peerNodeId);
+                }
             }
         });
 
         bonjourBrowser.on('down', (service: BonjourService) => {
             const peerNodeId = service.txt?.nodeId;
-            if (peerNodeId) removePeer(peerNodeId);
+            if (peerNodeId) {
+                removePeer(peerNodeId);
+                pendingPeers.delete(peerNodeId);
+            }
         });
 
         logger.info(COMPONENT, 'mDNS discovery active');
@@ -157,7 +295,7 @@ function getTailscalePeers(): TailscalePeer[] {
     }
 }
 
-async function scanTailscalePeers(nodeId: string, port: number): Promise<void> {
+async function scanTailscalePeers(nodeId: string, port: number, autoApprove: boolean): Promise<void> {
     const tsPeers = getTailscalePeers();
     if (tsPeers.length === 0) return;
 
@@ -169,7 +307,7 @@ async function scanTailscalePeers(nodeId: string, port: number): Promise<void> {
 
         const info = await probePeer(ip, port);
         if (info && info.nodeId && info.nodeId !== nodeId) {
-            registerPeer({
+            const peer: MeshPeer = {
                 nodeId: info.nodeId,
                 hostname: tsPeer.HostName,
                 address: ip,
@@ -180,7 +318,11 @@ async function scanTailscalePeers(nodeId: string, port: number): Promise<void> {
                 load: info.load || 0,
                 discoveredVia: 'tailscale',
                 lastSeen: Date.now(),
-            });
+            };
+            registerPeer(peer);
+            if (autoApprove || approvedNodeIds.has(info.nodeId)) {
+                if (pendingPeers.has(info.nodeId)) approvePeer(info.nodeId);
+            }
         }
     }
 }
@@ -214,6 +356,7 @@ async function probePeer(address: string, port: number): Promise<ProbeResult | n
 export async function addManualPeer(address: string, port: number, _nodeId: string): Promise<boolean> {
     const info = await probePeer(address, port);
     if (!info) return false;
+    // Manual adds are auto-approved
     registerPeer({
         nodeId: info.nodeId,
         hostname: address,
@@ -225,7 +368,13 @@ export async function addManualPeer(address: string, port: number, _nodeId: stri
         load: info.load,
         discoveredVia: 'manual',
         lastSeen: Date.now(),
-    });
+    }, { skipApproval: true });
+    approvedNodeIds.add(info.nodeId);
+    saveApprovedPeers();
+    if (connectApprovedPeer) {
+        const peer = peers.get(info.nodeId);
+        if (peer) connectApprovedPeer(peer);
+    }
     return true;
 }
 
@@ -234,18 +383,22 @@ export async function addManualPeer(address: string, port: number, _nodeId: stri
 export async function startDiscovery(
     nodeId: string,
     port: number,
-    options: { mdns?: boolean; tailscale?: boolean },
+    options: { mdns?: boolean; tailscale?: boolean; autoApprove?: boolean },
 ): Promise<void> {
+    // Load persisted approved peers
+    loadApprovedPeers();
+    const autoApprove = options.autoApprove ?? false;
+
     if (options.mdns !== false) {
-        await startMdns(nodeId, port);
+        await startMdns(nodeId, port, autoApprove);
     }
 
     if (options.tailscale !== false) {
         // Initial scan
-        await scanTailscalePeers(nodeId, port);
+        await scanTailscalePeers(nodeId, port, autoApprove);
         // Re-scan every 60 seconds
         tailscaleInterval = setInterval(() => {
-            scanTailscalePeers(nodeId, port).catch(() => {});
+            scanTailscalePeers(nodeId, port, autoApprove).catch(() => {});
         }, 60_000);
     }
 
@@ -258,6 +411,13 @@ export async function startDiscovery(
                 logger.debug(COMPONENT, `Pruned stale peer: ${peer.hostname}`);
             }
         }
+        // Also prune stale pending peers
+        for (const [id, peer] of pendingPeers) {
+            if (peer.lastSeen < cutoff) {
+                pendingPeers.delete(id);
+                logger.debug(COMPONENT, `Pruned stale pending peer: ${peer.hostname}`);
+            }
+        }
     }, 120_000);
 }
 
@@ -267,5 +427,6 @@ export function stopDiscovery(): void {
     if (tailscaleInterval) { clearInterval(tailscaleInterval); tailscaleInterval = null; }
     if (peerPruneInterval) { clearInterval(peerPruneInterval); peerPruneInterval = null; }
     peers.clear();
+    pendingPeers.clear();
     logger.info(COMPONENT, 'Discovery stopped');
 }

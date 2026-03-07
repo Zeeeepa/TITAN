@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
 **Last Updated:** 2026-03-07
-**Current Version:** 2026.5.16
+**Current Version:** 2026.5.17
 
 ---
 
@@ -59,18 +59,20 @@
 - **v2026.5.14**: 4 income automation skills (16 new tools): income_tracker, freelance_monitor, content_publisher, lead_scorer. 5 autopilot playbook templates.
 - **v2026.5.15**: Skill enable/disable toggle in Mission Control + registry (persistent via disabled-skills.json), skill toggle API endpoint
 - **v2026.5.16**: Onboarding UX improvements (pre-filled personality examples), removed personal references from codebase
+- **v2026.5.17**: GitHub-hosted Skills Marketplace (12 curated skills on Djtony707/titan-skills), dynamic model dropdown (all 21 providers), marketplace API endpoints, removed stale Rust-era docs
+- **v2026.5.18**: Mesh networking fully operational — router integration (mesh fallback in chat/chatStream), peer approval system (pending→approve→connect), maxPeers=5, auto-approve toggle, dynamic heartbeat, allowRemoteModels/maxRemoteTasks enforcement, CLI commands (--pending/--approve/--reject/--revoke/--auto-approve), dashboard notifications, persisted approved-peers.json
 
 ---
 
-## Current State (v2026.5.16)
+## Current State (v2026.5.17)
 
 | Metric | Value |
 |--------|-------|
 | Providers | 21 (4 native + 17 OpenAI-compat) |
 | Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
 | Built-in Skills | 31 files |
-| Tools | 78 registered |
-| Tests | 3,168 across 81 files |
+| Tools | 86 registered |
+| Tests | 3,171 across 81 files |
 | Line Coverage | ~80.7% |
 
 ---
@@ -157,7 +159,7 @@ Only after the above is solid:
 | Phase 2 | 99 | 10 | ~27% |
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
 | Phase 5 | 2,856 | 69 | ~72% |
-| Phase 6 (current) | 3,168 | 81 | ~80.7% |
+| Phase 6 (current) | 3,171 | 81 | ~80.7% |
 
 ---
 

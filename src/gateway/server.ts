@@ -7,7 +7,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import net from 'net';
 import { join } from 'path';
-import { homedir } from 'os';
+import { homedir, hostname as osHostname } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
 import fs from 'fs';
@@ -907,6 +907,45 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ models: getMeshModels() });
   });
 
+  app.get('/api/mesh/pending', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.json({ pending: [], enabled: false }); return; }
+    const { getPendingPeers } = await import('../mesh/discovery.js');
+    res.json({ pending: getPendingPeers(), enabled: true });
+  });
+
+  app.post('/api/mesh/approve/:nodeId', async (req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.status(400).json({ error: 'Mesh not enabled' }); return; }
+    const { approvePeer } = await import('../mesh/discovery.js');
+    const peer = approvePeer(req.params.nodeId);
+    if (peer) {
+      broadcast({ type: 'mesh_peer_approved', peer });
+      res.json({ approved: true, peer });
+    } else {
+      res.status(404).json({ error: 'Peer not found in pending list or at max capacity' });
+    }
+  });
+
+  app.post('/api/mesh/reject/:nodeId', async (req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.status(400).json({ error: 'Mesh not enabled' }); return; }
+    const { rejectPeer } = await import('../mesh/discovery.js');
+    const rejected = rejectPeer(req.params.nodeId);
+    res.json({ rejected });
+  });
+
+  app.post('/api/mesh/revoke/:nodeId', async (req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.mesh.enabled) { res.status(400).json({ error: 'Mesh not enabled' }); return; }
+    const { revokePeer } = await import('../mesh/discovery.js');
+    const revoked = revokePeer(req.params.nodeId);
+    if (revoked) {
+      broadcast({ type: 'mesh_peer_revoked', nodeId: req.params.nodeId });
+    }
+    res.json({ revoked });
+  });
+
   // Native Memory Graph endpoint (replaces Neo4j/Graphiti)
   app.get('/api/graphiti', (_req, res) => {
     try {
@@ -1132,8 +1171,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
                                      delete: { summary: 'Clear memory graph',                     tags: ['Memory'] } },
         '/api/data':               { delete: { summary: 'Full data reset (graph+knowledge+memory)', tags: ['Memory'] } },
         '/api/mesh/hello':         { get:  { summary: 'Mesh hello/handshake',                   tags: ['Mesh'] } },
-        '/api/mesh/peers':         { get:  { summary: 'List mesh peers',                        tags: ['Mesh'] } },
+        '/api/mesh/peers':         { get:  { summary: 'List connected mesh peers',              tags: ['Mesh'] } },
         '/api/mesh/models':        { get:  { summary: 'List mesh models',                       tags: ['Mesh'] } },
+        '/api/mesh/pending':       { get:  { summary: 'List peers awaiting approval',           tags: ['Mesh'] } },
+        '/api/mesh/approve/:nodeId': { post: { summary: 'Approve a discovered peer',            tags: ['Mesh'] } },
+        '/api/mesh/reject/:nodeId': { post: { summary: 'Reject a pending peer',                 tags: ['Mesh'] } },
+        '/api/mesh/revoke/:nodeId': { post: { summary: 'Disconnect and revoke a peer',          tags: ['Mesh'] } },
         '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
         '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['Tunnel'] } },
         '/api/autopilot/status':   { get:  { summary: 'Autopilot status',                      tags: ['Autopilot'] } },
@@ -1192,8 +1235,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       ]},
       { cat: 'Mesh',     routes: [
         { method: 'GET',  path: '/api/mesh/hello',       desc: 'Mesh hello/handshake' },
-        { method: 'GET',  path: '/api/mesh/peers',       desc: 'List mesh peers' },
+        { method: 'GET',  path: '/api/mesh/peers',       desc: 'List connected peers' },
         { method: 'GET',  path: '/api/mesh/models',      desc: 'List mesh models' },
+        { method: 'GET',  path: '/api/mesh/pending',     desc: 'List peers awaiting approval' },
+        { method: 'POST', path: '/api/mesh/approve/:id', desc: 'Approve a discovered peer' },
+        { method: 'POST', path: '/api/mesh/reject/:id',  desc: 'Reject a pending peer' },
+        { method: 'POST', path: '/api/mesh/revoke/:id',  desc: 'Disconnect & revoke a peer' },
       ]},
       { cat: 'Memory',   routes: [
         { method: 'GET',  path: '/api/profile',          desc: 'Get personal profile' },
@@ -1291,7 +1338,20 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
         return;
       }
 
+      const { getActiveRemoteTaskCount } = await import('../mesh/transport.js');
+
       handleMeshWebSocket(ws, peerNodeId, getOrCreateNodeId(), async (msg, reply) => {
+        // Enforce allowRemoteModels
+        const meshCfg = loadConfig().mesh;
+        if (!meshCfg.allowRemoteModels) {
+          reply({ error: 'Remote model access is disabled on this node' });
+          return;
+        }
+        // Enforce maxRemoteTasks
+        if (getActiveRemoteTaskCount() >= meshCfg.maxRemoteTasks) {
+          reply({ error: 'Node at capacity — max remote tasks reached' });
+          return;
+        }
         // Handle incoming task requests from mesh peers
         try {
           const result = await processMessage(msg.payload.message as string, 'mesh', msg.fromNodeId, {
@@ -1406,9 +1466,49 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // ── Mesh Networking ───────────────────────────────────────────
   if (config.mesh.enabled && config.mesh.secret) {
     const { getOrCreateNodeId } = await import('../mesh/identity.js');
-    const { startDiscovery } = await import('../mesh/discovery.js');
+    const { startDiscovery, setOnPeerDiscovered, setConnectApprovedPeer, setMaxPeers } = await import('../mesh/discovery.js');
+    const { connectToPeer, startHeartbeat } = await import('../mesh/transport.js');
     const nodeId = getOrCreateNodeId();
-    await startDiscovery(nodeId, port, { mdns: config.mesh.mdns, tailscale: config.mesh.tailscale });
+
+    // Set max peers limit
+    setMaxPeers(config.mesh.maxPeers);
+
+    // Notify dashboard when new peers are discovered
+    setOnPeerDiscovered((peer) => {
+      broadcast({
+        type: 'mesh_peer_discovered',
+        peer: {
+          nodeId: peer.nodeId,
+          hostname: peer.hostname,
+          address: peer.address,
+          port: peer.port,
+          version: peer.version,
+          models: peer.models,
+          discoveredVia: peer.discoveredVia,
+        },
+      });
+      logger.info(COMPONENT, `New TITAN node discovered: ${peer.hostname} (${peer.address}:${peer.port}) — approve via dashboard or CLI`);
+    });
+
+    // Wire up WebSocket connections for approved peers
+    setConnectApprovedPeer((peer) => {
+      if (config.mesh.secret) {
+        connectToPeer(peer.address, peer.port, nodeId, config.mesh.secret)
+          .then((ok) => {
+            if (ok) {
+              broadcast({ type: 'mesh_peer_connected', peer });
+              logger.info(COMPONENT, `Connected to approved peer: ${peer.hostname}`);
+            }
+          })
+          .catch(() => logger.debug(COMPONENT, `Approved peer unreachable: ${peer.hostname}`));
+      }
+    });
+
+    await startDiscovery(nodeId, port, {
+      mdns: config.mesh.mdns,
+      tailscale: config.mesh.tailscale,
+      autoApprove: config.mesh.autoApprove,
+    });
 
     // Auto-bind to 0.0.0.0 when mesh is enabled (so peers can reach us)
     if (host === '127.0.0.1') {
@@ -1418,7 +1518,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
     // Connect to static peers
     if (config.mesh.staticPeers.length > 0) {
-      const { connectToPeer } = await import('../mesh/transport.js');
       for (const addr of config.mesh.staticPeers) {
         const [peerHost, peerPort] = addr.split(':');
         connectToPeer(peerHost, parseInt(peerPort || '48420', 10), nodeId, config.mesh.secret)
@@ -1426,7 +1525,19 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       }
     }
 
-    logger.info(COMPONENT, `Mesh active — Node: ${nodeId.slice(0, 8)}... | mDNS: ${config.mesh.mdns} | Tailscale: ${config.mesh.tailscale}`);
+    // Start heartbeat with dynamic model discovery
+    startHeartbeat(nodeId, async () => {
+      const models = await discoverAllModels();
+      return {
+        hostname: osHostname(),
+        version: TITAN_VERSION,
+        models: models.map(m => m.id),
+        load: 0,
+      };
+    });
+
+    const mode = config.mesh.autoApprove ? 'auto-approve' : 'approval-required';
+    logger.info(COMPONENT, `Mesh active — Node: ${nodeId.slice(0, 8)}... | mDNS: ${config.mesh.mdns} | Tailscale: ${config.mesh.tailscale} | Max peers: ${config.mesh.maxPeers} | Mode: ${mode}`);
   }
 
   // Start server

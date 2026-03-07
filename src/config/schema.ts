@@ -111,6 +111,10 @@ export const MeshConfigSchema = z.object({
     allowRemoteModels: z.boolean().default(true),
     /** Maximum concurrent remote tasks */
     maxRemoteTasks: z.number().default(3),
+    /** Maximum number of connected peers */
+    maxPeers: z.number().default(5),
+    /** Auto-approve discovered peers (skip approval prompt) */
+    autoApprove: z.boolean().default(false),
 });
 
 export const TunnelConfigSchema = z.object({

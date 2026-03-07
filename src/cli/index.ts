@@ -577,9 +577,15 @@ program
     .option('--join <secret>', 'Join an existing mesh using a shared secret')
     .option('--status', 'Show mesh status and connected peers')
     .option('--add <address>', 'Manually add a peer (host:port)')
+    .option('--pending', 'Show peers waiting for approval')
+    .option('--approve <nodeId>', 'Approve a discovered peer to join the mesh')
+    .option('--reject <nodeId>', 'Reject a pending peer')
+    .option('--revoke <nodeId>', 'Disconnect and remove a connected peer')
+    .option('--auto-approve', 'Toggle auto-approve mode for discovered peers')
     .option('--leave', 'Leave the mesh and disable mesh networking')
     .action(async (options) => {
         const config = loadConfig();
+        const gwPort = config.gateway?.port || 48420;
 
         if (options.init) {
             const { randomBytes } = await import('crypto');
@@ -590,9 +596,11 @@ program
             const { getOrCreateNodeId } = await import('../mesh/identity.js');
             const nodeId = getOrCreateNodeId();
 
-            console.log(chalk.cyan('\n🕸️  TITAN Mesh Initialized!\n'));
+            console.log(chalk.cyan('\n  TITAN Mesh Initialized!\n'));
             console.log(chalk.white(`  Node ID: ${nodeId.slice(0, 8)}...`));
             console.log(chalk.yellow(`  Mesh Secret: ${secret}\n`));
+            console.log(chalk.gray(`  Max peers: ${config.mesh.maxPeers || 5}`));
+            console.log(chalk.gray(`  Auto-approve: ${config.mesh.autoApprove ? 'On' : 'Off (peers require approval)'}`));
             console.log(chalk.gray('  Share this secret with your other TITAN instances.'));
             console.log(chalk.gray('  On each machine, run:\n'));
             console.log(chalk.white(`    titan mesh --join ${secret}\n`));
@@ -610,7 +618,7 @@ program
             const { getOrCreateNodeId } = await import('../mesh/identity.js');
             const nodeId = getOrCreateNodeId();
 
-            console.log(chalk.green('\n✅ Joined TITAN mesh!'));
+            console.log(chalk.green('\n  Joined TITAN mesh!'));
             console.log(chalk.gray(`  Node ID: ${nodeId.slice(0, 8)}...`));
             console.log(chalk.gray('  Start the gateway to begin discovering peers: titan gateway'));
 
@@ -621,31 +629,134 @@ program
             updateConfig({
                 mesh: { ...config.mesh, staticPeers },
             } as Partial<TitanConfig>);
-            console.log(chalk.green(`\n✅ Added static peer: ${addr}`));
+            console.log(chalk.green(`\n  Added static peer: ${addr}`));
             console.log(chalk.gray('  Restart the gateway to connect.'));
+
+        } else if (options.pending) {
+            // Query the running gateway for pending peers
+            try {
+                const res = await fetch(`http://127.0.0.1:${gwPort}/api/mesh/pending`);
+                const data = await res.json() as { pending: Array<{ nodeId: string; hostname: string; address: string; port: number; version: string; models: string[]; discoveredVia: string }> };
+                if (!data.pending || data.pending.length === 0) {
+                    console.log(chalk.gray('\n  No peers waiting for approval.\n'));
+                } else {
+                    console.log(chalk.cyan(`\n  Pending Peers (${data.pending.length})\n`));
+                    for (const p of data.pending) {
+                        console.log(chalk.white(`  ${p.hostname}`));
+                        console.log(chalk.gray(`    Node ID:  ${p.nodeId}`));
+                        console.log(chalk.gray(`    Address:  ${p.address}:${p.port}`));
+                        console.log(chalk.gray(`    Version:  ${p.version}`));
+                        console.log(chalk.gray(`    Models:   ${p.models.length > 0 ? p.models.join(', ') : '(none reported)'}`));
+                        console.log(chalk.gray(`    Found via: ${p.discoveredVia}`));
+                        console.log(chalk.yellow(`    Approve:  titan mesh --approve ${p.nodeId}\n`));
+                    }
+                }
+            } catch {
+                console.log(chalk.red('\n  Cannot reach gateway. Is it running? (titan gateway)\n'));
+            }
+
+        } else if (options.approve) {
+            const nodeId = options.approve as string;
+            try {
+                const res = await fetch(`http://127.0.0.1:${gwPort}/api/mesh/approve/${nodeId}`, { method: 'POST' });
+                const data = await res.json() as { approved?: boolean; peer?: { hostname: string }; error?: string };
+                if (data.approved) {
+                    console.log(chalk.green(`\n  Peer approved and connected: ${data.peer?.hostname || nodeId}\n`));
+                } else {
+                    console.log(chalk.red(`\n  ${data.error || 'Failed to approve peer'}\n`));
+                }
+            } catch {
+                console.log(chalk.red('\n  Cannot reach gateway. Is it running? (titan gateway)\n'));
+            }
+
+        } else if (options.reject) {
+            const nodeId = options.reject as string;
+            try {
+                const res = await fetch(`http://127.0.0.1:${gwPort}/api/mesh/reject/${nodeId}`, { method: 'POST' });
+                const data = await res.json() as { rejected: boolean };
+                console.log(data.rejected
+                    ? chalk.green(`\n  Peer rejected: ${nodeId}\n`)
+                    : chalk.yellow(`\n  Peer not found in pending list.\n`));
+            } catch {
+                console.log(chalk.red('\n  Cannot reach gateway. Is it running? (titan gateway)\n'));
+            }
+
+        } else if (options.revoke) {
+            const nodeId = options.revoke as string;
+            try {
+                const res = await fetch(`http://127.0.0.1:${gwPort}/api/mesh/revoke/${nodeId}`, { method: 'POST' });
+                const data = await res.json() as { revoked: boolean };
+                console.log(data.revoked
+                    ? chalk.green(`\n  Peer disconnected and revoked: ${nodeId}\n`)
+                    : chalk.yellow(`\n  Peer not found.\n`));
+            } catch {
+                console.log(chalk.red('\n  Cannot reach gateway. Is it running? (titan gateway)\n'));
+            }
+
+        } else if (options.autoApprove) {
+            const newVal = !config.mesh.autoApprove;
+            updateConfig({
+                mesh: { ...config.mesh, autoApprove: newVal },
+            } as Partial<TitanConfig>);
+            console.log(chalk.green(`\n  Auto-approve: ${newVal ? chalk.green('ON') : chalk.yellow('OFF')}`));
+            console.log(chalk.gray(newVal
+                ? '  Discovered peers will connect automatically.'
+                : '  Discovered peers will require approval via dashboard or CLI.\n'));
 
         } else if (options.leave) {
             updateConfig({
                 mesh: { ...config.mesh, enabled: false, secret: undefined },
             } as Partial<TitanConfig>);
-            console.log(chalk.green('\n✅ Left the mesh. Mesh networking disabled.'));
+            console.log(chalk.green('\n  Left the mesh. Mesh networking disabled.'));
 
         } else if (options.status) {
-            console.log(chalk.cyan('\n🕸️  TITAN Mesh Status\n'));
-            console.log(chalk.gray(`  Enabled: ${config.mesh.enabled ? chalk.green('Yes') : chalk.red('No')}`));
-            console.log(chalk.gray(`  Secret: ${config.mesh.secret ? config.mesh.secret.slice(0, 6) + '****' : 'Not set'}`));
-            console.log(chalk.gray(`  mDNS: ${config.mesh.mdns ? 'On' : 'Off'}`));
-            console.log(chalk.gray(`  Tailscale: ${config.mesh.tailscale ? 'On' : 'Off'}`));
+            console.log(chalk.cyan('\n  TITAN Mesh Status\n'));
+            console.log(chalk.gray(`  Enabled:       ${config.mesh.enabled ? chalk.green('Yes') : chalk.red('No')}`));
+            console.log(chalk.gray(`  Secret:        ${config.mesh.secret ? config.mesh.secret.slice(0, 6) + '****' : 'Not set'}`));
+            console.log(chalk.gray(`  mDNS:          ${config.mesh.mdns ? 'On' : 'Off'}`));
+            console.log(chalk.gray(`  Tailscale:     ${config.mesh.tailscale ? 'On' : 'Off'}`));
+            console.log(chalk.gray(`  Max peers:     ${config.mesh.maxPeers || 5}`));
+            console.log(chalk.gray(`  Auto-approve:  ${config.mesh.autoApprove ? chalk.green('On') : chalk.yellow('Off')}`));
             if (config.mesh.staticPeers.length > 0) {
-                console.log(chalk.gray(`  Static peers: ${config.mesh.staticPeers.join(', ')}`));
+                console.log(chalk.gray(`  Static peers:  ${config.mesh.staticPeers.join(', ')}`));
             }
             if (config.mesh.enabled) {
                 const { getOrCreateNodeId } = await import('../mesh/identity.js');
-                console.log(chalk.gray(`  Node ID: ${getOrCreateNodeId()}`));
-                console.log(chalk.gray('\n  Start the gateway to see connected peers: titan gateway'));
+                console.log(chalk.gray(`  Node ID:       ${getOrCreateNodeId()}`));
+
+                // Try to get live status from running gateway
+                try {
+                    const [peersRes, pendingRes] = await Promise.all([
+                        fetch(`http://127.0.0.1:${gwPort}/api/mesh/peers`),
+                        fetch(`http://127.0.0.1:${gwPort}/api/mesh/pending`),
+                    ]);
+                    const peersData = await peersRes.json() as { peers: Array<{ nodeId: string; hostname: string; address: string; port: number; models: string[]; load: number }> };
+                    const pendingData = await pendingRes.json() as { pending: Array<{ nodeId: string; hostname: string }> };
+
+                    if (peersData.peers.length > 0) {
+                        console.log(chalk.cyan(`\n  Connected Peers (${peersData.peers.length}/${config.mesh.maxPeers || 5}):\n`));
+                        for (const p of peersData.peers) {
+                            console.log(chalk.green(`    ${p.hostname}  ${chalk.gray(`${p.address}:${p.port}  |  ${p.models.length} models  |  load: ${p.load}`)}`));
+                        }
+                    } else {
+                        console.log(chalk.gray('\n  No connected peers.'));
+                    }
+
+                    if (pendingData.pending.length > 0) {
+                        console.log(chalk.yellow(`\n  Pending Approval (${pendingData.pending.length}):\n`));
+                        for (const p of pendingData.pending) {
+                            console.log(chalk.yellow(`    ${p.hostname}  ${chalk.gray(`(${p.nodeId.slice(0, 8)}...)`)}`));
+                        }
+                        console.log(chalk.gray('\n  Run `titan mesh --pending` for details or `titan mesh --approve <nodeId>` to connect.'));
+                    }
+                } catch {
+                    console.log(chalk.gray('\n  Gateway not running — start with `titan gateway` to see live peers.'));
+                }
             }
         } else {
-            console.log(chalk.gray('Usage: titan mesh --init | --join <secret> | --status | --add <host:port> | --leave'));
+            console.log(chalk.gray('Usage: titan mesh --init | --join <secret> | --status | --add <host:port>'));
+            console.log(chalk.gray('       titan mesh --pending | --approve <nodeId> | --reject <nodeId>'));
+            console.log(chalk.gray('       titan mesh --revoke <nodeId> | --auto-approve | --leave'));
         }
         process.exit(0);
     });

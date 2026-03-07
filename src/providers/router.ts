@@ -11,6 +11,10 @@ import { OllamaProvider } from './ollama.js';
 import { OpenAICompatProvider, PROVIDER_PRESETS } from './openai_compat.js';
 import { loadConfig } from '../config/config.js';
 import logger from '../utils/logger.js';
+import { findModelOnMesh } from '../mesh/registry.js';
+import type { MeshPeer } from '../mesh/discovery.js';
+import { routeTaskToNode } from '../mesh/transport.js';
+import { randomBytes } from 'crypto';
 
 const COMPONENT = 'Router';
 
@@ -170,6 +174,17 @@ export function getModelAliases(): Record<string, string> {
     return config.agent.modelAliases || {};
 }
 
+/** Route a chat request to a mesh peer */
+async function meshChat(peer: MeshPeer, modelId: string, message: string): Promise<ChatResponse> {
+    const requestId = randomBytes(8).toString('hex');
+    logger.info(COMPONENT, `Routing "${modelId}" to mesh peer ${peer.hostname} (${peer.nodeId.slice(0, 8)}...)`);
+    const result = await routeTaskToNode(peer.nodeId, requestId, message, modelId, 120_000) as Record<string, unknown>;
+    if (result.error) {
+        throw new Error(`Mesh peer error: ${result.error}`);
+    }
+    return result as unknown as ChatResponse;
+}
+
 /** Send a chat request, automatically routing to the correct provider */
 export async function chat(options: ChatOptions): Promise<ChatResponse> {
     const modelId = options.model || 'anthropic/claude-sonnet-4-20250514';
@@ -181,6 +196,23 @@ export async function chat(options: ChatOptions): Promise<ChatResponse> {
         return await provider.chat({ ...options, model });
     } catch (error) {
         logger.error(COMPONENT, `Provider ${provider.name} failed: ${(error as Error).message}`);
+
+        // Try mesh peers before local failover
+        const config = loadConfig();
+        if (config.mesh?.enabled) {
+            const peer = findModelOnMesh(modelId);
+            if (peer) {
+                try {
+                    const message = Array.isArray(options.messages)
+                        ? options.messages.map(m => m.content).join('\n')
+                        : (options as unknown as Record<string, unknown>).message as string || '';
+                    return await meshChat(peer, modelId, message);
+                } catch (meshErr) {
+                    logger.warn(COMPONENT, `Mesh routing failed: ${(meshErr as Error).message}`);
+                }
+            }
+        }
+
         // Attempt failover to other providers
         const failoverOrder = ['anthropic', 'openai', 'google', 'ollama'];
         for (const fallbackName of failoverOrder) {
@@ -221,6 +253,25 @@ export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStre
         yield* provider.chatStream({ ...options, model });
     } catch (error) {
         logger.error(COMPONENT, `Stream provider ${provider.name} failed: ${(error as Error).message}`);
+
+        // Try mesh peers before local failover (non-streaming — yield as single chunk)
+        const config = loadConfig();
+        if (config.mesh?.enabled) {
+            const peer = findModelOnMesh(modelId);
+            if (peer) {
+                try {
+                    const message = Array.isArray(options.messages)
+                        ? options.messages.map(m => m.content).join('\n')
+                        : (options as unknown as Record<string, unknown>).message as string || '';
+                    const result = await meshChat(peer, modelId, message);
+                    yield { type: 'text' as const, content: result.content };
+                    yield { type: 'done' as const };
+                    return;
+                } catch (meshErr) {
+                    logger.warn(COMPONENT, `Mesh stream routing failed: ${(meshErr as Error).message}`);
+                }
+            }
+        }
 
         // Notify consumer that a failover is happening
         yield {

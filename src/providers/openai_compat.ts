@@ -456,4 +456,14 @@ export const PROVIDER_PRESETS: OpenAICompatConfig[] = [
         knownModels: ['Meta-Llama-3.3-70B-Instruct', 'DeepSeek-R1-Distill-Llama-70B', 'Qwen2.5-72B-Instruct'],
         supportsModelList: true,
     },
+    {
+        name: 'kimi',
+        displayName: 'Kimi (Moonshot)',
+        defaultBaseUrl: 'https://api.moonshot.cn/v1',
+        envKey: 'MOONSHOT_API_KEY',
+        configKey: 'kimi',
+        defaultModel: 'kimi-k2.5',
+        knownModels: ['kimi-k2.5', 'kimi-k2', 'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+        supportsModelList: true,
+    },
 ];

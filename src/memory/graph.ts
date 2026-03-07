@@ -163,7 +163,7 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
         }
 
         // Try to repair common JSON issues from small models
-        let jsonStr = match[0]
+        const jsonStr = match[0]
             .replace(/,\s*]/g, ']')        // trailing commas in arrays
             .replace(/,\s*}/g, '}')         // trailing commas in objects
             .replace(/'/g, '"');            // single quotes to double
@@ -451,6 +451,35 @@ export function getGraphContext(query: string): string {
     }
 
     return parts.length > 0 ? parts.join('\n') : '';
+}
+
+/**
+ * Flush important facts from conversation context into graph memory before compaction.
+ * Prevents memory loss when context is trimmed during long sessions.
+ */
+export async function flushMemoryBeforeCompaction(messages: Array<{ role: string; content?: string }>): Promise<number> {
+    if (!initialized) initGraph();
+
+    // Collect user and assistant messages that are about to be compacted
+    const contentParts: string[] = [];
+    for (const msg of messages) {
+        if ((msg.role === 'user' || msg.role === 'assistant') && msg.content) {
+            contentParts.push(msg.content.slice(0, 500));
+        }
+    }
+
+    if (contentParts.length === 0) return 0;
+
+    const combined = contentParts.join('\n---\n').slice(0, 3000);
+
+    try {
+        const episode = await addEpisode(combined, 'context-flush');
+        logger.info(COMPONENT, `Memory flush: saved ${contentParts.length} messages as episode ${episode.id.slice(0, 8)}`);
+        return contentParts.length;
+    } catch (err) {
+        logger.warn(COMPONENT, `Memory flush failed: ${(err as Error).message}`);
+        return 0;
+    }
 }
 
 /** Clear all graph data */

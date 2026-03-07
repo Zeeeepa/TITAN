@@ -15,6 +15,7 @@
  */
 import logger from '../utils/logger.js';
 import type { ChatMessage } from '../providers/base.js';
+import { flushMemoryBeforeCompaction } from '../memory/graph.js';
 
 const COMPONENT = 'Context';
 
@@ -162,6 +163,11 @@ export function forceCompactContext(
     if (toSummarize.length === 0) {
         return { messages, savedTokens: 0 };
     }
+
+    // Flush important context to graph memory before discarding (fire-and-forget)
+    flushMemoryBeforeCompaction(toSummarize).catch((err) =>
+        logger.warn(COMPONENT, `Memory flush before compaction failed: ${(err as Error).message}`),
+    );
 
     // Build progressive summary — strip sensitive patterns
     const sensitivePatterns = /(?:api[_-]?key|password|secret|token|bearer)\s*[:=]\s*\S+/gi;

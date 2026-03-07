@@ -4,7 +4,6 @@
  * builds a structured plan, presents it for approval, then executes step-by-step.
  */
 import { chat } from '../providers/router.js';
-import { loadConfig } from '../config/config.js';
 import { classifyComplexity } from './costOptimizer.js';
 import { createPlan, getReadyTasks, startTask, completeTask, failTask, getPlanStatus, type Plan } from './planner.js';
 import { processMessage } from './agent.js';
@@ -208,9 +207,8 @@ export async function executePlan(
     // Collect prior results for context injection
     const priorResults: string[] = [];
 
-    while (true) {
-        const ready = getReadyTasks(plan.id);
-        if (ready.length === 0) break;
+    let ready = getReadyTasks(plan.id);
+    while (ready.length > 0) {
 
         for (const task of ready) {
             startTask(plan.id, task.id);
@@ -243,6 +241,8 @@ export async function executePlan(
 
         // Check if plan completed or failed
         if (plan.status === 'completed' || plan.status === 'failed') break;
+
+        ready = getReadyTasks(plan.id);
     }
 
     state.stage = plan.status === 'completed' ? 'completed' : 'failed';

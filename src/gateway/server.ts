@@ -16,6 +16,7 @@ import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relati
 import { processMessage } from '../agent/agent.js';
 import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../skills/registry.js';
+import { searchSkills as marketplaceSearch, installSkill, uninstallSkill, listSkills as listMarketplaceSkills, listInstalled as listInstalledMarketplace } from '../skills/marketplace.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
 import { healthCheckAll, discoverAllModels, getModelAliases, chatStream } from '../providers/router.js';
@@ -477,6 +478,42 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (e) {
       res.status(404).json({ error: (e as Error).message });
     }
+  });
+
+  // ─── Marketplace API ──────────────────────────────────────────
+  app.get('/api/marketplace', async (_req, res) => {
+    try {
+      const skills = await listMarketplaceSkills();
+      const installed = listInstalledMarketplace();
+      res.json({ skills: skills.map(s => ({ ...s, installed: installed.includes(s.file.replace('.js', '')) })), installed });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
+  app.get('/api/marketplace/search', async (req, res) => {
+    try {
+      const q = (req.query.q as string) || '';
+      const results = await marketplaceSearch(q, 50);
+      const installed = listInstalledMarketplace();
+      res.json({ ...results, skills: results.skills.map(s => ({ ...s, installed: installed.includes(s.file.replace('.js', '')) })) });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
+  app.post('/api/marketplace/install', async (req, res) => {
+    try {
+      const { skill } = req.body as { skill: string };
+      if (!skill) return res.status(400).json({ error: 'Missing "skill" field' });
+      const result = await installSkill(skill);
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
+  app.post('/api/marketplace/uninstall', (req, res) => {
+    try {
+      const { skill } = req.body as { skill: string };
+      if (!skill) return res.status(400).json({ error: 'Missing "skill" field' });
+      const result = uninstallSkill(skill);
+      res.json(result);
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });
 
   app.get('/api/tools', (_req, res) => {

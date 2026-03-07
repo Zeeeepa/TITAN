@@ -26,7 +26,7 @@ import { testMcpServer } from '../mcp/client.js';
 import { listRecipes, getRecipe, deleteRecipe, seedBuiltinRecipes } from '../recipes/store.js';
 import { runRecipe } from '../recipes/runner.js';
 import { listMonitors, addMonitor, removeMonitor } from '../agent/monitor.js';
-import { searchSkills, installFromClaWHub, installFromUrl } from '../skills/marketplace.js';
+import { searchSkills, installSkill, installFromUrl } from '../skills/marketplace.js';
 import { checkForUpdates } from '../utils/updater.js';
 
 const program = new Command();
@@ -228,8 +228,8 @@ program
     .option('--list', 'List all installed skills')
     .option('--create <description>', 'Create a new skill from natural language (AI-generated)')
     .option('--name <name>', 'Name for the new skill (used with --create)')
-    .option('--search <query>', 'Search ClaWHub marketplace')
-    .option('--install <name>', 'Install a skill (from ClaWHub or URL) — security scanned automatically')
+    .option('--search <query>', 'Search TITAN Skills Marketplace')
+    .option('--install <name>', 'Install a skill (from marketplace or URL) — security scanned automatically')
     .option('--remove <name>', 'Remove an installed skill')
     .option('--force', 'Force install even if high-severity scan warnings exist')
     .action(async (options) => {
@@ -252,16 +252,16 @@ program
                 console.log(chalk.red(`\n❌ Failed to create skill: ${result.error}`));
             }
         } else if (options.search) {
-            console.log(chalk.cyan(`\n🔍 Searching ClaWHub for "${options.search}"...\n`));
+            console.log(chalk.cyan(`\n🔍 Searching marketplace for "${options.search}"...\n`));
             const results = await searchSkills(options.search);
             if (results.skills.length === 0) {
                 console.log(chalk.gray('  No skills found. Try a different search term.'));
             } else {
                 for (const skill of results.skills) {
-                    const verified = skill.verified ? chalk.green('✓ Verified') : chalk.gray('Unverified');
-                    console.log(`  ${chalk.white(skill.name)} ${chalk.gray(`v${skill.version}`)} — ${verified}`);
+                    const apiKey = skill.requiresApiKey ? chalk.yellow('🔑 API key') : chalk.green('✓ No key needed');
+                    console.log(`  ${chalk.white(skill.name)} ${chalk.gray(`v${skill.version}`)} — ${apiKey}`);
                     console.log(`     ${chalk.gray(skill.description)}`);
-                    console.log(`     ${chalk.gray(`by ${skill.author} · ⭐ ${skill.rating.toFixed(1)} · ${skill.downloads} downloads`)}\n`);
+                    console.log(`     ${chalk.gray(`by ${skill.author} · ${skill.category} · ${skill.tags.join(', ')}`)}\n`);
                 }
             }
         } else if (options.install) {
@@ -270,7 +270,7 @@ program
             console.log(chalk.cyan(`\n🛡️  Installing "${name}" with security scan...`));
             const result = isUrl
                 ? await installFromUrl(name, { force: options.force })
-                : await installFromClaWHub(name, { force: options.force });
+                : await installSkill(name, { force: options.force });
             if (result.success) {
                 console.log(chalk.green(`\n✅ Installed: ${result.skillName}`));
                 console.log(chalk.gray(`   Path: ${result.installedPath}`));
@@ -296,7 +296,7 @@ program
                 console.log(`     ${chalk.gray(skill.description)}`);
             }
             console.log(chalk.gray('\n  Search marketplace: titan skills --search <query>'));
-            console.log(chalk.gray('  Install from ClaWHub: titan skills --install <name>'));
+            console.log(chalk.gray('  Install from marketplace: titan skills --install <name>'));
         }
         process.exit(0);
     });

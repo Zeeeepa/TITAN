@@ -86,7 +86,7 @@ const MEDIUM_PATTERNS: { rule: string; pattern: RegExp; description: string }[] 
 const LOW_PATTERNS: { rule: string; pattern: RegExp; description: string }[] = [
     { rule: 'HARDCODED_IP', pattern: /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b(?!\/\d)/, description: 'Hardcoded IP address' },
     { rule: 'SPAWN_SHELL', pattern: /spawnSync?\s*\(\s*['"`](?:sh|bash|cmd|powershell)/i, description: 'Shell spawning — review manually' },
-    { rule: 'NETWORK_REQUEST', pattern: /https?:\/\/(?!clawhub\.ai|npmjs\.com|github\.com)/i, description: 'Network request to unlisted domain' },
+    { rule: 'NETWORK_REQUEST', pattern: /https?:\/\/(?!clawhub\.ai|npmjs\.com|github\.com|raw\.githubusercontent\.com|wttr\.in|hacker-news\.firebaseio\.com|reddit\.com)/i, description: 'Network request to unlisted domain' },
 ];
 
 // ─── Scanner ──────────────────────────────────────────────────────

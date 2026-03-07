@@ -195,12 +195,12 @@ vi.mock('../src/agent/monitor.js', () => ({
 }));
 
 const mockSearchSkills = vi.fn().mockResolvedValue({ skills: [] });
-const mockInstallFromClaWHub = vi.fn().mockResolvedValue({ success: true, skillName: 'test-skill', installedPath: '/tmp/skills/test-skill.ts' });
-const mockInstallFromUrl = vi.fn().mockResolvedValue({ success: true, skillName: 'url-skill', installedPath: '/tmp/skills/url-skill.ts' });
+const mockInstallSkill = vi.fn().mockResolvedValue({ success: true, skillName: 'test-skill', installedPath: '/tmp/skills/test-skill.js' });
+const mockInstallFromUrl = vi.fn().mockResolvedValue({ success: true, skillName: 'url-skill', installedPath: '/tmp/skills/url-skill.js' });
 
 vi.mock('../src/skills/marketplace.js', () => ({
     searchSkills: (...args: unknown[]) => mockSearchSkills(...args),
-    installFromClaWHub: (...args: unknown[]) => mockInstallFromClaWHub(...args),
+    installSkill: (...args: unknown[]) => mockInstallSkill(...args),
     installFromUrl: (...args: unknown[]) => mockInstallFromUrl(...args),
 }));
 
@@ -930,7 +930,7 @@ describe('CLI Module — index.ts', () => {
             expect(mockConsoleLog).toHaveBeenCalledWith('No skills found.');
         });
 
-        it('should install a skill from ClaWHub', async () => {
+        it('should install a skill from marketplace', async () => {
             const program = createTestProgram();
             program
                 .command('skills')
@@ -942,7 +942,7 @@ describe('CLI Module — index.ts', () => {
                         const isUrl = name.startsWith('http');
                         const result = isUrl
                             ? await mockInstallFromUrl(name, { force: options.force })
-                            : await mockInstallFromClaWHub(name, { force: options.force });
+                            : await mockInstallSkill(name, { force: options.force });
                         if (result.success) {
                             console.log(`Installed: ${result.skillName}`);
                         }
@@ -950,7 +950,7 @@ describe('CLI Module — index.ts', () => {
                 });
 
             await program.parseAsync(['node', 'titan', 'skills', '--install', 'my-cool-skill']);
-            expect(mockInstallFromClaWHub).toHaveBeenCalledWith('my-cool-skill', { force: undefined });
+            expect(mockInstallSkill).toHaveBeenCalledWith('my-cool-skill', { force: undefined });
             expect(mockConsoleLog).toHaveBeenCalledWith('Installed: test-skill');
         });
 
@@ -966,7 +966,7 @@ describe('CLI Module — index.ts', () => {
                         const isUrl = name.startsWith('http');
                         const result = isUrl
                             ? await mockInstallFromUrl(name, { force: options.force })
-                            : await mockInstallFromClaWHub(name, { force: options.force });
+                            : await mockInstallSkill(name, { force: options.force });
                         if (result.success) {
                             console.log(`Installed: ${result.skillName}`);
                         }
@@ -989,24 +989,24 @@ describe('CLI Module — index.ts', () => {
                         const name = options.install as string;
                         const isUrl = name.startsWith('http');
                         if (!isUrl) {
-                            await mockInstallFromClaWHub(name, { force: options.force });
+                            await mockInstallSkill(name, { force: options.force });
                         }
                     }
                 });
 
             await program.parseAsync(['node', 'titan', 'skills', '--install', 'risky-skill', '--force']);
-            expect(mockInstallFromClaWHub).toHaveBeenCalledWith('risky-skill', { force: true });
+            expect(mockInstallSkill).toHaveBeenCalledWith('risky-skill', { force: true });
         });
 
         it('should handle install failure', async () => {
-            mockInstallFromClaWHub.mockResolvedValueOnce({ success: false, error: 'Skill not found in ClaWHub' });
+            mockInstallSkill.mockResolvedValueOnce({ success: false, error: 'Skill not found in marketplace' });
             const program = createTestProgram();
             program
                 .command('skills')
                 .option('--install <name>', 'Install')
                 .action(async (options) => {
                     if (options.install) {
-                        const result = await mockInstallFromClaWHub(options.install, {});
+                        const result = await mockInstallSkill(options.install, {});
                         if (!result.success) {
                             console.log(`Installation failed: ${result.error}`);
                         }
@@ -1014,7 +1014,7 @@ describe('CLI Module — index.ts', () => {
                 });
 
             await program.parseAsync(['node', 'titan', 'skills', '--install', 'missing-skill']);
-            expect(mockConsoleLog).toHaveBeenCalledWith('Installation failed: Skill not found in ClaWHub');
+            expect(mockConsoleLog).toHaveBeenCalledWith('Installation failed: Skill not found in marketplace');
         });
 
         it('should remove an installed skill', async () => {

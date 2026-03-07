@@ -1,8 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-06
-**Current Version:** 2026.5.13
-**Author:** Tony Elliott (Djtony707)
+**Last Updated:** 2026-03-07
+**Current Version:** 2026.5.16
 
 ---
 
@@ -41,17 +40,38 @@
 ### Phase 4.5: Code Quality & Stability (v2026.5.0)
 - 0 ESLint errors, 0 TypeScript errors, clean build
 - 1,160+ tests across 37 files, 56.6% line coverage (55% threshold)
-- OpenClaw Skill Scanner Guard integrated (credit: Jason Allen O'Neal)
+- OpenClaw Skill Scanner Guard integrated
 
-### Phase 5: Competitive Dominance (v2026.5.1–5.8)
+### Phase 5: Competitive Dominance (v2026.5.1–5.10)
 - **v2026.5.1–5.3**: 20 runtime bug fixes, 1,523 tests, 66.88% coverage
 - **v2026.5.4**: Encrypted secrets vault, tamper-evident audit log, self-healing doctor, 3 providers (Venice AI, AWS Bedrock, LiteLLM), resource limits, 2,100+ tests
 - **v2026.5.5**: Autopilot Mode — hands-free scheduled agent runs with cron
 - **v2026.5.6**: 3 new providers (Azure OpenAI, DeepInfra, SambaNova), Skyvern MCP browser automation, docs cleanup
 - **v2026.5.7**: Google Chat channel (real webhook), Autopilot dashboard panel, Cloudflare Tunnel support, 2,612 tests
 - **v2026.5.8**: Ollama model guide, 147→0 ESLint warnings, `local` model alias, 2,838 tests across 67 files
-- **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction, Ollama think:false, configurable stall detector, GPU auto-detection, config get key, slash commands via API, config validation, graph JSON repair, concurrent LLM limit, +244 tests (2,856 total across 69 files)
-- **v2026.5.10**: Tool fallback (provider failover hardening), Skyvern browser automation tools, CPU/GPU auto-tune (hardware detection)
+- **v2026.5.9**: Port pre-check, small model tool reduction, Ollama think:false, configurable stall detector, GPU auto-detection, config get key, slash commands via API, config validation, graph JSON repair, concurrent LLM limit, +244 tests (2,856 total across 69 files)
+- **v2026.5.10**: Tool fallback (provider failover hardening), Skyvern browser automation tools, CPU/GPU auto-tune
+
+### Phase 6: Intelligence & Income (v2026.5.11–5.16)
+- **v2026.5.11**: `web_read` tool (Readability + Turndown → markdown), `web_act` tool (interactive step-by-step browser with numbered elements)
+- **v2026.5.12**: Kimi K2.5 provider (21st provider), memory flush before graph compaction
+- **v2026.5.13**: Deliberation/scanner tests, ESLint fixes, npm publish
+- **v2026.5.14**: 4 income automation skills (16 new tools): income_tracker, freelance_monitor, content_publisher, lead_scorer. 5 autopilot playbook templates.
+- **v2026.5.15**: Skill enable/disable toggle in Mission Control + registry (persistent via disabled-skills.json), skill toggle API endpoint
+- **v2026.5.16**: Onboarding UX improvements (pre-filled personality examples), removed personal references from codebase
+
+---
+
+## Current State (v2026.5.16)
+
+| Metric | Value |
+|--------|-------|
+| Providers | 21 (4 native + 17 OpenAI-compat) |
+| Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
+| Built-in Skills | 31 files |
+| Tools | 78 registered |
+| Tests | 3,168 across 81 files |
+| Line Coverage | ~80.7% |
 
 ---
 
@@ -61,21 +81,15 @@ Focus on making existing features work correctly before adding new ones.
 
 ### Testing & Quality
 - [x] Fix gateway-extended.test.ts (23 failing — auth mock issues)
-- [x] Push coverage from 56.6% → 65%+
+- [x] Push coverage from 56.6% → 80%+
 - [x] Integration tests for all 9 channels (mocked)
-- [ ] E2E tests for gateway + dashboard
-- [ ] Performance benchmarks (startup time, memory, throughput)
 - [x] Small model performance optimization (tool reduction, think:false, stall tuning)
+- [ ] E2E tests for gateway + dashboard (Playwright)
+- [ ] Performance benchmarks (startup time, memory, throughput)
 
 ### Harden Existing Features
-- [x] **Self-Healing** — Auto-detect and fix configuration/dependency issues (`titan doctor --fix`)
-- [ ] **Telemetry Dashboard** — Usage analytics, cost forecasting, performance trends
-- [ ] **Multi-modal Pipelines** — Image → text → code → execution chains
-- [ ] **Notion/Jira Skill** — Project management integration (deferred from Phase 3)
-- [ ] **OAuth Hub** — One-click connection to SaaS services (Google, GitHub, Slack, Microsoft)
-- [ ] **API Provider Directory** — Curated catalog of providers in onboarding/dashboard. Based on [openclaw-api-list](https://github.com/cporter202/openclaw-api-list).
+- [x] Self-Healing — `titan doctor --fix`
 - [x] Tunnel support (Cloudflare Tunnel — quick + named modes)
-- [ ] Multi-layer sandbox (Landlock, Firejail, Bubblewrap auto-detect)
 - [x] Audit logging with signed event trail (HMAC-SHA256 chained JSONL)
 - [x] Resource limits (memory, CPU, disk, subprocess caps)
 - [x] Encrypted secrets store (AES-256-GCM vault with PBKDF2)
@@ -84,44 +98,37 @@ Focus on making existing features work correctly before adding new ones.
 - [x] Concurrent LLM request limiting (503 when overloaded)
 - [x] Graph entity extraction hardening (JSON repair, skip weak models)
 - [x] Slash commands via REST API (not just WebSocket)
+- [x] Skill enable/disable toggle (dashboard + API)
+- [ ] Multi-layer sandbox (Landlock, Firejail, Bubblewrap auto-detect)
 
 ### Expand What Works
-- [x] Add providers to 20 (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova)
-- [ ] Add channels toward 18+ (IRC, Lark, OneBot/QQ, Line, DingTalk, Email inbound, Nostr, Mattermost, iMessage)
-- [ ] Vector search + RAG pipeline (SQLite, FTS5, embeddings)
-- [ ] Memory hygiene (auto-archive stale, configurable retention)
-- [ ] Streaming to dashboard (real-time token delivery)
+- [x] 21 providers (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova, Kimi K2.5)
+- [ ] More channels (IRC, Lark, Email inbound, Mattermost, iMessage)
+- [ ] Vector search + RAG pipeline (SQLite FTS5, embeddings)
+- [ ] Memory hygiene (auto-archive stale entities, configurable retention)
+- [ ] Streaming to dashboard (real-time token delivery in WebChat)
 - [ ] Code interpreter skill (sandboxed JS/Python execution)
 
 ---
 
 ## NEXT: Batch 10 — Polish & Expand
 
-Focus areas for the next release, informed by real-world testing on CPU-only hardware.
-
 ### Performance & Reliability
-- [ ] **Streaming response for /api/message** — Return tokens as they arrive, not all-at-once after full inference
-- [ ] **Ollama model auto-detect** — Read parameter count from Ollama API, auto-set small model mode
-- [ ] **Inference timeout** — Configurable hard timeout for LLM calls (not just stall detection)
-- [ ] **Connection pooling** — Reuse HTTP connections to Ollama/providers instead of new socket per request
-- [ ] **Warm model keep-alive** — Ping Ollama to keep the model loaded in RAM between requests
+- [ ] Streaming response for /api/message — return tokens as they arrive
+- [ ] Ollama model auto-detect — read parameter count, auto-set small model mode
+- [ ] Inference timeout — configurable hard timeout for LLM calls
+- [ ] Connection pooling — reuse HTTP connections to providers
+- [ ] Warm model keep-alive — ping Ollama to keep model loaded in RAM
 
 ### Dashboard & UX
-- [ ] **Streaming to dashboard** — Real-time token delivery in WebChat panel via SSE/WebSocket
-- [ ] **Hardware info panel** — Show CPU, RAM, GPU status, model load state in Mission Control
-- [ ] **Config get in dashboard** — Add a "Query Config" widget matching the CLI `titan config <key>` feature
-- [ ] **Mobile-responsive dashboard** — CSS fixes for small screens
-
-### Testing & Quality
-- [ ] **E2E tests** — Gateway + dashboard integration tests (Playwright or similar)
-- [ ] **Performance benchmarks** — Startup time, memory footprint, requests/sec, inference latency
-- [ ] **Push coverage to 75%+** — Target the untested files (autopilot, tunnel, planner)
+- [ ] Hardware info panel — CPU, RAM, GPU status in Mission Control
+- [ ] Config query widget — matching CLI `titan config <key>` feature
+- [ ] Mobile-responsive dashboard — CSS media queries for small screens
 
 ### New Capabilities
-- [ ] **Vector search + RAG pipeline** — SQLite FTS5 + embeddings for semantic memory search
-- [ ] **Code interpreter skill** — Sandboxed JavaScript/Python execution for data analysis
-- [ ] **Memory hygiene** — Auto-archive stale graph entities, configurable retention policy
-- [ ] **IRC channel adapter** — Lightweight channel for developer communities
+- [ ] Telemetry Dashboard — usage analytics, cost forecasting, performance trends
+- [ ] Notion/Jira Skill — project management integration
+- [ ] OAuth Hub — one-click connection to SaaS services
 
 ---
 
@@ -129,11 +136,10 @@ Focus areas for the next release, informed by real-world testing on CPU-only har
 
 Only after the above is solid:
 
-- [ ] Plugin Marketplace — Curated, security-audited skill marketplace
-- [ ] Team Mode — Multi-user with RBAC and shared agent pools
-- [ ] Mobile App — React Native companion app for iOS/Android
-- [ ] Voice-First Mode — Always-on voice assistant (wake word detection)
-- [ ] Agent-to-Agent Protocol — Standardized inter-agent communication
+- [ ] Team Mode — multi-user with RBAC and shared agent pools
+- [ ] Mobile App — React Native companion for iOS/Android
+- [ ] Voice-First Mode — always-on voice assistant (wake word detection)
+- [ ] Agent-to-Agent Protocol — standardized inter-agent communication
 - [ ] Visual workflow builder (drag-and-drop recipe editor)
 - [ ] Self-reflection loop (agent evaluates own responses)
 - [ ] Evaluation framework (benchmark agent quality)
@@ -150,8 +156,8 @@ Only after the above is solid:
 |-------|-------|-------|--------------|
 | Phase 2 | 99 | 10 | ~27% |
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
-| Phase 5 (current) | 3,064+ | 76 | ~79% |
-| Phase 5 target | 3,500+ | 75+ | 80%+ |
+| Phase 5 | 2,856 | 69 | ~72% |
+| Phase 6 (current) | 3,168 | 81 | ~80.7% |
 
 ---
 
@@ -166,7 +172,7 @@ Never hardcode. Always import `TITAN_VERSION` from `src/utils/constants.ts`.
 // CORRECT:
 '<button data-id="' + item.id + '" onclick="myFn(this.dataset.id)">Click</button>'
 // WRONG (breaks after esbuild):
-'<button onclick="myFn(\\''+item.id+'\\')">Click</button>'
+'<button onclick="myFn(\''+item.id+'\')">Click</button>'
 ```
 
 ### Provider Pattern

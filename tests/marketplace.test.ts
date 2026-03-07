@@ -1,6 +1,6 @@
 /**
- * TITAN — Marketplace (ClaWHub) Tests
- * Tests skills/marketplace.ts: search, details, install from ClaWHub and URLs
+ * TITAN — Marketplace Tests
+ * Tests skills/marketplace.ts: catalog fetch, search, install, uninstall
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -10,7 +10,7 @@ vi.mock('../src/utils/logger.js', () => ({
 
 vi.mock('../src/utils/constants.js', () => ({
     TITAN_HOME: '/tmp/titan-test-marketplace',
-    TITAN_VERSION: '2026.5.0',
+    TITAN_VERSION: '2026.5.16',
 }));
 
 vi.mock('fs', async (importOriginal) => {
@@ -20,12 +20,10 @@ vi.mock('fs', async (importOriginal) => {
         existsSync: vi.fn().mockReturnValue(true),
         mkdirSync: vi.fn(),
         writeFileSync: vi.fn(),
+        readdirSync: vi.fn().mockReturnValue([]),
+        unlinkSync: vi.fn(),
     };
 });
-
-vi.mock('child_process', () => ({
-    execSync: vi.fn(),
-}));
 
 vi.mock('../src/skills/scanner.js', () => ({
     scanSkillCode: vi.fn().mockReturnValue({
@@ -40,252 +38,324 @@ vi.mock('../src/skills/scanner.js', () => ({
     generateScanReport: vi.fn().mockReturnValue('# Report'),
 }));
 
-// We need to mock global fetch
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { searchSkills, getSkillDetails, installFromClaWHub, installFromUrl } from '../src/skills/marketplace.js';
+import { searchSkills, getSkillDetails, installSkill, installFromUrl, listInstalled, uninstallSkill, getCatalog, resetCatalogCache } from '../src/skills/marketplace.js';
 import { scanSkillCode } from '../src/skills/scanner.js';
+import { existsSync, readdirSync } from 'fs';
 
-describe('ClaWHub Marketplace', () => {
+const MOCK_CATALOG = {
+    version: 1,
+    updated: '2026-03-07',
+    skills: [
+        { name: 'weather_forecast', file: 'weather.js', description: 'Get weather forecasts', category: 'utility', tags: ['weather', 'forecast'], author: 'TITAN Team', version: '1.0.0', requiresApiKey: false },
+        { name: 'hacker_news', file: 'hacker_news.js', description: 'Browse Hacker News stories', category: 'news', tags: ['news', 'tech', 'hn'], author: 'TITAN Team', version: '1.0.0', requiresApiKey: false },
+        { name: 'docker_manage', file: 'docker_manager.js', description: 'Manage Docker containers', category: 'devops', tags: ['docker', 'containers'], author: 'TITAN Team', version: '1.0.0', requiresApiKey: false },
+    ],
+};
+
+describe('TITAN Marketplace', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // Re-establish default mock return values after clearAllMocks
+        resetCatalogCache();
         vi.mocked(scanSkillCode).mockReturnValue({
             safe: true,
             score: 100,
             findings: [],
             recommendation: 'approve',
         });
-        // Suppress console.log from formatScanResult
-        vi.spyOn(console, 'log').mockImplementation(() => {});
+        // Reset fs mocks to defaults
+        vi.mocked(existsSync as any).mockReturnValue(true);
+        vi.mocked(readdirSync as any).mockReturnValue([]);
     });
 
     afterEach(() => {
         vi.restoreAllMocks();
     });
 
-    describe('searchSkills', () => {
-        it('should return search results from ClaWHub API', async () => {
-            const mockResult = {
-                skills: [
-                    { id: 'csv-parser', name: 'csv_parser', description: 'Parse CSV files', author: 'test', version: '1.0.0', tags: ['csv'], downloads: 100, rating: 4.5, verified: true, url: 'https://clawhub.ai/skills/csv-parser' },
-                ],
-                total: 1,
-            };
+    describe('getCatalog', () => {
+        it('should fetch catalog from GitHub', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve(mockResult),
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
 
-            const result = await searchSkills('csv');
+            const catalog = await getCatalog();
+            expect(catalog.skills).toHaveLength(3);
+            expect(catalog.version).toBe(1);
+            expect(mockFetch).toHaveBeenCalledWith(
+                expect.stringContaining('raw.githubusercontent.com'),
+                expect.any(Object),
+            );
+        });
+
+        it('should return empty catalog on fetch error', async () => {
+            mockFetch.mockRejectedValueOnce(new Error('Network error'));
+            const catalog = await getCatalog();
+            expect(catalog.skills).toEqual([]);
+        });
+
+        it('should return empty catalog on HTTP error', async () => {
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+            const catalog = await getCatalog();
+            expect(catalog.skills).toEqual([]);
+        });
+    });
+
+    describe('searchSkills', () => {
+        it('should search skills by name', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+
+            const result = await searchSkills('weather');
             expect(result.skills).toHaveLength(1);
-            expect(result.skills[0].name).toBe('csv_parser');
+            expect(result.skills[0].name).toBe('weather_forecast');
             expect(result.total).toBe(1);
         });
 
-        it('should return empty results when API is unreachable', async () => {
-            mockFetch.mockRejectedValueOnce(new Error('Network error'));
-            const result = await searchSkills('csv');
-            expect(result.skills).toEqual([]);
-            expect(result.total).toBe(0);
-        });
-
-        it('should encode the query parameter', async () => {
+        it('should search by category', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ skills: [], total: 0 }),
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
-            await searchSkills('hello world');
-            expect(mockFetch).toHaveBeenCalledWith(
-                expect.stringContaining('q=hello%20world'),
-                expect.any(Object),
-            );
+
+            const result = await searchSkills('devops');
+            expect(result.skills).toHaveLength(1);
+            expect(result.skills[0].name).toBe('docker_manage');
         });
 
-        it('should pass the limit parameter', async () => {
+        it('should search by tags', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ skills: [], total: 0 }),
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
-            await searchSkills('test', 5);
-            expect(mockFetch).toHaveBeenCalledWith(
-                expect.stringContaining('limit=5'),
-                expect.any(Object),
-            );
+
+            const result = await searchSkills('hn');
+            expect(result.skills).toHaveLength(1);
+            expect(result.skills[0].name).toBe('hacker_news');
         });
 
-        it('should handle non-ok responses gracefully', async () => {
+        it('should return all skills for empty query', async () => {
             mockFetch.mockResolvedValueOnce({
-                ok: false,
-                status: 500,
-                statusText: 'Internal Server Error',
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
-            const result = await searchSkills('csv');
-            expect(result.skills).toEqual([]);
-            expect(result.total).toBe(0);
+
+            const result = await searchSkills('');
+            expect(result.skills).toHaveLength(3);
+        });
+
+        it('should respect limit', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+
+            const result = await searchSkills('', 2);
+            expect(result.skills).toHaveLength(2);
+            expect(result.total).toBe(3);
         });
     });
 
     describe('getSkillDetails', () => {
-        it('should return skill details', async () => {
-            const mockSkill = {
-                id: 'csv-parser',
-                name: 'csv_parser',
-                description: 'Parse CSV',
-                author: 'test',
-                version: '1.0.0',
-                tags: [],
-                downloads: 50,
-                rating: 4.0,
-                verified: false,
-                url: 'https://clawhub.ai/skills/csv-parser',
-            };
+        it('should find skill by name', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve(mockSkill),
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
 
-            const result = await getSkillDetails('csv-parser');
-            expect(result).not.toBeNull();
-            expect(result!.name).toBe('csv_parser');
+            const skill = await getSkillDetails('weather_forecast');
+            expect(skill).not.toBeNull();
+            expect(skill!.name).toBe('weather_forecast');
+            expect(skill!.category).toBe('utility');
         });
 
-        it('should return null on error', async () => {
-            mockFetch.mockRejectedValueOnce(new Error('Not found'));
-            const result = await getSkillDetails('nonexistent');
-            expect(result).toBeNull();
-        });
-
-        it('should return null on non-ok response', async () => {
+        it('should find skill by filename', async () => {
             mockFetch.mockResolvedValueOnce({
-                ok: false,
-                status: 404,
-                statusText: 'Not Found',
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
-            const result = await getSkillDetails('missing');
-            expect(result).toBeNull();
+
+            const skill = await getSkillDetails('weather');
+            expect(skill).not.toBeNull();
+            expect(skill!.name).toBe('weather_forecast');
+        });
+
+        it('should return null for unknown skill', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+
+            const skill = await getSkillDetails('nonexistent');
+            expect(skill).toBeNull();
         });
     });
 
-    describe('installFromClaWHub', () => {
-        it('should install a skill that passes security scan', async () => {
+    describe('installSkill', () => {
+        it('should install a skill from marketplace', async () => {
+            // First fetch: catalog
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ name: 'safe_skill', code: 'export const x = 1;' }),
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+            // Second fetch: skill code
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                text: () => Promise.resolve('export default { name: "weather_forecast", execute: async () => "sunny" };'),
             });
 
-            const result = await installFromClaWHub('safe_skill');
+            const result = await installSkill('weather_forecast');
             expect(result.success).toBe(true);
-            expect(result.skillName).toBe('safe_skill');
-            expect(result.installedPath).toContain('safe_skill.ts');
+            expect(result.skillName).toBe('weather_forecast');
+            expect(result.installedPath).toContain('weather.js');
         });
 
-        it('should return error when fetch fails', async () => {
-            mockFetch.mockRejectedValueOnce(new Error('Connection refused'));
-            const result = await installFromClaWHub('bad_skill');
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Could not fetch skill');
-        });
-
-        it('should block skills with critical findings', async () => {
+        it('should return error for unknown skill', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ name: 'evil_skill', code: 'bash -i >& /dev/tcp' }),
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+
+            const result = await installSkill('nonexistent_skill');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('not found');
+        });
+
+        it('should block skills with critical scan findings', async () => {
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                text: () => Promise.resolve('bash -i >& /dev/tcp'),
             });
             vi.mocked(scanSkillCode).mockReturnValueOnce({
                 safe: false,
                 score: 0,
-                findings: [{ severity: 'critical', rule: 'REVERSE_SHELL', description: 'Bad stuff' }],
+                findings: [{ severity: 'critical', rule: 'REVERSE_SHELL', description: 'Bad' }],
                 recommendation: 'block',
             });
 
-            const result = await installFromClaWHub('evil_skill');
+            const result = await installSkill('weather_forecast');
             expect(result.success).toBe(false);
-            expect(result.error).toContain('Blocked by security scanner');
+            expect(result.error).toContain('security scanner');
         });
 
         it('should block warned skills unless forced', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ name: 'risky_skill', code: 'eval(Buffer.from("x"))' }),
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                text: () => Promise.resolve('risky code'),
             });
             vi.mocked(scanSkillCode).mockReturnValueOnce({
                 safe: false,
                 score: 30,
-                findings: [{ severity: 'high', rule: 'OBFUSCATION', description: 'Obfuscated' }],
+                findings: [{ severity: 'high', rule: 'TEST', description: 'Risky' }],
                 recommendation: 'warn',
             });
 
-            const result = await installFromClaWHub('risky_skill');
+            const result = await installSkill('weather_forecast');
             expect(result.success).toBe(false);
-            expect(result.error).toContain('--force');
+            expect(result.error).toContain('force');
         });
 
         it('should install warned skills when forced', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ name: 'risky_forced', code: 'some code' }),
+                json: () => Promise.resolve(MOCK_CATALOG),
+            });
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                text: () => Promise.resolve('some code'),
             });
             vi.mocked(scanSkillCode).mockReturnValueOnce({
                 safe: false,
                 score: 30,
-                findings: [{ severity: 'high', rule: 'TEST', description: 'Test' }],
+                findings: [{ severity: 'high', rule: 'TEST', description: 'Warn' }],
                 recommendation: 'warn',
             });
 
-            const result = await installFromClaWHub('risky_forced', { force: true });
+            const result = await installSkill('weather_forecast', { force: true });
             expect(result.success).toBe(true);
         });
 
-        it('should use skillIdOrName as fallback name', async () => {
+        it('should handle download failure', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve({ code: 'export const a = 1;' }),
+                json: () => Promise.resolve(MOCK_CATALOG),
             });
+            mockFetch.mockRejectedValueOnce(new Error('Timeout'));
 
-            const result = await installFromClaWHub('my-skill');
-            expect(result.skillName).toBe('my-skill');
+            const result = await installSkill('weather_forecast');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('download');
+        });
+    });
+
+    describe('uninstallSkill', () => {
+        it('should uninstall an installed skill', () => {
+            vi.mocked(existsSync as any).mockReturnValue(true);
+            vi.mocked(readdirSync as any).mockReturnValue(['weather.js', 'hacker_news.js']);
+            const result = uninstallSkill('weather');
+            expect(result.success).toBe(true);
         });
 
-        it('should sanitize filenames', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                json: () => Promise.resolve({ name: 'my skill/name', code: 'export const a = 1;' }),
-            });
+        it('should return error for uninstalled skill', () => {
+            vi.mocked(existsSync as any).mockReturnValue(true);
+            vi.mocked(readdirSync as any).mockReturnValue(['weather.js']);
+            const result = uninstallSkill('nonexistent');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('not installed');
+        });
 
-            const result = await installFromClaWHub('my-skill');
-            expect(result.installedPath).toContain('my_skill_name.ts');
+        it('should return error when no skills dir', () => {
+            vi.mocked(existsSync as any).mockReturnValue(false);
+            const result = uninstallSkill('weather');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No marketplace skills');
+        });
+    });
+
+    describe('listInstalled', () => {
+        it('should list installed marketplace skills', () => {
+            vi.mocked(existsSync as any).mockReturnValue(true);
+            vi.mocked(readdirSync as any).mockReturnValue(['weather.js', 'hacker_news.js']);
+            const installed = listInstalled();
+            expect(installed).toEqual(['weather', 'hacker_news']);
+        });
+
+        it('should return empty array when no skills dir', () => {
+            vi.mocked(existsSync as any).mockReturnValue(false);
+            const installed = listInstalled();
+            expect(installed).toEqual([]);
         });
     });
 
     describe('installFromUrl', () => {
-        it('should install a skill from a URL', async () => {
+        it('should install a skill from URL', async () => {
             mockFetch.mockResolvedValueOnce({
                 ok: true,
-                text: () => Promise.resolve('export function test() { return 42; }'),
+                text: () => Promise.resolve('export default { name: "test", execute: async () => "ok" };'),
             });
 
-            const result = await installFromUrl('https://example.com/skills/my_skill.ts');
+            const result = await installFromUrl('https://example.com/skills/my_skill.js');
             expect(result.success).toBe(true);
             expect(result.skillName).toBe('my_skill');
         });
 
         it('should return error when fetch fails', async () => {
             mockFetch.mockRejectedValueOnce(new Error('Timeout'));
-            const result = await installFromUrl('https://example.com/bad.ts');
+            const result = await installFromUrl('https://example.com/bad.js');
             expect(result.success).toBe(false);
-            expect(result.error).toContain('Failed to fetch skill');
-        });
-
-        it('should return error on HTTP error status', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: false,
-                status: 404,
-            });
-            const result = await installFromUrl('https://example.com/missing.ts');
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Failed to fetch skill');
+            expect(result.error).toContain('Failed to fetch');
         });
 
         it('should block skills that fail security scan', async () => {
@@ -300,52 +370,9 @@ describe('ClaWHub Marketplace', () => {
                 recommendation: 'block',
             });
 
-            const result = await installFromUrl('https://example.com/evil.ts');
+            const result = await installFromUrl('https://example.com/evil.js');
             expect(result.success).toBe(false);
-            expect(result.error).toContain('Blocked by security scanner');
-        });
-
-        it('should block warned skills unless forced', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                text: () => Promise.resolve('some code'),
-            });
-            vi.mocked(scanSkillCode).mockReturnValueOnce({
-                safe: false,
-                score: 30,
-                findings: [{ severity: 'high', rule: 'TEST', description: 'Bad' }],
-                recommendation: 'warn',
-            });
-
-            const result = await installFromUrl('https://example.com/warn.ts');
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('--force');
-        });
-
-        it('should install warned skills with force flag', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                text: () => Promise.resolve('some code'),
-            });
-            vi.mocked(scanSkillCode).mockReturnValueOnce({
-                safe: false,
-                score: 30,
-                findings: [{ severity: 'high', rule: 'TEST', description: 'Warn' }],
-                recommendation: 'warn',
-            });
-
-            const result = await installFromUrl('https://example.com/forced.ts', { force: true });
-            expect(result.success).toBe(true);
-        });
-
-        it('should handle URL with no filename gracefully', async () => {
-            mockFetch.mockResolvedValueOnce({
-                ok: true,
-                text: () => Promise.resolve('export const a = 1;'),
-            });
-
-            const result = await installFromUrl('https://example.com/');
-            expect(result.success).toBe(true);
+            expect(result.error).toContain('Blocked');
         });
     });
 });

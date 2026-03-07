@@ -119,6 +119,8 @@ export const MeshConfigSchema = z.object({
     taskTimeoutMs: z.number().default(120_000),
     /** Heartbeat interval in milliseconds */
     heartbeatIntervalMs: z.number().default(60_000),
+    /** Time before a peer is considered stale and pruned (ms, default 5 min) */
+    peerStaleTimeoutMs: z.number().default(300_000),
 });
 
 export const TunnelConfigSchema = z.object({

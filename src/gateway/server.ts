@@ -1525,6 +1525,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       mdns: config.mesh.mdns,
       tailscale: config.mesh.tailscale,
       autoApprove: config.mesh.autoApprove,
+      peerStaleTimeoutMs: config.mesh.peerStaleTimeoutMs,
     });
 
     // Auto-bind to 0.0.0.0 when mesh is enabled (so peers can reach us)

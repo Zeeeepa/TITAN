@@ -401,7 +401,7 @@ export async function addManualPeer(address: string, port: number, _nodeId: stri
 export async function startDiscovery(
     nodeId: string,
     port: number,
-    options: { mdns?: boolean; tailscale?: boolean; autoApprove?: boolean },
+    options: { mdns?: boolean; tailscale?: boolean; autoApprove?: boolean; peerStaleTimeoutMs?: number },
 ): Promise<void> {
     // Load persisted approved peers
     loadApprovedPeers();
@@ -420,9 +420,10 @@ export async function startDiscovery(
         }, 60_000);
     }
 
-    // Prune stale peers every 2 minutes (remove if not seen for 5 minutes)
+    // Prune stale peers every 2 minutes
+    const staleTimeout = options.peerStaleTimeoutMs ?? 300_000;
     peerPruneInterval = setInterval(() => {
-        const cutoff = Date.now() - 300_000;
+        const cutoff = Date.now() - staleTimeout;
         for (const [id, peer] of peers) {
             if (peer.lastSeen < cutoff) {
                 peers.delete(id);

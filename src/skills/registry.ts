@@ -121,6 +121,7 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerSmartHomeSkill } = await import('./builtin/smart_home.js');
     const { registerDataAnalysisSkill } = await import('./builtin/data_analysis.js');
     const { registerSkyvernSkill } = await import('./builtin/skyvern.js');
+    const { registerWebBrowseLlmSkill } = await import('./builtin/web_browse_llm.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -148,6 +149,7 @@ export async function initBuiltinSkills(): Promise<void> {
         ['smart_home', registerSmartHomeSkill],
         ['data_analysis', registerDataAnalysisSkill],
         ['skyvern', registerSkyvernSkill],
+        ['web_browse_llm', registerWebBrowseLlmSkill],
     ];
 
     for (const [name, fn] of registrations) {

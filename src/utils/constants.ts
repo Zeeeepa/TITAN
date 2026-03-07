@@ -54,6 +54,8 @@ export const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 export const DEFAULT_SANDBOX_MODE = 'host';
 export const ALLOWED_TOOLS_DEFAULT = [
     'shell', 'read_file', 'write_file', 'edit_file', 'list_dir',
-    'web_search', 'browser', 'cron', 'webhook', 'email', 'memory',
+    'web_search', 'web_fetch', 'web_read', 'web_act',
+    'browse_url', 'browser_search', 'browser_auto_nav', 'browser',
+    'cron', 'webhook', 'email', 'memory',
 ];
 export const DENIED_TOOLS_DEFAULT: string[] = [];

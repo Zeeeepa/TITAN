@@ -201,7 +201,8 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
             logger.warn(COMPONENT, `Entity extraction JSON parse failed, raw: ${jsonStr.slice(0, 200)}`);
             return [];
         }
-        const filtered = parsed.filter((e: unknown) => e && typeof e === 'object' && 'name' in (e as object));
+        const filtered = parsed.filter((e: unknown): e is { name: string; type: string; facts: string[] } =>
+            e != null && typeof e === 'object' && 'name' in (e as object) && 'type' in (e as object));
         logger.info(COMPONENT, `Extraction parsed ${parsed.length} items, ${filtered.length} valid entities`);
         return filtered;
     } catch (err) {

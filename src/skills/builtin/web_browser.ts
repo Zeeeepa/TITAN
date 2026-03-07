@@ -94,7 +94,7 @@ async function doLaunchBrowser(): Promise<PwContext> {
     return playwrightContext;
 }
 
-async function getOrCreateBrowser(): Promise<PwContext> {
+export async function getOrCreateBrowser(): Promise<PwContext> {
     if (playwrightBrowser && playwrightBrowser.isConnected()) {
         return playwrightContext!;
     }

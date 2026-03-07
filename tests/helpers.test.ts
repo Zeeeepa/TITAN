@@ -16,6 +16,7 @@ import {
     sleep,
     shortId,
     deepMerge,
+    fetchWithRetry,
 } from '../src/utils/helpers.js';
 
 describe('Helpers (extended)', () => {
@@ -200,6 +201,126 @@ describe('Helpers (extended)', () => {
 
         it('should truncate long strings with ellipsis', () => {
             expect(truncate('hello world', 8)).toBe('hello...');
+        });
+    });
+
+    describe('fetchWithRetry', () => {
+        const originalFetch = globalThis.fetch;
+
+        afterEach(() => {
+            globalThis.fetch = originalFetch;
+        });
+
+        it('should return response on success', async () => {
+            const mockResponse = { status: 200, ok: true, headers: new Headers() } as Response;
+            globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, { maxRetries: 0 });
+            expect(result.status).toBe(200);
+            expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('should retry on 429 status', async () => {
+            const retryResponse = { status: 429, ok: false, headers: new Headers() } as Response;
+            const successResponse = { status: 200, ok: true, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn()
+                .mockResolvedValueOnce(retryResponse)
+                .mockResolvedValueOnce(successResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 1,
+                initialDelayMs: 10,
+            });
+            expect(result.status).toBe(200);
+            expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('should retry on 500 status', async () => {
+            const retryResponse = { status: 500, ok: false, headers: new Headers() } as Response;
+            const successResponse = { status: 200, ok: true, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn()
+                .mockResolvedValueOnce(retryResponse)
+                .mockResolvedValueOnce(successResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 1,
+                initialDelayMs: 10,
+            });
+            expect(result.status).toBe(200);
+        });
+
+        it('should return last response after max retries', async () => {
+            const retryResponse = { status: 503, ok: false, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn().mockResolvedValue(retryResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 2,
+                initialDelayMs: 10,
+            });
+            expect(result.status).toBe(503);
+            expect(globalThis.fetch).toHaveBeenCalledTimes(3); // initial + 2 retries
+        });
+
+        it('should not retry on non-retryable status', async () => {
+            const notFoundResponse = { status: 404, ok: false, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn().mockResolvedValue(notFoundResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 3,
+                initialDelayMs: 10,
+            });
+            expect(result.status).toBe(404);
+            expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('should retry on network error and throw after max retries', async () => {
+            globalThis.fetch = vi.fn().mockRejectedValue(new Error('Connection refused'));
+
+            await expect(
+                fetchWithRetry('https://example.com', {}, { maxRetries: 1, initialDelayMs: 10 })
+            ).rejects.toThrow('Connection refused');
+            expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('should respect Retry-After header', async () => {
+            const retryHeaders = new Headers();
+            retryHeaders.set('Retry-After', '1');
+            const retryResponse = { status: 429, ok: false, headers: retryHeaders } as Response;
+            const successResponse = { status: 200, ok: true, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn()
+                .mockResolvedValueOnce(retryResponse)
+                .mockResolvedValueOnce(successResponse);
+
+            const start = Date.now();
+            await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 1,
+                initialDelayMs: 10,
+            });
+            const elapsed = Date.now() - start;
+            // Should have waited ~1000ms (Retry-After: 1 second)
+            expect(elapsed).toBeGreaterThanOrEqual(900);
+        });
+
+        it('should use custom retryable statuses', async () => {
+            const customResponse = { status: 418, ok: false, headers: new Headers() } as Response;
+            const successResponse = { status: 200, ok: true, headers: new Headers() } as Response;
+
+            globalThis.fetch = vi.fn()
+                .mockResolvedValueOnce(customResponse)
+                .mockResolvedValueOnce(successResponse);
+
+            const result = await fetchWithRetry('https://example.com', {}, {
+                maxRetries: 1,
+                initialDelayMs: 10,
+                retryableStatuses: [418],
+            });
+            expect(result.status).toBe(200);
+            expect(globalThis.fetch).toHaveBeenCalledTimes(2);
         });
     });
 });

@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 20 providers. 60+ tools. 2,860+ tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 78 tools. 3,168 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
-  <a href="#providers"><img src="https://img.shields.io/badge/providers-20-purple" alt="20 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-60+-orange" alt="60+ Tools"/></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-78-orange" alt="78 Tools"/></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 60+ built-in + drop-in YAML/JS creation | Fixed tool set |
+| **Skills** | 78 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
 | **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
@@ -97,7 +97,7 @@ When TITAN detects an ambitious request — "figure out how to monetize this hom
 
 Or just ask something ambitious and TITAN will detect it automatically. The detection is configurable — you can tune the complexity threshold, require approval, set max plan steps, or disable it entirely if you prefer your agents impulsive.
 
-### 20 AI Providers, 70+ Models
+### 21 AI Providers, 70+ Models
 
 Connect any combination of cloud and local models. TITAN routes, fails over, and load-balances automatically.
 
@@ -111,13 +111,13 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 60+ Built-in Tools
+### 78 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
 | **Shell & Process** | `shell`, `exec`, `process` (list, kill, spawn, poll, log) |
 | **Filesystem** | `read_file`, `write_file`, `edit_file`, `list_dir`, `apply_patch` |
-| **Web** | `web_search`, `web_fetch`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` (Playwright) |
+| **Web** | `web_search`, `web_fetch`, `web_read`, `web_act`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` (Playwright) |
 | **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
 | **GitHub** | `github_repos`, `github_issues`, `github_prs`, `github_commits`, `github_files` |
 | **Email** | `email_send`, `email_search`, `email_read`, `email_list` (Gmail OAuth + SMTP) |
@@ -128,6 +128,12 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
+| **Income Tracking** | `income_log`, `income_summary`, `income_list`, `income_goal` |
+| **Freelance** | `freelance_search`, `freelance_match`, `freelance_draft`, `freelance_track` |
+| **Content** | `content_research`, `content_outline`, `content_publish`, `content_schedule` |
+| **Lead Gen** | `lead_scan`, `lead_score`, `lead_queue`, `lead_report` |
+
+All skills can be individually enabled/disabled from the Mission Control dashboard.
 
 ### Gmail OAuth Integration
 
@@ -272,6 +278,8 @@ titan autopilot --history        # See past run results
 
 Edit `~/.titan/AUTOPILOT.md` to control what TITAN watches each cycle. Results are classified as OK (silent), NOTABLE (summary delivered), or URGENT (priority alert). Cost-optimized: uses a cheaper model for routine runs, respects daily budgets, and skips runs outside active hours.
 
+Pre-built playbook templates are available in [`docs/autopilot-playbooks/`](docs/autopilot-playbooks/) for common income strategies: freelance monitoring, content publishing, lead generation, and service automation.
+
 ### E2E Encrypted Sessions
 
 AES-256-GCM encryption for sensitive conversations. Keys generated per-session, held in memory only.
@@ -298,7 +306,7 @@ The MCP integration adds `skyvern_act`, `skyvern_validate`, credential managemen
 
 ## Providers
 
-TITAN supports 20 AI providers out of the box. Add your API key and go. Or add all 20. We won't judge.
+TITAN supports 20 AI providers out of the box. Add your API key and go. Or add all 21. We won't judge.
 
 | Provider | Models | Type |
 |----------|--------|------|
@@ -562,7 +570,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (2,860+ tests, 70 files)
+npm run test           # vitest (3,168 tests, 81 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -578,7 +586,7 @@ src/
   channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       60+ built-in tools + user skill loader
+  skills/       78 built-in tools + user skill loader
   security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard + OAuth endpoints
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
@@ -610,6 +618,8 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 See [TASKS.md](TASKS.md) for the full development roadmap.
 
 ### Recently Shipped (v2026.5.x)
+- **v2026.5.14**: Income Automation Skills (income_tracker, freelance_monitor, content_publisher, lead_scorer — 16 new tools), Autopilot Playbook templates, per-skill enable/disable toggle in Mission Control, skill-to-tool mapping, 3,168 tests
+- **v2026.5.13**: Kimi K2.5 provider, memory flush hook, web_read + web_act tools for local-LLM browsing
 - **v2026.5.11**: Deliberative Reasoning (analyze→plan→approve→execute), Gmail OAuth integration (native fetch, zero deps), Soul Onboarding (4-step wizard with SOUL.md generation), SOUL.md live editor in dashboard, `/plan` slash command, ambitious message complexity detection, Google OAuth dashboard controls, 2,860+ tests
 - **v2026.5.9**: Bug fixes + local model performance — port pre-check, small model tool reduction (<8B models get 7 core tools), Ollama `think:false`, configurable stall detector with GPU auto-detection, `titan config [key]`, slash commands via REST API, config validation, graph entity extraction hardening, concurrent LLM request limiting, 2,850+ tests
 - **v2026.5.8**: Ollama model guide (`docs/MODELS.md`), 147→0 ESLint warnings, `local` model alias, 2,830+ tests
@@ -652,7 +662,7 @@ We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
 
 TITAN is under active development and growing fast. Every release brings new providers, new tools, and deeper intelligence. The roadmap includes vector search & RAG, a code interpreter, plugin marketplace, team mode with RBAC, and much more.
 
-It started as "what if I made an AI agent that actually does stuff" and evolved into a 27K-line TypeScript framework with 20 providers, 60+ tools, deliberative reasoning, Gmail OAuth, mesh networking, and a personality system. We're not entirely sure when it became sentient, but the SOUL.md file is a good suspect.
+It started as "what if I made an AI agent that actually does stuff" and evolved into a 27K-line TypeScript framework with 21 providers, 78 tools, deliberative reasoning, Gmail OAuth, mesh networking, and a personality system. We're not entirely sure when it became sentient, but the SOUL.md file is a good suspect.
 
 If you're looking for an AI agent framework that's lightweight enough to run on a Raspberry Pi but powerful enough to orchestrate multi-model workflows across a mesh of machines — you're in the right place.
 

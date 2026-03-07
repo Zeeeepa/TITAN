@@ -7,7 +7,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import net from 'net';
 import { join } from 'path';
-import { homedir, hostname as osHostname } from 'os';
+import { homedir, hostname as osHostname, cpus, loadavg } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
 import fs from 'fs';
@@ -57,6 +57,13 @@ import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconn
 import { TITAN_WORKSPACE } from '../utils/constants.js';
 
 const COMPONENT = 'Gateway';
+
+/** Get normalized CPU load (0.0–1.0) using 1-minute load average */
+function getCpuLoad(): number {
+    const avg = loadavg()[0]; // 1-minute load average
+    const cores = cpus().length || 1;
+    return Math.min(1, avg / cores);
+}
 
 /** Fields that require a gateway restart to take effect */
 const RESTART_REQUIRED_PATTERNS = ['channels.*', 'gateway.auth.*', 'logging.level'];
@@ -880,16 +887,22 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const cfg = loadConfig();
     if (!cfg.mesh.enabled) { res.json({ titan: false, enabled: false }); return; }
     const { getOrCreateNodeId } = await import('../mesh/identity.js');
+    const { getActiveRemoteTaskCount } = await import('../mesh/transport.js');
     const { discoverAllModels: discoverModels } = await import('../providers/router.js');
     const models = await discoverModels();
     const { listAgents: meshListAgents } = await import('../agent/multiAgent.js');
+    const cpuLoad = getCpuLoad();
+    const activeTasks = getActiveRemoteTaskCount();
+    // Load score: 0.0 (idle) to 1.0 (maxed). Blend CPU + task saturation.
+    const taskLoad = activeTasks / Math.max(cfg.mesh.maxRemoteTasks, 1);
+    const load = Math.min(1, cpuLoad * 0.4 + taskLoad * 0.6);
     res.json({
       titan: true,
       nodeId: getOrCreateNodeId(),
       version: TITAN_VERSION,
       models: models.map(m => m.id),
       agentCount: meshListAgents().length,
-      load: 0,
+      load: Math.round(load * 100) / 100,
     });
   });
 
@@ -1334,6 +1347,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       const { getOrCreateNodeId } = await import('../mesh/identity.js');
 
       if (!verifyMeshAuth(authToken, peerNodeId, cfg.mesh.secret)) {
+        logger.warn(COMPONENT, `Mesh auth rejected: nodeId=${peerNodeId}, ip=${req.socket.remoteAddress}`);
         ws.close(1008, 'Mesh auth failed');
         return;
       }
@@ -1464,6 +1478,9 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   initMonitors();
 
   // ── Mesh Networking ───────────────────────────────────────────
+  if (config.mesh.enabled && !config.mesh.secret) {
+    logger.warn(COMPONENT, 'Mesh is enabled but no secret is set. Run `titan mesh --init` to generate one. Mesh disabled.');
+  }
   if (config.mesh.enabled && config.mesh.secret) {
     const { getOrCreateNodeId } = await import('../mesh/identity.js');
     const { startDiscovery, setOnPeerDiscovered, setConnectApprovedPeer, setMaxPeers } = await import('../mesh/discovery.js');
@@ -1519,22 +1536,32 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
     // Connect to static peers
     if (config.mesh.staticPeers.length > 0) {
       for (const addr of config.mesh.staticPeers) {
-        const [peerHost, peerPort] = addr.split(':');
-        connectToPeer(peerHost, parseInt(peerPort || '48420', 10), nodeId, config.mesh.secret)
+        const parts = addr.split(':');
+        const peerHost = parts[0];
+        const peerPort = parseInt(parts[1] || '48420', 10);
+        if (!peerHost || isNaN(peerPort)) {
+          logger.warn(COMPONENT, `Invalid static peer address: "${addr}" — expected host:port (e.g. 192.168.1.100:48420)`);
+          continue;
+        }
+        connectToPeer(peerHost, peerPort, nodeId, config.mesh.secret)
           .catch(() => logger.debug(COMPONENT, `Static peer unreachable: ${addr}`));
       }
     }
 
     // Start heartbeat with dynamic model discovery
     startHeartbeat(nodeId, async () => {
+      const { getActiveRemoteTaskCount: getTaskCount } = await import('../mesh/transport.js');
       const models = await discoverAllModels();
+      const cpu = getCpuLoad();
+      const taskLoad = getTaskCount() / Math.max(config.mesh.maxRemoteTasks, 1);
+      const load = Math.min(1, cpu * 0.4 + taskLoad * 0.6);
       return {
         hostname: osHostname(),
         version: TITAN_VERSION,
         models: models.map(m => m.id),
-        load: 0,
+        load: Math.round(load * 100) / 100,
       };
-    });
+    }, config.mesh.heartbeatIntervalMs || 60_000);
 
     const mode = config.mesh.autoApprove ? 'auto-approve' : 'approval-required';
     logger.info(COMPONENT, `Mesh active — Node: ${nodeId.slice(0, 8)}... | mDNS: ${config.mesh.mdns} | Tailscale: ${config.mesh.tailscale} | Max peers: ${config.mesh.maxPeers} | Mode: ${mode}`);

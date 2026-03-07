@@ -177,8 +177,10 @@ export function getModelAliases(): Record<string, string> {
 /** Route a chat request to a mesh peer */
 async function meshChat(peer: MeshPeer, modelId: string, message: string): Promise<ChatResponse> {
     const requestId = randomBytes(8).toString('hex');
+    const config = loadConfig();
+    const timeoutMs = config.mesh?.taskTimeoutMs || 120_000;
     logger.info(COMPONENT, `Routing "${modelId}" to mesh peer ${peer.hostname} (${peer.nodeId.slice(0, 8)}...)`);
-    const result = await routeTaskToNode(peer.nodeId, requestId, message, modelId, 120_000) as Record<string, unknown>;
+    const result = await routeTaskToNode(peer.nodeId, requestId, message, modelId, timeoutMs) as Record<string, unknown>;
     if (result.error) {
         throw new Error(`Mesh peer error: ${result.error}`);
     }

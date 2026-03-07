@@ -13,7 +13,7 @@ const COMPONENT = 'MeshTransport';
 
 // ── Active WebSocket connections to peers ──────────────────────
 const peerConnections = new Map<string, WebSocket>();
-const pendingRequests = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
+const pendingRequests = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout>; peerNodeId?: string }>();
 const reconnectState = new Map<string, { attempts: number }>();
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let activeRemoteTasks = 0;
@@ -117,6 +117,14 @@ export async function connectToPeer(
         ws.on('close', () => {
             if (remoteNodeId) {
                 peerConnections.delete(remoteNodeId);
+                // Reject any pending requests targeted at this peer
+                for (const [reqId, req] of pendingRequests) {
+                    if (req.peerNodeId === remoteNodeId) {
+                        clearTimeout(req.timeout);
+                        req.reject(new Error(`Peer disconnected: ${remoteNodeId}`));
+                        pendingRequests.delete(reqId);
+                    }
+                }
                 logger.debug(COMPONENT, `Peer disconnected: ${remoteNodeId}`);
             }
             if (!resolved) { resolved = true; resolve(false); }
@@ -182,7 +190,7 @@ export function routeTaskToNode(
             reject(new Error(`Mesh task timed out (peer: ${nodeId})`));
         }, timeoutMs);
 
-        pendingRequests.set(requestId, { resolve, reject, timeout });
+        pendingRequests.set(requestId, { resolve, reject, timeout, peerNodeId: nodeId });
 
         const sent = sendToPeer(nodeId, {
             type: 'mesh',
@@ -234,7 +242,10 @@ export function handleMeshWebSocket(
 
             if (msg.action === 'task_request' && onTaskRequest && msg.requestId) {
                 activeRemoteTasks++;
-                onTaskRequest(msg, (payload) => {
+                let replied = false;
+                const sendReply = (payload: Record<string, unknown>) => {
+                    if (replied) return;
+                    replied = true;
                     activeRemoteTasks = Math.max(0, activeRemoteTasks - 1);
                     const reply: MeshMessage = {
                         type: 'mesh',
@@ -245,8 +256,13 @@ export function handleMeshWebSocket(
                         payload,
                         timestamp: new Date().toISOString(),
                     };
-                    ws.send(JSON.stringify(reply));
-                });
+                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(reply));
+                };
+                try {
+                    onTaskRequest(msg, sendReply);
+                } catch (err) {
+                    sendReply({ error: `Handler error: ${(err as Error).message}` });
+                }
             }
 
             if (msg.action === 'task_response' && msg.requestId) {
@@ -264,6 +280,14 @@ export function handleMeshWebSocket(
 
     ws.on('close', () => {
         peerConnections.delete(nodeId);
+        // Reject any pending requests for this peer
+        for (const [reqId, req] of pendingRequests) {
+            if (req.peerNodeId === nodeId) {
+                clearTimeout(req.timeout);
+                req.reject(new Error(`Peer disconnected: ${nodeId}`));
+                pendingRequests.delete(reqId);
+            }
+        }
         logger.info(COMPONENT, `Mesh peer disconnected: ${nodeId}`);
     });
 }
@@ -272,6 +296,7 @@ export function handleMeshWebSocket(
 export function startHeartbeat(
     localNodeId: string,
     payload?: Record<string, unknown> | (() => Record<string, unknown> | Promise<Record<string, unknown>>),
+    intervalMs = 60_000,
 ): void {
     if (heartbeatInterval) return; // Already running
     heartbeatInterval = setInterval(async () => {
@@ -284,8 +309,8 @@ export function startHeartbeat(
             timestamp: new Date().toISOString(),
         };
         broadcastToMesh(msg);
-    }, 60_000);
-    logger.debug(COMPONENT, 'Heartbeat interval started (60s)');
+    }, intervalMs);
+    logger.debug(COMPONENT, `Heartbeat interval started (${Math.round(intervalMs / 1000)}s)`);
 }
 
 /** Stop the heartbeat interval */

@@ -123,10 +123,11 @@ export function setConnectApprovedPeer(cb: ((peer: MeshPeer) => void) | null): v
 
 /** Register a peer (from any discovery source). Routes through approval. */
 export function registerPeer(peer: MeshPeer, options?: { skipApproval?: boolean }): void {
-    // Already an active approved peer — just update
+    // Already an active approved peer — update with fresh data
     const existing = peers.get(peer.nodeId);
     if (existing) {
-        existing.models = peer.models;
+        // Use the new model list if provided, otherwise keep existing
+        existing.models = peer.models.length > 0 ? peer.models : existing.models;
         existing.agentCount = peer.agentCount;
         existing.load = peer.load;
         existing.lastSeen = Date.now();
@@ -290,7 +291,13 @@ function getTailscalePeers(): TailscalePeer[] {
         });
         const status = JSON.parse(raw) as { Peer?: Record<string, TailscalePeer> };
         return Object.values(status.Peer || {}).filter(p => p.Online);
-    } catch {
+    } catch (err) {
+        const msg = (err as Error).message || '';
+        if (msg.includes('ENOENT')) {
+            logger.debug(COMPONENT, 'Tailscale not installed — skipping VPN peer discovery');
+        } else {
+            logger.warn(COMPONENT, `Tailscale discovery failed: ${msg.slice(0, 100)}`);
+        }
         return [];
     }
 }
@@ -343,10 +350,21 @@ async function probePeer(address: string, port: number): Promise<ProbeResult | n
         const res = await fetch(`http://${address}:${port}/api/mesh/hello`, {
             signal: AbortSignal.timeout(PROBE_TIMEOUT),
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            logger.debug(COMPONENT, `Probe ${address}:${port} returned ${res.status}`);
+            return null;
+        }
         const data = await res.json() as ProbeResult;
         return data.titan ? data : null;
-    } catch {
+    } catch (err) {
+        const msg = (err as Error).message || '';
+        if (msg.includes('abort') || msg.includes('timeout')) {
+            logger.debug(COMPONENT, `Probe ${address}:${port} timed out`);
+        } else if (msg.includes('ECONNREFUSED')) {
+            logger.debug(COMPONENT, `Probe ${address}:${port} refused — no TITAN gateway running`);
+        } else {
+            logger.debug(COMPONENT, `Probe ${address}:${port} failed: ${msg.slice(0, 80)}`);
+        }
         return null;
     }
 }

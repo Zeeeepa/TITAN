@@ -115,6 +115,10 @@ export const MeshConfigSchema = z.object({
     maxPeers: z.number().default(5),
     /** Auto-approve discovered peers (skip approval prompt) */
     autoApprove: z.boolean().default(false),
+    /** Timeout for mesh task RPC in milliseconds */
+    taskTimeoutMs: z.number().default(120_000),
+    /** Heartbeat interval in milliseconds */
+    heartbeatIntervalMs: z.number().default(60_000),
 });
 
 export const TunnelConfigSchema = z.object({

@@ -525,6 +525,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <button class="stab-btn" data-stab="security-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔒 Security</button>
           <button class="stab-btn" data-stab="gateway-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🌐 Gateway</button>
           <button class="stab-btn" data-stab="profile-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">👤 Profile</button>
+          <button class="stab-btn" data-stab="mesh-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🕸 Mesh</button>
         </div>
 
         <!-- Tab 1: AI & Model -->
@@ -782,6 +783,31 @@ tr:hover{background:rgba(6,182,212,.03)}
             </div>
           </div>
         </div>
+
+        <!-- Tab 7: Mesh Networking -->
+        <div id="stab-mesh-cfg" class="stab-content" style="padding:20px;display:none">
+          <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Connect up to 5 TITAN nodes together to share models and API keys across machines.</p>
+
+          <div id="mesh-status-bar" style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--text-dim);margin-bottom:16px">
+            Loading mesh status...
+          </div>
+
+          <h4 style="font-size:14px;margin-bottom:8px;color:var(--text-bright)">Pending Peers</h4>
+          <p style="color:var(--text-dim);font-size:12px;margin-bottom:8px">Discovered machines waiting for your approval.</p>
+          <div id="mesh-pending-list" style="margin-bottom:20px">
+            <div style="color:var(--text-dim);font-size:13px;padding:8px">No pending peers</div>
+          </div>
+
+          <h4 style="font-size:14px;margin-bottom:8px;color:var(--text-bright)">Connected Peers</h4>
+          <div id="mesh-peers-list" style="margin-bottom:16px">
+            <div style="color:var(--text-dim);font-size:13px;padding:8px">No connected peers</div>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn" data-action="refresh-mesh">🔄 Refresh</button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -1029,6 +1055,7 @@ document.addEventListener('click', (e) => {
     if (a === 'reload-config') loadConfig();
     if (a === 'refresh-ollama') refreshOllamaModels();
     if (a === 'test-ollama') testOllamaConnection();
+    if (a === 'refresh-mesh') loadMeshPanel();
     if (a === 'refresh-logs') loadLogs();
     if (a === 'refresh-graphiti') loadGraphiti();
     if (a === 'clear-graph') clearGraphData();
@@ -1120,6 +1147,15 @@ function connectWS() {
       if (data.type === 'response') {
         appendMsg('assistant', data.content, data);
         document.getElementById('send-btn').disabled = false;
+      }
+      // Mesh events — auto-refresh the mesh panel
+      if (data.type === 'mesh_peer_discovered') {
+        toast('New TITAN node found: ' + (data.peer && data.peer.hostname || 'unknown') + ' — go to Settings > Mesh to approve');
+        loadMeshPanel();
+      }
+      if (data.type === 'mesh_peer_approved' || data.type === 'mesh_peer_connected' || data.type === 'mesh_peer_revoked') {
+        loadMeshPanel();
+        fetchData();
       }
     } catch(err) {}
   };
@@ -1247,6 +1283,7 @@ function showStab(name) {
   if (activeBtn) { activeBtn.style.background = 'var(--accent)'; activeBtn.style.color = '#fff'; }
   const content = document.getElementById('stab-' + name);
   if (content) content.style.display = 'block';
+  if (name === 'mesh-cfg') loadMeshPanel();
 }
 
 // ── Config ────────────────────────────────────────────────────────
@@ -1543,6 +1580,96 @@ async function refreshOllamaModels() {
   toast('Refreshing Ollama models...');
   await populateModels();
   toast('Ollama models refreshed');
+}
+
+// ── Mesh panel ───────────────────────────────────────────────────
+async function loadMeshPanel() {
+  const statusBar = document.getElementById('mesh-status-bar');
+  const pendingList = document.getElementById('mesh-pending-list');
+  const peersList = document.getElementById('mesh-peers-list');
+  try {
+    const [peersR, pendingR] = await Promise.all([
+      fetch('/api/mesh/peers', {headers:authHeaders()}),
+      fetch('/api/mesh/pending', {headers:authHeaders()}),
+    ]);
+    const peersData = await peersR.json();
+    const pendingData = await pendingR.json();
+
+    if (!peersData.enabled) {
+      if (statusBar) statusBar.innerHTML = '⚠️ Mesh not enabled. Run <code>titan mesh --init</code> on this machine.';
+      return;
+    }
+
+    const peers = peersData.peers || [];
+    const pending = pendingData.pending || [];
+    if (statusBar) statusBar.innerHTML = '✅ Mesh active — <b>' + peers.length + '</b> connected, <b>' + pending.length + '</b> pending';
+
+    // Render pending peers
+    if (pendingList) {
+      if (pending.length === 0) {
+        pendingList.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px">No pending peers</div>';
+      } else {
+        pendingList.innerHTML = pending.map(function(p) {
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px;border-left:3px solid #f59e0b">'
+            + '<div>'
+            + '<div style="font-weight:600;font-size:13px;color:var(--text-bright)">' + p.hostname + '</div>'
+            + '<div style="font-size:11px;color:var(--text-dim)">' + p.address + ':' + p.port + ' — ' + (p.models||[]).length + ' models — via ' + p.discoveredVia + '</div>'
+            + '</div>'
+            + '<div style="display:flex;gap:6px">'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#22c55e;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="meshApprove(\\'' + p.nodeId + '\\')">Approve</button>'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="meshReject(\\'' + p.nodeId + '\\')">Reject</button>'
+            + '</div></div>';
+        }).join('');
+      }
+    }
+
+    // Render connected peers
+    if (peersList) {
+      if (peers.length === 0) {
+        peersList.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px">No connected peers</div>';
+      } else {
+        peersList.innerHTML = peers.map(function(p) {
+          var loadPct = Math.round((p.load||0)*100);
+          var loadColor = loadPct < 50 ? '#22c55e' : loadPct < 80 ? '#f59e0b' : '#ef4444';
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px;border-left:3px solid #22c55e">'
+            + '<div>'
+            + '<div style="font-weight:600;font-size:13px;color:var(--text-bright)">' + p.hostname + '</div>'
+            + '<div style="font-size:11px;color:var(--text-dim)">' + (p.address||'ws') + ':' + (p.port||'') + ' — ' + (p.models||[]).length + ' models — load: <span style="color:' + loadColor + '">' + loadPct + '%</span></div>'
+            + '</div>'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:var(--bg2);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="meshRevoke(\\'' + p.nodeId + '\\')">Disconnect</button>'
+            + '</div>';
+        }).join('');
+      }
+    }
+  } catch(e) {
+    if (statusBar) statusBar.innerHTML = '❌ Cannot reach mesh API';
+  }
+}
+
+async function meshApprove(nodeId) {
+  try {
+    const r = await fetch('/api/mesh/approve/' + nodeId, {method:'POST', headers:authHeaders()});
+    const d = await r.json();
+    if (d.approved) { toast('Peer approved and connected!', 'success'); loadMeshPanel(); }
+    else toast(d.error || 'Failed to approve', 'error');
+  } catch(e) { toast('Error approving peer', 'error'); }
+}
+
+async function meshReject(nodeId) {
+  try {
+    await fetch('/api/mesh/reject/' + nodeId, {method:'POST', headers:authHeaders()});
+    toast('Peer rejected');
+    loadMeshPanel();
+  } catch(e) { toast('Error rejecting peer', 'error'); }
+}
+
+async function meshRevoke(nodeId) {
+  if (!confirm('Disconnect this peer? You can re-approve it later.')) return;
+  try {
+    await fetch('/api/mesh/revoke/' + nodeId, {method:'POST', headers:authHeaders()});
+    toast('Peer disconnected');
+    loadMeshPanel();
+  } catch(e) { toast('Error disconnecting peer', 'error'); }
 }
 
 // ── Data fetching ─────────────────────────────────────────────────

@@ -29,7 +29,7 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
        |         |
     Skills    LLM Providers
     31 files  21 providers
-    78 tools  (4 native + 17 compat)
+    86 tools  (4 native + 17 compat)
        |
     Memory + Learning
     Graph + Relationship
@@ -134,8 +134,8 @@ src/
 |   +-- auditLog.ts         # Tamper-evident audit trail
 +-- skills/
 |   +-- registry.ts         # Skill discovery, loading, toggle
-|   +-- marketplace.ts      # ClaWHub marketplace integration
-|   +-- builtin/            # 31 built-in skill files (78 tools)
+|   +-- marketplace.ts      # GitHub-hosted skills marketplace
+|   +-- builtin/            # 31 built-in skill files (86 tools)
 |       +-- shell.ts        # Shell execution
 |       +-- filesystem.ts   # File operations
 |       +-- browser.ts      # CDP browser control

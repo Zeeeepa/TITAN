@@ -210,7 +210,9 @@ Category:`;
             return allTools;
         }
 
-        const selectedSet = new Set(toolNames);
+        // Always include essential tools regardless of category
+        const ALWAYS_INCLUDE = ['web_search', 'web_fetch', 'tool_search', 'memory'];
+        const selectedSet = new Set([...toolNames, ...ALWAYS_INCLUDE]);
         const filtered = allTools.filter(t => selectedSet.has(t.function.name));
 
         // Sanity check: don't return empty

@@ -25,6 +25,7 @@ export const DEFAULT_CORE_TOOLS = [
     'edit_file',
     'list_dir',
     'web_search',
+    'web_fetch',
     'memory',
     'tool_search',
 ];

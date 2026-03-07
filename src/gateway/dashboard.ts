@@ -367,14 +367,23 @@ tr:hover{background:rgba(6,182,212,.03)}
       <!-- Step 2: Soul -->
       <div class="ob-step" id="ob-step-2">
         <div class="ob-step-title">2. Define TITAN's Personality</div>
-        <div class="ob-step-desc">Tell TITAN about yourself and how you want it to behave. This becomes its SOUL.md — the core personality prompt injected into every conversation.</div>
+        <div class="ob-step-desc">Tell TITAN about yourself and how you want it to behave. This becomes its SOUL.md — the core personality prompt injected into every conversation. Edit the examples below or write your own.</div>
         <div class="form-group" style="margin-bottom:16px">
           <label>About You (what should TITAN know?)</label>
-          <textarea id="ob-about-me" rows="4" placeholder="e.g. I'm a music producer and developer. I run a homelab with 6 machines. I like direct, no-fluff answers." style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit"></textarea>
+          <textarea id="ob-about-me" rows="4" style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit">I'm a software developer and entrepreneur. I build side projects and automate workflows. I prefer direct, practical answers over theory.</textarea>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom:16px">
           <label>How should TITAN act?</label>
-          <textarea id="ob-personality" rows="4" placeholder="e.g. Be a technical partner, not a tutor. Think like an architect. Suggest better approaches proactively. Be concise." style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit"></textarea>
+          <textarea id="ob-personality" rows="4" style="padding:14px;font-size:14px;resize:vertical;width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit">Be a technical partner, not a tutor. Think like an architect. Suggest better approaches proactively. Keep answers concise unless I ask for detail.</textarea>
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px">
+          <strong>Other personality ideas:</strong>
+          <ul style="margin:6px 0 0 16px;padding:0;line-height:1.8">
+            <li>"Be friendly and encouraging. Explain things step by step. Use analogies."</li>
+            <li>"Act like a senior engineer doing code review. Be critical but constructive."</li>
+            <li>"Be witty and casual. Use humor. Keep things fun but productive."</li>
+            <li>"Be a business strategist. Focus on ROI, market fit, and actionable next steps."</li>
+          </ul>
         </div>
       </div>
 
@@ -746,7 +755,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="form-row">
             <div class="form-group">
               <label>Your Name</label>
-              <input type="text" id="cfg-profile-name" placeholder="e.g. Tony"/>
+              <input type="text" id="cfg-profile-name" placeholder="e.g. Alex"/>
             </div>
             <div class="form-group">
               <label>Technical Level</label>

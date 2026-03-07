@@ -162,7 +162,7 @@ During onboarding, TITAN asks who you are and how you want it to behave. Your an
 # SOUL.md - Who You Are
 
 ## About Your Human
-Music producer and developer. Runs a homelab with 6 machines.
+Full-stack developer and startup founder. Builds side projects on weekends.
 Prefers direct, no-fluff answers.
 
 ## Your Personality

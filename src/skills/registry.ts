@@ -229,6 +229,7 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerLeadScorerSkill } = await import('./builtin/lead_scorer.js');
     const { registerHunterSkill } = await import('./builtin/hunter.js');
     const { registerCodeExecSkill } = await import('./builtin/code_exec.js');
+    const { registerWeatherSkill } = await import('./builtin/weather.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -263,6 +264,7 @@ export async function initBuiltinSkills(): Promise<void> {
         ['lead_scorer', registerLeadScorerSkill],
         ['hunter', registerHunterSkill],
         ['code_exec', registerCodeExecSkill],
+        ['weather', registerWeatherSkill],
     ];
 
     for (const [name, fn] of registrations) {

@@ -26,6 +26,7 @@ export const DEFAULT_CORE_TOOLS = [
     'list_dir',
     'web_search',
     'web_fetch',
+    'weather',
     'memory',
     'tool_search',
 ];

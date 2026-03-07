@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Sandbox Code Execution, Deliberative Reasoning, and Gmail OAuth. 21 providers. 88 tools. 3,225 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Sandbox Code Execution, Deliberative Reasoning, and Gmail OAuth. 21 providers. 89 tools. 3,225 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 88 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
+| **Skills** | 89 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
 | **Cost control** | Smart routing, tool search, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
@@ -111,7 +111,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 88 Built-in Tools
+### 89 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -125,6 +125,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Data & Documents** | `data_analysis`, `csv_parse`, `csv_stats`, `pdf_read`, `pdf_info` |
 | **Smart Home** | `ha_devices`, `ha_control`, `ha_status` |
 | **Image Generation** | `generate_image`, `edit_image` |
+| **Weather** | `weather` (real-time conditions + forecast via wttr.in, no API key) |
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
 | **Sandbox** | `code_exec` (execute Python/JS in isolated Docker container with tool bridge) |
@@ -143,8 +144,8 @@ TITAN doesn't dump all 88 tool schemas into every LLM call. Instead, it sends on
 
 ```
 # What the LLM sees on a typical request:
-Before: 88 tools × ~50 tokens each = ~4,300 input tokens
-After:  8 core tools + tool_search  = ~600 input tokens (86% reduction)
+Before: 89 tools × ~50 tokens each = ~4,450 input tokens
+After:  10 core tools + tool_search = ~700 input tokens (84% reduction)
 ```
 
 Inspired by Anthropic's tool search pattern, but works with **all 21 providers** — not just Claude. Configure which tools are always available:

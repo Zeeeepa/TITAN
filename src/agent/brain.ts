@@ -64,7 +64,7 @@ const CATEGORY_GRAMMAR = `root ::= [a-g]`;
 const TOOL_CATEGORIES: Record<string, string[]> = {
     a: ['shell', 'exec'],                                           // run commands
     b: ['read_file', 'write_file', 'edit_file', 'list_dir'],       // file operations
-    c: ['web_search', 'web_fetch', 'web_read', 'web_act', 'browse_url', 'browser_search', 'browser_auto_nav', 'browser'], // web/search
+    c: ['web_search', 'web_fetch', 'web_read', 'web_act', 'browse_url', 'browser_search', 'browser_auto_nav', 'browser', 'weather'], // web/search
     d: ['memory', 'graph_remember', 'graph_search', 'graph_recall'], // memory
     e: ['email_send', 'email_search', 'email_read', 'email_list'],  // email
     f: ['cron', 'webhook'],                                         // automation
@@ -211,7 +211,7 @@ Category:`;
         }
 
         // Always include essential tools regardless of category
-        const ALWAYS_INCLUDE = ['web_search', 'web_fetch', 'tool_search', 'memory'];
+        const ALWAYS_INCLUDE = ['web_search', 'web_fetch', 'weather', 'tool_search', 'memory'];
         const selectedSet = new Set([...toolNames, ...ALWAYS_INCLUDE]);
         const filtered = allTools.filter(t => selectedSet.has(t.function.name));
 

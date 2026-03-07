@@ -1515,12 +1515,14 @@ async function populateModels() {
     const sel = document.getElementById('cfg-model');
     if (!sel) return;
     sel.innerHTML = '';
-    const providerOrder = ['anthropic','openai','google','ollama'];
-    for (const provider of providerOrder) {
+    const skip = ['current','aliases'];
+    const coreProviders = ['anthropic','openai','google','ollama'];
+    const allProviders = coreProviders.concat(Object.keys(data).filter(k => !skip.includes(k) && !coreProviders.includes(k)).sort());
+    for (const provider of allProviders) {
       const models = data[provider];
       if (!Array.isArray(models) || models.length === 0) continue;
       const grp = document.createElement('optgroup');
-      grp.label = provider === 'ollama' ? 'LOCAL (Ollama)' : 'CLOUD (' + provider.toUpperCase() + ')';
+      grp.label = provider === 'ollama' ? 'LOCAL (Ollama)' : provider.toUpperCase();
       for (const m of models) {
         const opt = document.createElement('option');
         opt.value = m; opt.textContent = m;

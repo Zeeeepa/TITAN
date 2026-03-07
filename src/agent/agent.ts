@@ -219,53 +219,53 @@ export async function processMessage(
     // Some queries (weather, etc.) have dedicated APIs that return accurate data.
     // Pre-fetch this data and inject it so the LLM doesn't hallucinate.
     let preRoutedContext = '';
-    const weatherMatch = message.match(/\b(?:weather|forecast|temperature)\b/i);
-    if (weatherMatch) {
-        // Extract location from message
-        const loc = message.toLowerCase()
-            .replace(/\b(weather|forecast|temperature|temp|today|tonight|tomorrow|this week|current|right now|conditions|for|in|at|the|what|is|whats|what's|check|get|show|me|please|how|hot|cold|and|also)\b/g, '')
-            .replace(/[?,!.]/g, '').trim().replace(/\s+/g, ' ');
-        if (loc.length >= 2) {
-            // Split on common delimiters to handle multiple locations
-            const locations = loc.split(/\s+(?:and|&|,)\s+/).filter(l => l.trim().length >= 2);
-            const weatherParts: string[] = [];
-            for (const l of locations.length > 0 ? locations : [loc]) {
-                try {
-                    const resp = await fetch(`https://wttr.in/${encodeURIComponent(l.trim())}?format=j1`, {
-                        headers: { 'User-Agent': 'TITAN/1.0' },
-                        signal: AbortSignal.timeout(8000),
-                    });
-                    if (resp.ok) {
-                        const d = await resp.json() as Record<string, unknown>;
-                        const cur = (d.current_condition as Array<Record<string, unknown>>)?.[0];
-                        const area = (d.nearest_area as Array<Record<string, unknown>>)?.[0];
-                        const day = (d.weather as Array<Record<string, unknown>>)?.[0];
-                        if (cur) {
-                            const areaName = area
-                                ? `${(area.areaName as Array<{value: string}>)?.[0]?.value}, ${(area.region as Array<{value: string}>)?.[0]?.value}`
-                                : l;
-                            const desc = (cur.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
-                            const astro = (day?.astronomy as Array<Record<string, string>>)?.[0];
-                            const hourly = day?.hourly as Array<Record<string, unknown>> | undefined;
-                            let part = `Weather for ${areaName}: ${cur.temp_F}°F (feels ${cur.FeelsLikeF}°F), ${desc}, Humidity ${cur.humidity}%, Wind ${cur.windspeedMiles} mph ${cur.winddir16Point}, UV ${cur.uvIndex}`;
-                            if (day) part += `, High ${day.maxtempF}°F, Low ${day.mintempF}°F`;
-                            if (astro) part += `, Sunrise ${astro.sunrise}, Sunset ${astro.sunset}`;
-                            if (hourly) {
-                                const evening = hourly.find(h => h.time === '2100');
-                                if (evening) {
-                                    const eDesc = (evening.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
-                                    part += ` | Tonight: ${evening.tempF}°F, ${eDesc}, Wind ${evening.windspeedMiles} mph, ${evening.chanceofrain}% rain`;
-                                }
+    if (/\b(?:weather|forecast|temperature)\b/i.test(message)) {
+        // Split on "and"/"also"/","/"&" FIRST to separate multiple locations
+        const segments = message.split(/\b(?:and|also|&)\b|,/i).filter(s => /\b(?:weather|forecast|temperature|\d{5})\b/i.test(s) || /[A-Z][a-z]+/.test(s));
+        const locations: string[] = [];
+        for (const seg of segments.length > 0 ? segments : [message]) {
+            const loc = seg.toLowerCase()
+                .replace(/\b(weather|forecast|temperature|temp|today|tonight|tomorrow|this week|current|right now|conditions|for|in|at|the|what|is|whats|what's|check|get|show|me|please|how|hot|cold|also|can you)\b/g, '')
+                .replace(/[?,!.]/g, '').trim().replace(/\s+/g, ' ');
+            if (loc.length >= 2) locations.push(loc);
+        }
+        const weatherParts: string[] = [];
+        for (const loc of locations) {
+            try {
+                const resp = await fetch(`https://wttr.in/${encodeURIComponent(loc)}?format=j1`, {
+                    headers: { 'User-Agent': 'TITAN/1.0' },
+                    signal: AbortSignal.timeout(8000),
+                });
+                if (resp.ok) {
+                    const d = await resp.json() as Record<string, unknown>;
+                    const cur = (d.current_condition as Array<Record<string, unknown>>)?.[0];
+                    const area = (d.nearest_area as Array<Record<string, unknown>>)?.[0];
+                    const day = (d.weather as Array<Record<string, unknown>>)?.[0];
+                    if (cur) {
+                        const areaName = area
+                            ? `${(area.areaName as Array<{value: string}>)?.[0]?.value}, ${(area.region as Array<{value: string}>)?.[0]?.value}`
+                            : loc;
+                        const desc = (cur.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+                        const astro = (day?.astronomy as Array<Record<string, string>>)?.[0];
+                        const hourly = day?.hourly as Array<Record<string, unknown>> | undefined;
+                        let part = `Weather for ${areaName}: ${cur.temp_F}°F (feels ${cur.FeelsLikeF}°F), ${desc}, Humidity ${cur.humidity}%, Wind ${cur.windspeedMiles} mph ${cur.winddir16Point}, UV ${cur.uvIndex}`;
+                        if (day) part += `, High ${day.maxtempF}°F, Low ${day.mintempF}°F`;
+                        if (astro) part += `, Sunrise ${astro.sunrise}, Sunset ${astro.sunset}`;
+                        if (hourly) {
+                            const evening = hourly.find(h => h.time === '2100');
+                            if (evening) {
+                                const eDesc = (evening.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+                                part += ` | Tonight: ${evening.tempF}°F, ${eDesc}, Wind ${evening.windspeedMiles} mph, ${evening.chanceofrain}% rain`;
                             }
-                            weatherParts.push(part);
                         }
+                        weatherParts.push(part);
                     }
-                } catch { /* fall through to LLM */ }
-            }
-            if (weatherParts.length > 0) {
-                preRoutedContext = `\n\n[REAL-TIME WEATHER DATA — use this data in your response, it is accurate and current]\n${weatherParts.join('\n')}`;
-                logger.info(COMPONENT, `Pre-routed weather for ${locations.length || 1} location(s)`);
-            }
+                }
+            } catch { /* fall through to LLM */ }
+        }
+        if (weatherParts.length > 0) {
+            preRoutedContext = `\n\n[REAL-TIME WEATHER DATA — present this data to the user in a nicely formatted response. Do NOT call any tools for weather — use ONLY the data below.]\n${weatherParts.join('\n')}`;
+            logger.info(COMPONENT, `Pre-routed weather for ${weatherParts.length} location(s): [${locations.join(', ')}]`);
         }
     }
 

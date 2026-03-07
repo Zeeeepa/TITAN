@@ -4,7 +4,7 @@
 import { homedir } from 'os';
 import { join } from 'path';
 
-export const TITAN_VERSION = '2026.5.13';
+export const TITAN_VERSION = '2026.5.14';
 export const TITAN_NAME = 'TITAN';
 export const TITAN_FULL_NAME = 'The Intelligent Task Automation Network';
 export const TITAN_ASCII_LOGO = `
@@ -37,6 +37,12 @@ export const TOOLS_MD = join(TITAN_WORKSPACE, 'TOOLS.md');
 export const AUTOPILOT_MD = join(TITAN_HOME, 'AUTOPILOT.md');
 export const AUTOPILOT_RUNS_PATH = join(TITAN_HOME, 'autopilot-runs.jsonl');
 export const TITAN_CREDENTIALS_DIR = join(TITAN_HOME, 'credentials');
+
+// Income & lead tracking
+export const INCOME_LEDGER_PATH = join(TITAN_HOME, 'income-ledger.jsonl');
+export const FREELANCE_LEADS_PATH = join(TITAN_HOME, 'freelance-leads.jsonl');
+export const FREELANCE_PROFILE_PATH = join(TITAN_HOME, 'freelance-profile.json');
+export const LEADS_PATH = join(TITAN_HOME, 'leads.jsonl');
 
 // Gateway defaults
 export const DEFAULT_GATEWAY_HOST = '127.0.0.1';

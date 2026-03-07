@@ -68,6 +68,30 @@ const TOOL_RISK_MAP: Record<string, RiskLevel> = {
     process_write: 'dangerous',
     webhook_register: 'dangerous',
     webhook_remove: 'dangerous',
+
+    // Income tracker
+    income_log: 'moderate',
+    income_summary: 'safe',
+    income_list: 'safe',
+    income_goal: 'moderate',
+
+    // Freelance monitor
+    freelance_search: 'safe',
+    freelance_match: 'safe',
+    freelance_draft: 'moderate',
+    freelance_track: 'moderate',
+
+    // Content publisher
+    content_research: 'safe',
+    content_outline: 'safe',
+    content_publish: 'moderate',
+    content_schedule: 'moderate',
+
+    // Lead scorer
+    lead_scan: 'safe',
+    lead_score: 'safe',
+    lead_queue: 'moderate',
+    lead_report: 'safe',
 };
 
 /** Pending approval state */

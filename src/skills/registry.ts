@@ -122,6 +122,10 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerDataAnalysisSkill } = await import('./builtin/data_analysis.js');
     const { registerSkyvernSkill } = await import('./builtin/skyvern.js');
     const { registerWebBrowseLlmSkill } = await import('./builtin/web_browse_llm.js');
+    const { registerIncomeTrackerSkill } = await import('./builtin/income_tracker.js');
+    const { registerFreelanceMonitorSkill } = await import('./builtin/freelance_monitor.js');
+    const { registerContentPublisherSkill } = await import('./builtin/content_publisher.js');
+    const { registerLeadScorerSkill } = await import('./builtin/lead_scorer.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -150,6 +154,10 @@ export async function initBuiltinSkills(): Promise<void> {
         ['data_analysis', registerDataAnalysisSkill],
         ['skyvern', registerSkyvernSkill],
         ['web_browse_llm', registerWebBrowseLlmSkill],
+        ['income_tracker', registerIncomeTrackerSkill],
+        ['freelance_monitor', registerFreelanceMonitorSkill],
+        ['content_publisher', registerContentPublisherSkill],
+        ['lead_scorer', registerLeadScorerSkill],
     ];
 
     for (const [name, fn] of registrations) {

@@ -215,6 +215,60 @@ export async function processMessage(
         }
     }
 
+    // ── Pre-routing: intercept queries with known data tools ──
+    // Some queries (weather, etc.) have dedicated APIs that return accurate data.
+    // Pre-fetch this data and inject it so the LLM doesn't hallucinate.
+    let preRoutedContext = '';
+    const weatherMatch = message.match(/\b(?:weather|forecast|temperature)\b/i);
+    if (weatherMatch) {
+        // Extract location from message
+        const loc = message.toLowerCase()
+            .replace(/\b(weather|forecast|temperature|temp|today|tonight|tomorrow|this week|current|right now|conditions|for|in|at|the|what|is|whats|what's|check|get|show|me|please|how|hot|cold|and|also)\b/g, '')
+            .replace(/[?,!.]/g, '').trim().replace(/\s+/g, ' ');
+        if (loc.length >= 2) {
+            // Split on common delimiters to handle multiple locations
+            const locations = loc.split(/\s+(?:and|&|,)\s+/).filter(l => l.trim().length >= 2);
+            const weatherParts: string[] = [];
+            for (const l of locations.length > 0 ? locations : [loc]) {
+                try {
+                    const resp = await fetch(`https://wttr.in/${encodeURIComponent(l.trim())}?format=j1`, {
+                        headers: { 'User-Agent': 'TITAN/1.0' },
+                        signal: AbortSignal.timeout(8000),
+                    });
+                    if (resp.ok) {
+                        const d = await resp.json() as Record<string, unknown>;
+                        const cur = (d.current_condition as Array<Record<string, unknown>>)?.[0];
+                        const area = (d.nearest_area as Array<Record<string, unknown>>)?.[0];
+                        const day = (d.weather as Array<Record<string, unknown>>)?.[0];
+                        if (cur) {
+                            const areaName = area
+                                ? `${(area.areaName as Array<{value: string}>)?.[0]?.value}, ${(area.region as Array<{value: string}>)?.[0]?.value}`
+                                : l;
+                            const desc = (cur.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+                            const astro = (day?.astronomy as Array<Record<string, string>>)?.[0];
+                            const hourly = day?.hourly as Array<Record<string, unknown>> | undefined;
+                            let part = `Weather for ${areaName}: ${cur.temp_F}°F (feels ${cur.FeelsLikeF}°F), ${desc}, Humidity ${cur.humidity}%, Wind ${cur.windspeedMiles} mph ${cur.winddir16Point}, UV ${cur.uvIndex}`;
+                            if (day) part += `, High ${day.maxtempF}°F, Low ${day.mintempF}°F`;
+                            if (astro) part += `, Sunrise ${astro.sunrise}, Sunset ${astro.sunset}`;
+                            if (hourly) {
+                                const evening = hourly.find(h => h.time === '2100');
+                                if (evening) {
+                                    const eDesc = (evening.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+                                    part += ` | Tonight: ${evening.tempF}°F, ${eDesc}, Wind ${evening.windspeedMiles} mph, ${evening.chanceofrain}% rain`;
+                                }
+                            }
+                            weatherParts.push(part);
+                        }
+                    }
+                } catch { /* fall through to LLM */ }
+            }
+            if (weatherParts.length > 0) {
+                preRoutedContext = `\n\n[REAL-TIME WEATHER DATA — use this data in your response, it is accurate and current]\n${weatherParts.join('\n')}`;
+                logger.info(COMPONENT, `Pre-routed weather for ${locations.length || 1} location(s)`);
+            }
+        }
+    }
+
     // Add user message to session history
     addMessage(session, 'user', message);
 
@@ -227,6 +281,7 @@ export async function processMessage(
     // Build context (pass user message for graph context injection)
     let systemPrompt = await buildSystemPrompt(config, message);
     if (overrides?.systemPrompt) systemPrompt = overrides.systemPrompt + '\n\n' + systemPrompt;
+    if (preRoutedContext) systemPrompt += preRoutedContext;
     const historyMessages = getContextMessages(session);
     const tools = getToolDefinitions();
 

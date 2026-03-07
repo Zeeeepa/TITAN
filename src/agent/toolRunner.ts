@@ -7,6 +7,7 @@ import { executeToolsParallel } from './parallelTools.js';
 import logger from '../utils/logger.js';
 import { loadConfig } from '../config/config.js';
 import { checkAutonomy } from './autonomy.js';
+import { isToolSkillEnabled } from '../skills/registry.js';
 
 const COMPONENT = 'ToolRunner';
 
@@ -56,6 +57,7 @@ export function getToolDefinitions(): ToolDefinition[] {
         .filter((tool) => {
             if (denied.has(tool.name)) return false;
             if (allowed.size > 0 && !allowed.has(tool.name)) return false;
+            if (!isToolSkillEnabled(tool.name)) return false;
             return true;
         })
         .map((tool) => ({
@@ -90,6 +92,17 @@ export async function executeTool(toolCall: ToolCall, channel?: string): Promise
             toolCallId: toolCall.id,
             name: handler.name,
             content: `Error: Tool "${handler.name}" is denied by security policy`,
+            success: false,
+            durationMs: Date.now() - startTime,
+        };
+    }
+
+    // Check if parent skill is enabled
+    if (!isToolSkillEnabled(handler.name)) {
+        return {
+            toolCallId: toolCall.id,
+            name: handler.name,
+            content: `Error: Tool "${handler.name}" is disabled — its parent skill is turned off. Enable it in Mission Control.`,
             success: false,
             durationMs: Date.now() - startTime,
         };

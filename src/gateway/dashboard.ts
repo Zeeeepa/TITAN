@@ -1043,6 +1043,7 @@ document.addEventListener('click', (e) => {
     if (a === 'stop-agent') stopAgent(action.dataset.id);
     if (a === 'show-session') { e.preventDefault(); showSessionModal(action.dataset.id); }
     if (a === 'stop-session') stopSession(action.dataset.id);
+    if (a === 'toggle-skill') toggleSkill(action.dataset.skill);
   }
 });
 
@@ -1212,6 +1213,19 @@ async function stopSession(id) {
     if (r.ok) { toast('Session closed'); fetchData(); }
     else { toast('Failed to close session', 'error'); }
   } catch(e) { toast('Failed to close session', 'error'); }
+}
+
+async function toggleSkill(name) {
+  try {
+    const r = await fetch('/api/skills/' + encodeURIComponent(name) + '/toggle', {method:'POST', headers:authHeaders()});
+    const data = await r.json();
+    if (r.ok) {
+      toast('Skill "' + name + '" ' + (data.enabled ? 'enabled' : 'disabled'));
+      fetchData();
+    } else {
+      toast(data.error || 'Failed to toggle skill', 'error');
+    }
+  } catch(e) { toast('Failed to toggle skill', 'error'); }
 }
 
 // ── Settings Tabs ─────────────────────────────────────────────────
@@ -1653,8 +1667,8 @@ async function fetchData() {
     // Skills
     if (Array.isArray(skills) && skills.length > 0) {
       document.getElementById('skills-list').innerHTML =
-        '<table><tr><th>Skill</th><th>Version</th><th>Source</th><th>Status</th></tr>' +
-        skills.map(s=>'<tr><td><strong>'+escHtml(s.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px">'+escHtml(s.version)+'</td><td><span class="badge info">'+escHtml(s.source)+'</span></td><td><span class="badge '+(s.enabled?'active':'idle')+'">'+(s.enabled?'enabled':'disabled')+'</span></td></tr>').join('')+'</table>';
+        '<table><tr><th>Skill</th><th>Version</th><th>Source</th><th>Status</th><th>Action</th></tr>' +
+        skills.map(s=>'<tr><td><strong>'+escHtml(s.name)+'</strong></td><td style="font-family:JetBrains Mono;font-size:12px">'+escHtml(s.version)+'</td><td><span class="badge info">'+escHtml(s.source)+'</span></td><td><span class="badge '+(s.enabled?'active':'idle')+'">'+(s.enabled?'enabled':'disabled')+'</span></td><td><button class="btn '+(s.enabled?'danger':'success')+'" data-action="toggle-skill" data-skill="'+escHtml(s.name)+'" style="font-size:11px;padding:4px 10px">'+(s.enabled?'Disable':'Enable')+'</button></td></tr>').join('')+'</table>';
     }
 
     // Channels — API returns array [{name, connected}]

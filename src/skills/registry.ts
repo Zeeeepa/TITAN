@@ -2,8 +2,8 @@
  * TITAN — Skills Registry
  * Discovers, loads, and manages skills from bundled, workspace, and marketplace sources.
  */
-import { existsSync, readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
 import vm from 'vm';
 import { TITAN_HOME, TITAN_SKILLS_DIR } from '../utils/constants.js';
 import { registerTool, type ToolHandler } from '../agent/toolRunner.js';
@@ -11,6 +11,7 @@ import { ensureDir } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Skills';
+const DISABLED_SKILLS_PATH = join(TITAN_HOME, 'disabled-skills.json');
 
 export interface SkillMeta {
     name: string;
@@ -23,21 +24,121 @@ export interface SkillMeta {
 
 const registeredSkills: Map<string, SkillMeta> = new Map();
 
+/** Maps skill name → tool names belonging to that skill */
+const skillToolMap: Map<string, Set<string>> = new Map();
+
 /** Register a built-in skill (tool handler + metadata) */
 export function registerSkill(meta: SkillMeta, handler: ToolHandler): void {
     registeredSkills.set(meta.name, meta);
+    // Track which tools belong to this skill
+    if (!skillToolMap.has(meta.name)) {
+        skillToolMap.set(meta.name, new Set());
+    }
+    skillToolMap.get(meta.name)!.add(handler.name);
     registerTool(handler);
     logger.debug(COMPONENT, `Registered skill: ${meta.name} (${meta.source})`);
 }
 
-/** Get all registered skills */
+/** Get all registered skills (with persisted enabled/disabled state applied) */
 export function getSkills(): SkillMeta[] {
-    return Array.from(registeredSkills.values());
+    const disabled = loadDisabledSkills();
+    return Array.from(registeredSkills.values()).map(s => ({
+        ...s,
+        enabled: !disabled.includes(s.name),
+    }));
 }
 
 /** Get a skill by name */
 export function getSkill(name: string): SkillMeta | undefined {
     return registeredSkills.get(name);
+}
+
+/** Get tool names belonging to a skill */
+export function getSkillTools(skillName: string): string[] {
+    return Array.from(skillToolMap.get(skillName) || []);
+}
+
+/** Check if a skill is enabled */
+export function isSkillEnabled(skillName: string): boolean {
+    return !loadDisabledSkills().includes(skillName);
+}
+
+/** Check if a specific tool's parent skill is enabled */
+export function isToolSkillEnabled(toolName: string): boolean {
+    for (const [skillName, tools] of skillToolMap.entries()) {
+        if (tools.has(toolName)) {
+            return isSkillEnabled(skillName);
+        }
+    }
+    return true; // Tools not belonging to any skill are always enabled
+}
+
+/** Toggle a skill on/off. Returns the new enabled state. */
+export function toggleSkill(skillName: string): boolean {
+    const skill = registeredSkills.get(skillName);
+    if (!skill) {
+        throw new Error(`Skill "${skillName}" not found`);
+    }
+
+    const disabled = loadDisabledSkills();
+    const idx = disabled.indexOf(skillName);
+    let nowEnabled: boolean;
+
+    if (idx >= 0) {
+        disabled.splice(idx, 1);
+        nowEnabled = true;
+    } else {
+        disabled.push(skillName);
+        nowEnabled = false;
+    }
+
+    saveDisabledSkills(disabled);
+    logger.info(COMPONENT, `Skill "${skillName}" ${nowEnabled ? 'enabled' : 'disabled'}`);
+    return nowEnabled;
+}
+
+/** Set a skill's enabled state explicitly */
+export function setSkillEnabled(skillName: string, enabled: boolean): void {
+    const skill = registeredSkills.get(skillName);
+    if (!skill) {
+        throw new Error(`Skill "${skillName}" not found`);
+    }
+
+    const disabled = loadDisabledSkills();
+    const idx = disabled.indexOf(skillName);
+
+    if (enabled && idx >= 0) {
+        disabled.splice(idx, 1);
+    } else if (!enabled && idx < 0) {
+        disabled.push(skillName);
+    }
+
+    saveDisabledSkills(disabled);
+}
+
+/** Load disabled skills list from disk */
+function loadDisabledSkills(): string[] {
+    try {
+        if (existsSync(DISABLED_SKILLS_PATH)) {
+            return JSON.parse(readFileSync(DISABLED_SKILLS_PATH, 'utf-8')) as string[];
+        }
+    } catch {
+        // Corrupt file — treat as empty
+    }
+    return [];
+}
+
+/** Save disabled skills list to disk */
+function saveDisabledSkills(disabled: string[]): void {
+    try {
+        const dir = dirname(DISABLED_SKILLS_PATH);
+        if (!existsSync(dir)) {
+            mkdirSync(dir, { recursive: true });
+        }
+        writeFileSync(DISABLED_SKILLS_PATH, JSON.stringify(disabled, null, 2), 'utf-8');
+    } catch (e) {
+        logger.warn(COMPONENT, `Failed to save disabled skills: ${(e as Error).message}`);
+    }
 }
 
 /** Discover workspace skills from ~/.titan/workspace/skills/ */

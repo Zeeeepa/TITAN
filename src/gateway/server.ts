@@ -15,7 +15,7 @@ import { loadConfig, updateConfig } from '../config/config.js';
 import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relationship.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
-import { initBuiltinSkills, getSkills } from '../skills/registry.js';
+import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../skills/registry.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
 import { healthCheckAll, discoverAllModels, getModelAliases, chatStream } from '../providers/router.js';
@@ -466,6 +466,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/skills', (_req, res) => {
     const skills = getSkills();
     res.json(skills);
+  });
+
+  app.post('/api/skills/:name/toggle', (req, res) => {
+    try {
+      const { name } = req.params;
+      const enabled = toggleSkill(name);
+      const tools = getSkillTools(name);
+      res.json({ ok: true, skill: name, enabled, tools });
+    } catch (e) {
+      res.status(404).json({ error: (e as Error).message });
+    }
   });
 
   app.get('/api/tools', (_req, res) => {

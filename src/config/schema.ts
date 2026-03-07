@@ -146,6 +146,23 @@ export const ToolSearchConfigSchema = z.object({
     ]),
 });
 
+export const SandboxConfigSchema = z.object({
+    /** Enable sandbox code execution (requires Docker) */
+    enabled: z.boolean().default(true),
+    /** Docker image name for the sandbox container */
+    image: z.string().default('titan-sandbox'),
+    /** Default execution timeout in milliseconds */
+    timeoutMs: z.number().default(60000),
+    /** Container memory limit in MB */
+    memoryMB: z.number().default(512),
+    /** Container CPU limit */
+    cpus: z.number().default(1),
+    /** Tools denied inside sandbox (prevent escape) */
+    deniedTools: z.array(z.string()).default([
+        'shell', 'exec', 'code_exec', 'process', 'apply_patch',
+    ]),
+});
+
 export const BrainConfigSchema = z.object({
     /** Enable embedded small LLM for intelligent routing (tool selection, classification) */
     enabled: z.boolean().default(false),
@@ -225,7 +242,10 @@ export const TitanConfigSchema = z.object({
     memory: z.object({
         enabled: z.boolean().default(true),
         maxHistoryMessages: z.number().default(50),
+        /** Enable semantic vector search via Ollama embeddings (Tier 2 memory) */
         vectorSearchEnabled: z.boolean().default(false),
+        /** Embedding model for vector search (must be available on Ollama) */
+        embeddingModel: z.string().default('nomic-embed-text'),
     }).default({}),
     skills: z.object({
         enabled: z.boolean().default(true),
@@ -262,6 +282,7 @@ export const TitanConfigSchema = z.object({
             end: z.number().min(0).max(23).default(23),
         }).optional(),
     }).default({}),
+    sandbox: SandboxConfigSchema.default({}),
     toolSearch: ToolSearchConfigSchema.default({}),
     brain: BrainConfigSchema.default({}),
     tunnel: TunnelConfigSchema.default({}),

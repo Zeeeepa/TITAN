@@ -208,7 +208,7 @@ beforeEach(async () => {
     mockGetOrCreateSession.mockReturnValue(makeDefaultSession());
     mockGetContextMessages.mockReturnValue([]);
     mockGetToolDefinitions.mockReturnValue([]);
-    mockSearchMemories.mockReturnValue([]);
+    mockSearchMemories.mockResolvedValue([]);
     mockGetLearningContext.mockReturnValue('');
     mockBuildPersonalContext.mockReturnValue('');
     mockGetGraphContext.mockReturnValue('');
@@ -639,7 +639,7 @@ describe('Agent processMessage', () => {
     });
 
     it('should include user memories in system prompt', async () => {
-        mockSearchMemories.mockReturnValue([
+        mockSearchMemories.mockResolvedValue([
             { key: 'name', value: 'Tony', category: 'preference' },
         ]);
 

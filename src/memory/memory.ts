@@ -9,6 +9,7 @@ import { TITAN_HOME } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
 import logger from '../utils/logger.js';
 import { encrypt, decrypt, type EncryptedPayload } from '../security/encryption.js';
+import { isVectorSearchAvailable, searchVectors, addVector } from './vectors.js';
 
 const COMPONENT = 'Memory';
 
@@ -257,6 +258,11 @@ export function rememberFact(category: string, key: string, value: string, metad
     });
   }
   debouncedSave();
+
+  // Index to vector store (fire-and-forget)
+  if (isVectorSearchAvailable()) {
+    addVector(id, `${category}: ${key} = ${value}`, 'memory', { category, key }).catch(() => {});
+  }
 }
 
 /** Recall a specific memory */
@@ -266,8 +272,8 @@ export function recallFact(category: string, key: string): string | null {
   return entry?.value || null;
 }
 
-/** Search memories by category */
-export function searchMemories(category?: string, query?: string): Array<{ key: string; value: string; category: string }> {
+/** Search memories by category — hybrid keyword + vector search */
+export async function searchMemories(category?: string, query?: string): Promise<Array<{ key: string; value: string; category: string; score?: number }>> {
   const s = loadStore();
   let results = s.memories;
 
@@ -281,16 +287,57 @@ export function searchMemories(category?: string, query?: string): Array<{ key: 
     );
   }
 
-  // Sort by relevance when a query is provided
-  if (query) {
-    const q = query.toLowerCase();
-    results.sort((a, b) => {
-      const aScore = (a.key.toLowerCase().includes(q) ? 2 : 0) + (a.value.toLowerCase().includes(q) ? 1 : 0);
-      const bScore = (b.key.toLowerCase().includes(q) ? 2 : 0) + (b.value.toLowerCase().includes(q) ? 1 : 0);
-      return bScore - aScore;
-    });
+  // Keyword scoring
+  const scored = results.map(m => {
+    let score = 0;
+    if (query) {
+      const q = query.toLowerCase();
+      const keyLower = m.key.toLowerCase();
+      const valLower = m.value.toLowerCase();
+      // Exact key match scores highest
+      if (keyLower === q) score += 5;
+      else if (keyLower.includes(q)) score += 2;
+      if (valLower.includes(q)) score += 1;
+      // BM25-style: boost for multiple keyword matches
+      const terms = q.split(/\s+/).filter(Boolean);
+      for (const term of terms) {
+        if (keyLower.includes(term)) score += 1;
+        if (valLower.includes(term)) score += 0.5;
+      }
+    }
+    return { key: m.key, value: m.value, category: m.category, id: m.id, score };
+  });
+
+  // Vector search augmentation (hybrid mode)
+  if (query && isVectorSearchAvailable()) {
+    try {
+      const vectorResults = await searchVectors(query, 20, 'memory', 0.4);
+      for (const vr of vectorResults) {
+        const existing = scored.find(s => s.id === vr.id);
+        if (existing) {
+          // Boost keyword results that also match semantically
+          existing.score += vr.score * 3;
+        } else {
+          // Add vector-only results (semantically similar but no keyword match)
+          const entry = s.memories.find(m => m.id === vr.id);
+          if (entry && (!category || entry.category === category)) {
+            scored.push({
+              key: entry.key,
+              value: entry.value,
+              category: entry.category,
+              id: entry.id,
+              score: vr.score * 2,
+            });
+          }
+        }
+      }
+    } catch {
+      // Vector search failure is non-fatal
+    }
   }
-  return results.slice(0, 50).map((m) => ({ key: m.key, value: m.value, category: m.category }));
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 50).map(m => ({ key: m.key, value: m.value, category: m.category, score: m.score }));
 }
 
 // ─── Usage Tracking ──────────────────────────────────────────────

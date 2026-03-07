@@ -324,6 +324,14 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   initMemory();
   initLearning();
   initGraph();
+
+  // Initialize vector search (Tier 2 memory — non-blocking)
+  import('../memory/vectors.js').then(({ initVectors }) => {
+    initVectors().then(ok => {
+      if (ok) logger.info(COMPONENT, 'Vector search (Tier 2 memory) initialized');
+    }).catch(() => {});
+  }).catch(() => {});
+
   await initBuiltinSkills();
   initAgents();
 
@@ -1448,7 +1456,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   initMcpServers().catch((e) => logger.warn(COMPONENT, `MCP init error: ${e.message}`));
 
   // ── Persistent webhooks — reload saved webhooks ─────────────
-  initPersistentWebhooks();
+  initPersistentWebhooks().catch((e) => logger.warn(COMPONENT, `Webhook init: ${(e as Error).message}`));
 
   // ── Cron scheduler — re-activate all persisted jobs ──────────
   initCronScheduler();

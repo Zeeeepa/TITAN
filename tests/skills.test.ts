@@ -248,7 +248,7 @@ describe('Memory Skill', () => {
                 const found = memoriesStore.find(m => m.category === cat && m.key === key);
                 return found?.value || null;
             }),
-            searchMemories: vi.fn().mockImplementation((cat?: string, query?: string) => {
+            searchMemories: vi.fn().mockImplementation(async (cat?: string, query?: string) => {
                 let results = [...memoriesStore];
                 if (cat) results = results.filter(m => m.category === cat);
                 if (query) {
@@ -332,7 +332,7 @@ describe('Memory Skill', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             rememberFact: vi.fn(),
             recallFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('../src/utils/logger.js', () => ({
             default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

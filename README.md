@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 87 tools. 3,212 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Sandbox Code Execution, Deliberative Reasoning, and Gmail OAuth. 21 providers. 88 tools. 3,225 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-87-orange" alt="87 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-88-orange" alt="88 Tools"/></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 86 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
+| **Skills** | 88 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
 | **Cost control** | Smart routing, tool search, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
@@ -111,7 +111,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 86 Built-in Tools
+### 88 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -127,6 +127,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Image Generation** | `generate_image`, `edit_image` |
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
+| **Sandbox** | `code_exec` (execute Python/JS in isolated Docker container with tool bridge) |
 | **Meta** | `tool_search` (discover tools on demand), `plan_task` (deliberative planning) |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
 | **Income Tracking** | `income_log`, `income_summary`, `income_list`, `income_goal` |
@@ -138,11 +139,11 @@ All skills can be individually enabled/disabled from the Mission Control dashboa
 
 ### Tool Search — Intelligent Tool Discovery
 
-TITAN doesn't dump all 86 tool schemas into every LLM call. Instead, it sends only 8 core tools plus a `tool_search` meta-tool. When the LLM needs a capability it doesn't see, it calls `tool_search("email")` and gets the relevant tools added dynamically. This saves **60-80% of input tokens** on every request.
+TITAN doesn't dump all 88 tool schemas into every LLM call. Instead, it sends only 8 core tools plus a `tool_search` meta-tool. When the LLM needs a capability it doesn't see, it calls `tool_search("email")` and gets the relevant tools added dynamically. This saves **60-80% of input tokens** on every request.
 
 ```
 # What the LLM sees on a typical request:
-Before: 86 tools × ~50 tokens each = ~4,300 input tokens
+Before: 88 tools × ~50 tokens each = ~4,300 input tokens
 After:  8 core tools + tool_search  = ~600 input tokens (86% reduction)
 ```
 
@@ -156,6 +157,43 @@ Inspired by Anthropic's tool search pattern, but works with **all 21 providers**
   }
 }
 ```
+
+### Sandbox Code Execution
+
+When the LLM needs to run complex logic — loops, data processing, batch operations — it can write Python code and execute it in an isolated Docker container. Tool calls from inside the sandbox route through a secure HTTP bridge back to TITAN.
+
+```
+Traditional approach: 50 individual tool calls × LLM round-trips = bloated context + slow
+Sandbox approach:     1 Python script with a for-loop = fast, accurate, minimal tokens
+```
+
+The LLM writes code like this:
+```python
+from tools import web_search, read_file
+
+# Batch process — no LLM round-trips needed
+results = []
+for topic in ["AI agents", "LLM tools", "code sandbox"]:
+    data = web_search(query=topic)
+    results.append(data)
+
+print(f"Found {len(results)} results")
+```
+
+Security: containers run with `--cap-drop=ALL`, `--read-only`, `--security-opt=no-new-privileges`, memory/CPU limits, and session-token authenticated bridge. Dangerous tools (`shell`, `exec`, `process`) are blocked inside the sandbox.
+
+```json
+{
+  "sandbox": {
+    "enabled": true,
+    "timeoutMs": 60000,
+    "memoryMB": 512,
+    "deniedTools": ["shell", "exec", "code_exec", "process", "apply_patch"]
+  }
+}
+```
+
+Inspired by Anthropic's Programmatic Tool Calling, but works with **all 21 providers** and uses your own Docker — no vendor lock-in.
 
 ### Gmail OAuth Integration
 

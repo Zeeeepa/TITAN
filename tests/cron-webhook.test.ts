@@ -611,16 +611,14 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockImplementation(() => {
-                throw new Error('DB connection lost');
-            }),
+            searchMemories: vi.fn().mockRejectedValue(new Error('DB connection lost')),
         }));
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('id') }));
 
         const { initPersistentWebhooks } = await import('../src/skills/builtin/webhook.js');
 
         // Should not throw — catches internally
-        expect(() => initPersistentWebhooks()).not.toThrow();
+        await expect(initPersistentWebhooks()).resolves.not.toThrow();
 
         // Should log warning about the failure
         expect(mockLogger.warn).toHaveBeenCalledWith(
@@ -651,7 +649,7 @@ describe('Webhook — error handling branches', () => {
             rememberFact: vi.fn().mockImplementation(() => {
                 throw new Error('disk full');
             }),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('persist-fail-id') }));
 
@@ -698,7 +696,7 @@ describe('Webhook — error handling branches', () => {
                 throw new Error('DB unavailable');
             }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('del-err-id') }));
 
@@ -745,12 +743,12 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('id') }));
 
         const { initPersistentWebhooks } = await import('../src/skills/builtin/webhook.js');
-        initPersistentWebhooks();
+        await initPersistentWebhooks();
 
         // Should NOT log "Loaded X persisted webhook(s)" when loaded == 0
         const infoCalls = mockLogger.info.mock.calls.map((c: any[]) => c[1]);
@@ -774,7 +772,7 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([
+            searchMemories: vi.fn().mockResolvedValue([
                 {
                     category: 'webhook',
                     key: 'multi-1',
@@ -790,7 +788,7 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('id') }));
 
         const { initPersistentWebhooks, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
-        initPersistentWebhooks();
+        await initPersistentWebhooks();
 
         expect(getActiveWebhooks().size).toBe(2);
         expect(getActiveWebhooks().has('multi-1')).toBe(true);
@@ -827,7 +825,7 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: mockMemories }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('db-del-id') }));
 
@@ -871,7 +869,7 @@ describe('Webhook — error handling branches', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
 
         let uuidCounter = 0;

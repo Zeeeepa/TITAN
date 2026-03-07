@@ -27,9 +27,9 @@ export function getActiveWebhooks() {
  * Initialize persistent webhooks on startup.
  * Load all webhooks from database into the activeWebhooks Map.
  */
-export function initPersistentWebhooks(): void {
+export async function initPersistentWebhooks(): Promise<void> {
     try {
-        const webhooks = searchMemories(WEBHOOK_CATEGORY);
+        const webhooks = await searchMemories(WEBHOOK_CATEGORY);
         let loaded = 0;
         for (const entry of webhooks) {
             try {

@@ -1468,7 +1468,7 @@ describe('Webhook Skill', () => {
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
             recallFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('uuid', () => ({
             v4: vi.fn().mockReturnValue('webhook-uuid-1234-5678-abcdef'),
@@ -1570,7 +1570,7 @@ describe('Webhook — initPersistentWebhooks', () => {
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
             recallFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([
+            searchMemories: vi.fn().mockResolvedValue([
                 {
                     category: 'webhook',
                     key: 'wh-1',
@@ -1581,7 +1581,7 @@ describe('Webhook — initPersistentWebhooks', () => {
         vi.doMock('uuid', () => ({ v4: vi.fn().mockReturnValue('id') }));
 
         const { initPersistentWebhooks, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
-        initPersistentWebhooks();
+        await initPersistentWebhooks();
         expect(getActiveWebhooks().size).toBeGreaterThan(0);
     });
 
@@ -1602,7 +1602,7 @@ describe('Webhook — initPersistentWebhooks', () => {
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
             recallFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([
+            searchMemories: vi.fn().mockResolvedValue([
                 { category: 'webhook', key: 'bad', value: 'not-json' },
             ]),
         }));
@@ -1610,7 +1610,7 @@ describe('Webhook — initPersistentWebhooks', () => {
 
         const { initPersistentWebhooks } = await import('../src/skills/builtin/webhook.js');
         // Should not throw
-        expect(() => initPersistentWebhooks()).not.toThrow();
+        await expect(initPersistentWebhooks()).resolves.not.toThrow();
     });
 });
 
@@ -2772,12 +2772,12 @@ describe('Webhook Skill — Extended', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
         vi.doMock('../../memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([]),
+            searchMemories: vi.fn().mockResolvedValue([]),
         }));
     });
 
@@ -2912,7 +2912,7 @@ describe('Webhook Skill — Extended', () => {
         vi.doMock('../src/memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([
+            searchMemories: vi.fn().mockResolvedValue([
                 {
                     key: 'hook-1',
                     value: JSON.stringify({
@@ -2929,7 +2929,7 @@ describe('Webhook Skill — Extended', () => {
         vi.doMock('../../memory/memory.js', () => ({
             getDb: vi.fn().mockReturnValue({ memories: [] }),
             rememberFact: vi.fn(),
-            searchMemories: vi.fn().mockReturnValue([
+            searchMemories: vi.fn().mockResolvedValue([
                 {
                     key: 'hook-1',
                     value: JSON.stringify({
@@ -2945,7 +2945,7 @@ describe('Webhook Skill — Extended', () => {
         }));
 
         const { initPersistentWebhooks, getActiveWebhooks } = await import('../src/skills/builtin/webhook.js');
-        initPersistentWebhooks();
+        await initPersistentWebhooks();
 
         expect(getActiveWebhooks().has('hook-1')).toBe(true);
         const hook = getActiveWebhooks().get('hook-1');

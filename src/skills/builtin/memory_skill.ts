@@ -42,12 +42,12 @@ export function registerMemorySkill(): void {
                     }
                     case 'search': {
                         const query = args.query as string;
-                        const results = searchMemories(category !== 'general' ? category : undefined, query);
+                        const results = await searchMemories(category !== 'general' ? category : undefined, query);
                         if (results.length === 0) return 'No matching memories found.';
                         return results.map((m) => `• [${m.category}] ${m.key}: ${m.value}`).join('\n');
                     }
                     case 'list': {
-                        const all = searchMemories(category !== 'general' ? category : undefined);
+                        const all = await searchMemories(category !== 'general' ? category : undefined);
                         if (all.length === 0) return 'No memories stored yet.';
                         return all.map((m) => `• [${m.category}] ${m.key}: ${m.value}`).join('\n');
                     }

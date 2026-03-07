@@ -42,8 +42,19 @@ vi.mock('../src/utils/constants.js', () => ({
     TITAN_NAME: 'TITAN',
     TITAN_FULL_NAME: 'The Intelligent Task Automation Network',
     DEFAULT_GATEWAY_PORT: 48420,
+    DEFAULT_GATEWAY_HOST: '0.0.0.0',
+    DEFAULT_WEB_PORT: 48421,
     DEFAULT_MODEL: 'anthropic/claude-sonnet-4-20250514',
+    DEFAULT_MAX_TOKENS: 8192,
+    DEFAULT_TEMPERATURE: 0.7,
+    DEFAULT_SANDBOX_MODE: 'host',
     ALLOWED_TOOLS_DEFAULT: [],
+}));
+
+vi.mock('../src/memory/vectors.js', () => ({
+    isVectorSearchAvailable: vi.fn().mockReturnValue(false),
+    searchVectors: vi.fn().mockResolvedValue([]),
+    addVector: vi.fn().mockResolvedValue(false),
 }));
 
 // ─── Memory Tests ─────────────────────────────────────────────────
@@ -87,8 +98,18 @@ describe('Memory Module', () => {
             TITAN_NAME: 'TITAN',
             TITAN_FULL_NAME: 'The Intelligent Task Automation Network',
             DEFAULT_GATEWAY_PORT: 48420,
+            DEFAULT_GATEWAY_HOST: '0.0.0.0',
+            DEFAULT_WEB_PORT: 48421,
             DEFAULT_MODEL: 'anthropic/claude-sonnet-4-20250514',
+            DEFAULT_MAX_TOKENS: 8192,
+            DEFAULT_TEMPERATURE: 0.7,
+            DEFAULT_SANDBOX_MODE: 'host',
             ALLOWED_TOOLS_DEFAULT: [],
+        }));
+        vi.doMock('../src/memory/vectors.js', () => ({
+            isVectorSearchAvailable: vi.fn().mockReturnValue(false),
+            searchVectors: vi.fn().mockResolvedValue([]),
+            addVector: vi.fn().mockResolvedValue(false),
         }));
         memory = await import('../src/memory/memory.js');
         memory.initMemory();
@@ -123,30 +144,30 @@ describe('Memory Module', () => {
     });
 
     describe('searchMemories', () => {
-        it('should search by category', () => {
+        it('should search by category', async () => {
             memory.rememberFact('project', 'titan', 'AI agent');
             memory.rememberFact('hobby', 'chess', 'plays chess');
-            const results = memory.searchMemories('project');
+            const results = await memory.searchMemories('project');
             expect(results.length).toBe(1);
             expect(results[0].key).toBe('titan');
         });
 
-        it('should search by query string', () => {
+        it('should search by query string', async () => {
             memory.rememberFact('project', 'titan', 'AI agent platform');
             memory.rememberFact('project', 'jarvis', 'AI voice assistant');
-            const results = memory.searchMemories(undefined, 'agent');
+            const results = await memory.searchMemories(undefined, 'agent');
             expect(results.length).toBe(1);
             expect(results[0].key).toBe('titan');
         });
 
-        it('should return empty array when nothing matches', () => {
-            expect(memory.searchMemories('nonexistent')).toEqual([]);
+        it('should return empty array when nothing matches', async () => {
+            expect(await memory.searchMemories('nonexistent')).toEqual([]);
         });
 
-        it('should return all when no filters are passed', () => {
+        it('should return all when no filters are passed', async () => {
             memory.rememberFact('a', 'key1', 'val1');
             memory.rememberFact('b', 'key2', 'val2');
-            const results = memory.searchMemories();
+            const results = await memory.searchMemories();
             expect(results.length).toBe(2);
         });
     });

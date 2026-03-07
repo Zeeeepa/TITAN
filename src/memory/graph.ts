@@ -10,6 +10,7 @@ import { v4 as uuid } from 'uuid';
 import { loadConfig } from '../config/config.js';
 import { recordTokenUsage } from '../agent/costOptimizer.js';
 import logger from '../utils/logger.js';
+import { isVectorSearchAvailable, addVector, searchVectors } from './vectors.js';
 
 const COMPONENT = 'Graph';
 const TITAN_HOME = join(homedir(), '.titan');
@@ -285,6 +286,11 @@ export async function addEpisode(content: string, source: string): Promise<Episo
     graph.episodes.push(episode);
     saveGraph();
 
+    // Index to vector store for semantic search (fire-and-forget)
+    if (isVectorSearchAvailable()) {
+        addVector(`graph:${episode.id}`, content, 'graph', { source, episodeId: episode.id }).catch(() => {});
+    }
+
     // Background entity extraction (non-blocking)
     extractEntities(content).then((extracted) => {
         if (!extracted || extracted.length === 0) return;
@@ -337,27 +343,66 @@ export async function addEpisode(content: string, source: string): Promise<Episo
     return episode;
 }
 
-// ── Search ────────────────────────────────────────────────────────
+// ── Search (hybrid keyword + vector) ─────────────────────────────
 export function searchMemory(query: string, limit = 20): Episode[] {
     if (!initialized) initGraph();
     if (!query) return getRecentEpisodes(limit);
 
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const scored = graph.episodes.map((ep) => {
-        const text = ep.content.toLowerCase();
-        const matches = terms.filter((t) => text.includes(t)).length;
-        return { ep, matches };
-    });
+    const scored = new Map<string, { ep: Episode; score: number }>();
 
-    return scored
-        .filter((s) => s.matches > 0)
+    // Keyword search (BM25-style scoring)
+    for (const ep of graph.episodes) {
+        const text = ep.content.toLowerCase();
+        let score = 0;
+        for (const term of terms) {
+            if (text.includes(term)) {
+                score += 1;
+                // Boost for term appearing in first 100 chars (title/summary area)
+                if (text.slice(0, 100).includes(term)) score += 0.5;
+            }
+        }
+        if (score > 0) {
+            scored.set(ep.id, { ep, score });
+        }
+    }
+
+    // Vector search augmentation (async, but we cache results for next call)
+    if (isVectorSearchAvailable()) {
+        searchVectors(query, limit * 2, 'graph', 0.35).then(vectorResults => {
+            // Store in a module-level cache for getGraphContext to use
+            lastVectorResults = vectorResults.map(vr => ({
+                id: vr.id.replace('graph:', ''),
+                score: vr.score,
+            }));
+        }).catch(() => {});
+    }
+
+    // Merge cached vector results if available
+    if (lastVectorResults.length > 0) {
+        for (const vr of lastVectorResults) {
+            const ep = graph.episodes.find(e => e.id === vr.id);
+            if (!ep) continue;
+            const existing = scored.get(ep.id);
+            if (existing) {
+                existing.score += vr.score * 2; // Boost keyword matches with semantic similarity
+            } else {
+                scored.set(ep.id, { ep, score: vr.score * 1.5 });
+            }
+        }
+    }
+
+    return Array.from(scored.values())
         .sort((a, b) => {
-            if (b.matches !== a.matches) return b.matches - a.matches;
+            if (Math.abs(b.score - a.score) > 0.1) return b.score - a.score;
             return b.ep.createdAt.localeCompare(a.ep.createdAt);
         })
         .slice(0, limit)
         .map((s) => s.ep);
 }
+
+// Cache for async vector search results
+let lastVectorResults: Array<{ id: string; score: number }> = [];
 
 // ── Entity lookups ────────────────────────────────────────────────
 export function getEntity(name: string): Entity | null {

@@ -142,7 +142,7 @@ vi.mock('../src/agent/autopilot.js', () => ({
 
 vi.mock('../src/skills/builtin/webhook.js', () => ({
     registerWebhookSkill: vi.fn(),
-    initPersistentWebhooks: vi.fn(),
+    initPersistentWebhooks: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../src/skills/registry.js', () => ({

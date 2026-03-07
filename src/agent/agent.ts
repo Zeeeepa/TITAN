@@ -68,10 +68,10 @@ function getCachedPromptFile(path: string): string {
 }
 
 /** Build the system prompt for the agent */
-function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMessage?: string): string {
+async function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMessage?: string): Promise<string> {
     const modelId = config.agent.model || 'unknown';
     const customPrompt = config.agent.systemPrompt || '';
-    const memories = searchMemories('preference');
+    const memories = await searchMemories('preference');
     const memoryContext = memories.length > 0
         ? `\n\nUser preferences I remember:\n${memories.map((m) => `- ${m.key}: ${m.value}`).join('\n')}`
         : '';
@@ -222,7 +222,7 @@ export async function processMessage(
     addEpisode(`[${channel}/${userId}] ${message}`, channel).catch(() => {});
 
     // Build context (pass user message for graph context injection)
-    let systemPrompt = buildSystemPrompt(config, message);
+    let systemPrompt = await buildSystemPrompt(config, message);
     if (overrides?.systemPrompt) systemPrompt = overrides.systemPrompt + '\n\n' + systemPrompt;
     const historyMessages = getContextMessages(session);
     const tools = getToolDefinitions();

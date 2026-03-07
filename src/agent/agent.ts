@@ -307,6 +307,15 @@ export async function processMessage(
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
         logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools`);
 
+        // ── Force summarization after round 5 — stop tool looping ───
+        if (round >= 5) {
+            messages.push({
+                role: 'user',
+                content: 'IMPORTANT: You have already used enough tools. Do NOT call any more tools. Summarize the information you have gathered and respond to the user directly with a clear answer NOW.',
+            });
+            logger.info(COMPONENT, `[Round ${round + 1}] Injecting forced summarization prompt`);
+        }
+
         // ── Cost optimizer: context compression to save tokens ───
         const { messages: compressedMessages, didCompress, savedTokens } = maybeCompressContext(
             messages.filter((m) => m.role !== 'tool' || round < 3) // keep recent tool results

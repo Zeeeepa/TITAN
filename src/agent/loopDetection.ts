@@ -36,8 +36,8 @@ const DEFAULT_CONFIG: LoopDetectionConfig = {
 };
 
 const sessionHistory: Map<string, ToolCallRecord[]> = new Map();
-let globalCallCount = 0;
-let globalCallCountResetAt = Date.now();
+// Per-session call counts (reset when session history is cleared)
+const sessionCallCounts: Map<string, number> = new Map();
 
 /** Simple fast hash for comparison */
 function fastHash(str: string): string {
@@ -77,20 +77,16 @@ export function checkForLoop(
         history.splice(0, history.length - cfg.historySize);
     }
 
-    // Reset global call count every 5 minutes
-    if (Date.now() - globalCallCountResetAt > 5 * 60 * 1000) {
-        globalCallCount = 0;
-        globalCallCountResetAt = Date.now();
-    }
+    // Per-session call counter
+    const sessionCalls = (sessionCallCounts.get(sessionId) || 0) + 1;
+    sessionCallCounts.set(sessionId, sessionCalls);
 
-    globalCallCount++;
-
-    // Check global circuit breaker
-    if (globalCallCount > cfg.globalCircuitBreakerThreshold) {
-        logger.error(COMPONENT, `Global circuit breaker tripped: ${globalCallCount} calls`);
+    // Check per-session circuit breaker
+    if (sessionCalls > cfg.globalCircuitBreakerThreshold) {
+        logger.error(COMPONENT, `Session circuit breaker tripped: ${sessionCalls} calls in session ${sessionId}`);
         return {
             allowed: false,
-            reason: `Global circuit breaker: ${globalCallCount} tool calls in this session. Stopping to prevent runaway execution.`,
+            reason: `Session circuit breaker: ${sessionCalls} tool calls in this session. Stopping to prevent runaway execution.`,
             level: 'circuit_breaker',
         };
     }
@@ -189,12 +185,15 @@ function detectPingPong(history: ToolCallRecord[]): string | null {
 /** Reset loop detection for a session */
 export function resetLoopDetection(sessionId: string): void {
     sessionHistory.delete(sessionId);
+    sessionCallCounts.delete(sessionId);
 }
 
 /** Get loop detection stats */
 export function getLoopStats(): { sessions: number; totalCalls: number } {
+    let totalCalls = 0;
+    for (const count of sessionCallCounts.values()) totalCalls += count;
     return {
         sessions: sessionHistory.size,
-        totalCalls: globalCallCount,
+        totalCalls,
     };
 }

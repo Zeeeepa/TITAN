@@ -166,8 +166,8 @@ export function getNudgeMessage(event: StallEvent): string {
             'I seem to be going in circles. Let me step back and rethink this from scratch.',
         ],
         empty_response: [
-            'I didn\'t generate a useful response there. Let me try again with a clearer focus.',
-            'Something went wrong with my last response. Let me start over with this task.',
+            'You already have information from the tools you called. Summarize what you found and respond to the user directly NOW. Do NOT call any more tools — use the data you already have.',
+            'STOP calling tools. You have enough information. Respond to the user with what you already know. Provide a clear, direct answer based on the tool results you received.',
         ],
         max_rounds: [
             'I\'ve taken many steps on this task. Let me summarize what I\'ve done so far and ask if you\'d like me to continue.',

@@ -158,8 +158,10 @@ export async function routeMessage(
     }
 
     // Process through the agent
+    // Default agent always reads current config (so dashboard model changes take effect immediately)
+    const effectiveModel = agent.id === 'default' ? loadConfig().agent.model : agent.model;
     const response = await processMessage(message, channel, userId, {
-        model: agent.model,
+        model: effectiveModel,
         systemPrompt: agent.systemPrompt,
     });
 

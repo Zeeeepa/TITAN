@@ -271,6 +271,10 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerPlannerTool } = await import('../agent/planner.js');
     try { registerPlannerTool(); } catch (e) { logger.warn(COMPONENT, `Failed to register planner: ${(e as Error).message}`); }
 
+    // Register tool_search — meta-tool for discovering tools on demand
+    const { getToolSearchHandler } = await import('../agent/toolSearch.js');
+    try { registerTool(getToolSearchHandler()); } catch (e) { logger.warn(COMPONENT, `Failed to register tool_search: ${(e as Error).message}`); }
+
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
 }
 

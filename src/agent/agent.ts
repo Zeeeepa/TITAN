@@ -19,6 +19,8 @@ import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanForApproval, formatPlanResults } from './deliberation.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
+import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
+import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
 
@@ -158,6 +160,9 @@ export async function processMessage(
 
     logger.info(COMPONENT, `Processing message in session ${session.id} (${channel}/${userId})`);
 
+    // ── Brain: background warmup (non-blocking) ──────────────
+    ensureBrainLoaded().catch(() => {});
+
     // ── Deliberation intercept ─────────────────────────────────
     const existingDelib = getDeliberation(session.id);
 
@@ -265,6 +270,32 @@ export async function processMessage(
         const coreTools = activeTools.filter(t => CORE_TOOL_NAMES.includes(t.function.name));
         logger.info(COMPONENT, `[SmallModel] Reducing tools from ${activeTools.length} to ${coreTools.length} for ${activeModel}`);
         activeTools = coreTools;
+    }
+
+    // ── Brain: intelligent tool pre-filtering ──────────────────
+    if (!isKimiSwarm && !isSmallModel && isBrainAvailable()) {
+        const brainFiltered = await brainSelectTools(message, activeTools);
+        if (brainFiltered.length > 0 && brainFiltered.length < activeTools.length) {
+            logger.info(COMPONENT, `[Brain] Filtered: ${activeTools.length} → ${brainFiltered.length} tools`);
+            activeTools = brainFiltered;
+        }
+    }
+
+    // ── Tool Search: compact tool mode ──────────────────────────
+    // Send only core tools + tool_search to the LLM instead of all 80+.
+    // The LLM calls tool_search to discover additional tools as needed.
+    const toolSearchConfig = (config as Record<string, unknown>).toolSearch as {
+        enabled?: boolean;
+        coreTools?: string[];
+    } | undefined;
+    const toolSearchEnabled = toolSearchConfig?.enabled ?? true;
+    const allToolsBackup = activeTools;
+    const discoveredTools = new Set<string>();
+
+    if (toolSearchEnabled && !isKimiSwarm && !isSmallModel && activeTools.length > 12) {
+        const coreNames = new Set(toolSearchConfig?.coreTools ?? DEFAULT_CORE_TOOLS);
+        activeTools = activeTools.filter(t => coreNames.has(t.function.name));
+        logger.info(COMPONENT, `[ToolSearch] Compact mode: ${allToolsBackup.length} → ${activeTools.length} tools (${allToolsBackup.length - activeTools.length} discoverable via tool_search)`);
     }
 
     // ── Stall detector: start heartbeat for this session ────────
@@ -421,6 +452,29 @@ export async function processMessage(
 
         // Break outer agent loop if loop detection triggered
         if (loopBroken) break;
+
+        // ── Tool Search: expand activeTools with discovered tools ───
+        if (toolSearchEnabled && toolResults.some(r => r.name === 'tool_search')) {
+            for (const result of toolResults) {
+                if (result.name !== 'tool_search') continue;
+                // Parse tool names from the search result
+                const matches = result.content.matchAll(/\*\*(\w+)\*\*/g);
+                for (const match of matches) {
+                    const toolName = match[1];
+                    if (!discoveredTools.has(toolName)) {
+                        discoveredTools.add(toolName);
+                        // Add the full tool definition from backup
+                        const fullDef = allToolsBackup.find(t => t.function.name === toolName);
+                        if (fullDef && !activeTools.some(t => t.function.name === toolName)) {
+                            activeTools.push(fullDef);
+                        }
+                    }
+                }
+            }
+            if (discoveredTools.size > 0) {
+                logger.info(COMPONENT, `[ToolSearch] Expanded: +${discoveredTools.size} tools → ${activeTools.length} total`);
+            }
+        }
 
         // If this is the last round, add a note
         if (round === MAX_TOOL_ROUNDS - 1) {

@@ -136,6 +136,29 @@ export const TunnelConfigSchema = z.object({
     hostname: z.string().optional(),
 });
 
+export const ToolSearchConfigSchema = z.object({
+    /** Enable compact tool mode with tool_search discovery (saves 60-80% input tokens) */
+    enabled: z.boolean().default(true),
+    /** Core tools always sent to the LLM without needing search */
+    coreTools: z.array(z.string()).default([
+        'shell', 'read_file', 'write_file', 'edit_file', 'list_dir',
+        'web_search', 'memory', 'tool_search',
+    ]),
+});
+
+export const BrainConfigSchema = z.object({
+    /** Enable embedded small LLM for intelligent routing (tool selection, classification) */
+    enabled: z.boolean().default(false),
+    /** Which small model to use */
+    model: z.enum(['smollm2-360m', 'qwen3.5-0.8b']).default('smollm2-360m'),
+    /** Auto-download model on first enable */
+    autoDownload: z.boolean().default(true),
+    /** Maximum tools to select per request */
+    maxToolsPerRequest: z.number().default(12),
+    /** Inference timeout in milliseconds */
+    timeoutMs: z.number().default(2000),
+});
+
 export const DeliberationConfigSchema = z.object({
     /** Enable deliberative reasoning for complex requests */
     enabled: z.boolean().default(true),
@@ -239,6 +262,8 @@ export const TitanConfigSchema = z.object({
             end: z.number().min(0).max(23).default(23),
         }).optional(),
     }).default({}),
+    toolSearch: ToolSearchConfigSchema.default({}),
+    brain: BrainConfigSchema.default({}),
     tunnel: TunnelConfigSchema.default({}),
     deliberation: DeliberationConfigSchema.default({}),
     oauth: OAuthConfigSchema.default({}),

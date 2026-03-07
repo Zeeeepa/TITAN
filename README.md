@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 86 tools. 3,171 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Autopilot Mode, Deliberative Reasoning, and Gmail OAuth. 21 providers. 87 tools. 3,212 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-86-orange" alt="78 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-87-orange" alt="87 Tools"/></a>
 </p>
 
 <p align="center">
@@ -68,7 +68,7 @@ npm run dev:gateway        # Start in dev mode
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
 | **Skills** | 86 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
-| **Cost control** | Smart routing, daily budgets, context summarization | Uncapped token spend (surprise!) |
+| **Cost control** | Smart routing, tool search, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
 | **Personality** | SOUL.md onboarding — your agent knows who you are | Generic "I'm a helpful assistant" |
 | **Codebase** | ~27K lines TypeScript | 50K-200K+ lines |
@@ -127,6 +127,7 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Image Generation** | `generate_image`, `edit_image` |
 | **Automation** | `cron`, `webhook` |
 | **Memory** | `memory`, `switch_model`, `graph_remember`, `graph_search`, `graph_entities`, `graph_recall` |
+| **Meta** | `tool_search` (discover tools on demand), `plan_task` (deliberative planning) |
 | **Sessions** | `sessions_list`, `sessions_history`, `sessions_send`, `sessions_close` |
 | **Income Tracking** | `income_log`, `income_summary`, `income_list`, `income_goal` |
 | **Freelance** | `freelance_search`, `freelance_match`, `freelance_draft`, `freelance_track` |
@@ -134,6 +135,27 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Lead Gen** | `lead_scan`, `lead_score`, `lead_queue`, `lead_report` |
 
 All skills can be individually enabled/disabled from the Mission Control dashboard.
+
+### Tool Search — Intelligent Tool Discovery
+
+TITAN doesn't dump all 86 tool schemas into every LLM call. Instead, it sends only 8 core tools plus a `tool_search` meta-tool. When the LLM needs a capability it doesn't see, it calls `tool_search("email")` and gets the relevant tools added dynamically. This saves **60-80% of input tokens** on every request.
+
+```
+# What the LLM sees on a typical request:
+Before: 86 tools × ~50 tokens each = ~4,300 input tokens
+After:  8 core tools + tool_search  = ~600 input tokens (86% reduction)
+```
+
+Inspired by Anthropic's tool search pattern, but works with **all 21 providers** — not just Claude. Configure which tools are always available:
+
+```json
+{
+  "toolSearch": {
+    "enabled": true,
+    "coreTools": ["shell", "read_file", "write_file", "edit_file", "list_dir", "web_search", "memory", "tool_search"]
+  }
+}
+```
 
 ### Gmail OAuth Integration
 

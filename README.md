@@ -379,74 +379,146 @@ All settings are editable live without restarting the gateway.
 
 ## Mesh Networking
 
-Deploy TITAN across up to **5 computers** working in tandem. Machines auto-discover each other on the LAN and ask you before connecting — no surprise connections.
+Connect up to **5 computers** together so they share AI models and API keys. One machine has a powerful GPU? The others can use it. One machine has an OpenAI subscription? Everyone benefits. TITAN finds your other machines automatically on your WiFi and asks before connecting.
 
-### Quick Start
+### What You Need
 
+Each computer in your mesh needs:
+- **TITAN installed** (`npm i -g titan-agent`)
+- **A network connection** — all machines on the same WiFi, or connected via Tailscale VPN
+
+Then you pick what each machine brings to the table:
+
+**For local models (free, runs on your GPU/CPU):**
+1. Install [Ollama](https://ollama.com) on the machine
+2. Pull the models you want: `ollama pull llama3.1` or `ollama pull qwen3:72b`
+3. Ollama runs in the background — TITAN automatically detects which models you've pulled
+
+**For cloud models (paid, needs an API key):**
+- **Anthropic (Claude):** Get a key at [console.anthropic.com](https://console.anthropic.com) → set `ANTHROPIC_API_KEY` in your environment or `~/.titan/titan.json`
+- **OpenAI (GPT-4o):** Get a key at [platform.openai.com](https://platform.openai.com) → set `OPENAI_API_KEY`
+- **Google (Gemini):** Get a key at [aistudio.google.com](https://aistudio.google.com) → set `GOOGLE_API_KEY`
+- **Any of the 17 other providers:** Set the matching env var (e.g. `GROQ_API_KEY`, `XAI_API_KEY`)
+
+You only need keys on **one machine** — mesh sharing means every connected machine can use them.
+
+### How Models Show Up
+
+TITAN automatically finds every model available to you:
+
+- **Ollama models** are discovered live by querying Ollama's API. Pull a new model? Hit "Refresh Ollama Models" in the dashboard (or restart the gateway) and it appears.
+- **Cloud models** are listed based on which API keys you have set. No key = no models from that provider.
+- **Mesh models** from connected peers appear alongside your local models in the dropdown.
+
+Open the dashboard at `http://localhost:48420` → Settings → Model dropdown to see everything available. Models are grouped by provider: `LOCAL (Ollama)`, `ANTHROPIC`, `OPENAI`, etc.
+
+### Step-by-Step: Connect Two Machines
+
+**Machine 1** (e.g. your desktop with a GPU):
 ```bash
-# On machine 1 — initialize mesh and get a secret
+# 1. Install TITAN
+npm i -g titan-agent
+
+# 2. Install Ollama and pull some models
+ollama pull llama3.1
+ollama pull qwen3:72b
+
+# 3. Create a mesh — this generates a secret code
 titan mesh --init
+# Output: Mesh Secret: TITAN-a1b2-c3d4-e5f6  ← copy this
 
-# On machine 2 — join with the secret
-titan mesh --join "TITAN-xxxx-xxxx-xxxx"
-
-# Both machines start their gateways
+# 4. Start TITAN
 titan gateway
 ```
 
-When machine 2 discovers machine 1 (via mDNS), you'll see a notification in the dashboard and CLI:
+**Machine 2** (e.g. your laptop or a mini PC):
+```bash
+# 1. Install TITAN
+npm i -g titan-agent
 
+# 2. Set your cloud API key (if you have one)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# 3. Join the mesh with the secret from Machine 1
+titan mesh --join "TITAN-a1b2-c3d4-e5f6"
+
+# 4. Start TITAN
+titan gateway
 ```
-New TITAN node discovered: titan-pc (192.168.1.100:48420) — approve via dashboard or CLI
-```
 
-### Approve or Reject Peers
+**What happens next:**
+1. Machine 2 automatically finds Machine 1 on your WiFi (via mDNS/Bonjour)
+2. You see a message: `New TITAN node discovered: desktop-pc (192.168.1.100) — awaiting approval`
+3. You approve it: `titan mesh --approve <nodeId>` (or click "Approve" in the dashboard)
+4. Now both machines share models! Machine 2 can use Ollama models from Machine 1, and Machine 1 can use the Anthropic API through Machine 2
 
-Discovered peers wait in a pending queue until you approve them:
+### Approving Connections
+
+When TITAN finds another machine, it doesn't connect automatically — it asks you first. This prevents random machines from accessing your AI models.
 
 ```bash
-# See who's waiting
+# See who's been discovered and is waiting for your OK
 titan mesh --pending
 
-# Approve a peer (starts WebSocket connection + model sharing)
-titan mesh --approve <nodeId>
+# Example output:
+#   gpu-desktop
+#     Node ID:  a1b2c3d4e5f6g7h8
+#     Address:  192.168.1.100:48420
+#     Models:   ollama/llama3.1, ollama/qwen3:72b
+#     Approve:  titan mesh --approve a1b2c3d4e5f6g7h8
 
-# Reject a peer
-titan mesh --reject <nodeId>
+# Say yes
+titan mesh --approve a1b2c3d4e5f6g7h8
 
-# Disconnect and revoke a previously approved peer
-titan mesh --revoke <nodeId>
+# Say no
+titan mesh --reject a1b2c3d4e5f6g7h8
+
+# Already connected but want to disconnect?
+titan mesh --revoke a1b2c3d4e5f6g7h8
 ```
 
-Or use the dashboard API:
+TITAN remembers which machines you've approved. If you restart, it reconnects to them automatically.
+
+### Skipping the Approval Step
+
+If all machines on your network are yours and you don't want to manually approve each one:
+
 ```bash
-curl -X POST localhost:48420/api/mesh/approve/<nodeId>
-curl -X POST localhost:48420/api/mesh/reject/<nodeId>
+titan mesh --auto-approve
 ```
 
-Approved peers are remembered across restarts (`~/.titan/approved-peers.json`).
+Now any TITAN instance that shares your secret will connect automatically. Toggle it off the same way.
 
-### Auto-Approve Mode
-
-If you trust your LAN and want peers to connect automatically:
+### Checking Status
 
 ```bash
-titan mesh --auto-approve    # Toggle on/off
+titan mesh --status
+
+# Shows:
+#   Enabled:       Yes
+#   Max peers:     5
+#   Auto-approve:  Off
+#   Connected Peers (2/5):
+#     gpu-desktop  192.168.1.100:48420  |  3 models  |  load: 0
+#     mini-pc      192.168.1.20:48420   |  12 models |  load: 0
 ```
 
-Or in `~/.titan/titan.json`:
-```json
-{
-  "mesh": {
-    "enabled": true,
-    "autoApprove": true
-  }
-}
-```
+### How Model Routing Works
 
-### Tailscale Integration
+When you ask TITAN to use a model:
 
-If you run Tailscale, TITAN discovers peers on your VPN — works across networks, data centers, and cloud instances.
+1. **Local first** — If your machine has the model (e.g. you have the API key, or Ollama has it), it runs locally
+2. **Mesh fallback** — If the local provider fails (no key, Ollama doesn't have it), TITAN checks your connected peers. If a peer has the model, the request is sent there
+3. **Provider failover** — If no peer has it either, TITAN tries other local providers as a last resort
+
+You don't have to do anything special — just pick a model from the dropdown. If it lives on another machine, TITAN handles the routing.
+
+### Connecting Machines Not on the Same WiFi
+
+If your machines are on different networks, you have two options:
+
+**Option A: Tailscale (recommended)**
+Install [Tailscale](https://tailscale.com) on both machines (free for personal use). TITAN auto-discovers peers on your Tailscale network.
 
 ```json
 {
@@ -457,13 +529,16 @@ If you run Tailscale, TITAN discovers peers on your VPN — works across network
 }
 ```
 
-### Remote Model Routing
+**Option B: Manual IP address**
+If you know the other machine's IP:
 
-When a requested model isn't available locally, TITAN automatically routes to a mesh peer that has it. Load-balanced across all available nodes.
+```bash
+titan mesh --add "192.168.1.100:48420"
+```
 
-**Example:** Your Titan PC has an RTX 5090 running `ollama/llama3.3:70b`. Your mini PC has cloud API keys. Either machine can use models from the other — the router checks mesh peers after a local provider fails.
+### Full Configuration
 
-### Configuration
+All settings live in `~/.titan/titan.json`:
 
 ```json
 {
@@ -481,12 +556,13 @@ When a requested model isn't available locally, TITAN automatically routes to a 
 }
 ```
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `maxPeers` | 5 | Maximum connected peers |
-| `autoApprove` | false | Skip approval for discovered peers |
-| `allowRemoteModels` | true | Let other nodes use this node's models |
-| `maxRemoteTasks` | 3 | Max concurrent tasks from remote peers |
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `maxPeers` | 5 | How many other machines can connect at once |
+| `autoApprove` | false | If `true`, skip the approval step for new machines |
+| `allowRemoteModels` | true | Let other machines use your models. Set `false` to block them |
+| `maxRemoteTasks` | 3 | How many requests from other machines to handle at once |
+| `staticPeers` | [] | List of IP:port pairs for machines not on the same WiFi |
 
 ---
 

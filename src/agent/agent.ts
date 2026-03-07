@@ -229,40 +229,39 @@ export async function processMessage(
                 .replace(/[?,!.]/g, '').trim().replace(/\s+/g, ' ');
             if (loc.length >= 2) locations.push(loc);
         }
-        const weatherParts: string[] = [];
-        for (const loc of locations) {
-            try {
-                const resp = await fetch(`https://wttr.in/${encodeURIComponent(loc)}?format=j1`, {
-                    headers: { 'User-Agent': 'TITAN/1.0' },
-                    signal: AbortSignal.timeout(8000),
-                });
-                if (resp.ok) {
-                    const d = await resp.json() as Record<string, unknown>;
-                    const cur = (d.current_condition as Array<Record<string, unknown>>)?.[0];
-                    const area = (d.nearest_area as Array<Record<string, unknown>>)?.[0];
-                    const day = (d.weather as Array<Record<string, unknown>>)?.[0];
-                    if (cur) {
-                        const areaName = area
-                            ? `${(area.areaName as Array<{value: string}>)?.[0]?.value}, ${(area.region as Array<{value: string}>)?.[0]?.value}`
-                            : loc;
-                        const desc = (cur.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
-                        const astro = (day?.astronomy as Array<Record<string, string>>)?.[0];
-                        const hourly = day?.hourly as Array<Record<string, unknown>> | undefined;
-                        let part = `Weather for ${areaName}: ${cur.temp_F}°F (feels ${cur.FeelsLikeF}°F), ${desc}, Humidity ${cur.humidity}%, Wind ${cur.windspeedMiles} mph ${cur.winddir16Point}, UV ${cur.uvIndex}`;
-                        if (day) part += `, High ${day.maxtempF}°F, Low ${day.mintempF}°F`;
-                        if (astro) part += `, Sunrise ${astro.sunrise}, Sunset ${astro.sunset}`;
-                        if (hourly) {
-                            const evening = hourly.find(h => h.time === '2100');
-                            if (evening) {
-                                const eDesc = (evening.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
-                                part += ` | Tonight: ${evening.tempF}°F, ${eDesc}, Wind ${evening.windspeedMiles} mph, ${evening.chanceofrain}% rain`;
-                            }
-                        }
-                        weatherParts.push(part);
-                    }
+        // Fetch all locations in parallel for speed
+        const weatherResults = await Promise.allSettled(locations.map(async (loc) => {
+            const resp = await fetch(`https://wttr.in/${encodeURIComponent(loc)}?format=j1`, {
+                headers: { 'User-Agent': 'TITAN/1.0' },
+                signal: AbortSignal.timeout(12000),
+            });
+            if (!resp.ok) return null;
+            const d = await resp.json() as Record<string, unknown>;
+            const cur = (d.current_condition as Array<Record<string, unknown>>)?.[0];
+            const area = (d.nearest_area as Array<Record<string, unknown>>)?.[0];
+            const day = (d.weather as Array<Record<string, unknown>>)?.[0];
+            if (!cur) return null;
+            const areaName = area
+                ? `${(area.areaName as Array<{value: string}>)?.[0]?.value}, ${(area.region as Array<{value: string}>)?.[0]?.value}`
+                : loc;
+            const desc = (cur.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+            const astro = (day?.astronomy as Array<Record<string, string>>)?.[0];
+            const hourly = day?.hourly as Array<Record<string, unknown>> | undefined;
+            let part = `Weather for ${areaName}: ${cur.temp_F}°F (feels ${cur.FeelsLikeF}°F), ${desc}, Humidity ${cur.humidity}%, Wind ${cur.windspeedMiles} mph ${cur.winddir16Point}, UV ${cur.uvIndex}`;
+            if (day) part += `, High ${day.maxtempF}°F, Low ${day.mintempF}°F`;
+            if (astro) part += `, Sunrise ${astro.sunrise}, Sunset ${astro.sunset}`;
+            if (hourly) {
+                const evening = hourly.find(h => h.time === '2100');
+                if (evening) {
+                    const eDesc = (evening.weatherDesc as Array<{value: string}>)?.[0]?.value || '';
+                    part += ` | Tonight: ${evening.tempF}°F, ${eDesc}, Wind ${evening.windspeedMiles} mph, ${evening.chanceofrain}% rain`;
                 }
-            } catch { /* fall through to LLM */ }
-        }
+            }
+            return part;
+        }));
+        const weatherParts = weatherResults
+            .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value !== null)
+            .map(r => r.value);
         if (weatherParts.length > 0) {
             preRoutedContext = `\n\n[REAL-TIME WEATHER DATA — present this data to the user in a nicely formatted response. Do NOT call any tools for weather — use ONLY the data below.]\n${weatherParts.join('\n')}`;
             logger.info(COMPONENT, `Pre-routed weather for ${weatherParts.length} location(s): [${locations.join(', ')}]`);

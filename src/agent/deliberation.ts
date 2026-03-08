@@ -34,6 +34,13 @@ export function shouldDeliberate(message: string, config: TitanConfig): boolean 
     if (message.trim().toLowerCase().startsWith('/plan')) return true;
     if (!config.deliberation.autoDetect) return false;
     const complexity = classifyComplexity(message);
+    // In autonomous mode with autoDeliberate, trigger on 'moderate' complexity too
+    const autonomy = config.autonomy as Record<string, unknown> | undefined;
+    const isAutonomous = autonomy?.mode === 'autonomous';
+    const autoDelib = autonomy?.autoDeliberate as boolean;
+    if (isAutonomous && autoDelib) {
+        return complexity === 'ambitious' || complexity === 'moderate';
+    }
     return complexity === 'ambitious';
 }
 
@@ -157,7 +164,12 @@ Rules:
     // Create plan via planner
     const plan = createPlan(parsed.goal, parsed.tasks.slice(0, maxSteps));
     state.plan = plan;
-    state.stage = config.deliberation.approvalRequired ? 'awaiting_approval' : 'executing';
+    // In autonomous mode with autoDeliberate, skip the approval gate
+    const autonomyConfig = config.autonomy as Record<string, unknown> | undefined;
+    const isAutonomousMode = autonomyConfig?.mode === 'autonomous';
+    const autoDelibEnabled = autonomyConfig?.autoDeliberate as boolean;
+    const needsApproval = config.deliberation.approvalRequired && !(isAutonomousMode && autoDelibEnabled);
+    state.stage = needsApproval ? 'awaiting_approval' : 'executing';
     state.planMarkdown = formatPlanForApproval(state);
 
     logger.info(COMPONENT, `Plan created: "${parsed.goal}" with ${plan.tasks.length} tasks`);

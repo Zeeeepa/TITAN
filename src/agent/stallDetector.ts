@@ -17,12 +17,27 @@ const COMPONENT = 'StallDetector';
 // ─── Config ───────────────────────────────────────────────────────
 let stallThresholdMs = 30_000; // 30 seconds (default, auto-tuned for CPU-only)
 const MAX_TOOL_LOOP_REPEATS = 3;
+let maxNudgeAttempts = 2;
+
+/** Default nudge attempts */
 const MAX_NUDGE_ATTEMPTS = 2;
 
 /** Set the stall detection timeout (e.g. 120_000 for CPU-only inference) */
 export function setStallThreshold(ms: number): void {
     stallThresholdMs = ms;
     logger.info(COMPONENT, `Stall threshold set to ${ms / 1000}s`);
+}
+
+/** Configure for autonomous mode — longer timeouts, more nudge attempts */
+export function setAutonomousMode(enabled: boolean): void {
+    if (enabled) {
+        stallThresholdMs = 120_000; // 120s silence timeout
+        maxNudgeAttempts = 5;
+        logger.info(COMPONENT, 'Autonomous mode: stall threshold 120s, max nudges 5');
+    } else {
+        stallThresholdMs = 30_000;
+        maxNudgeAttempts = MAX_NUDGE_ATTEMPTS;
+    }
 }
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -152,7 +167,7 @@ export function getNudgeMessage(event: StallEvent): string {
     const state = sessions.get(event.sessionId);
     const nudgeNum = (state?.nudgeCount ?? 0) + 1;
 
-    if (nudgeNum >= MAX_NUDGE_ATTEMPTS) {
+    if (nudgeNum >= maxNudgeAttempts) {
         return 'I\'ve been unable to make progress on this task. Let me stop here and ask you — could you rephrase or simplify what you need? I want to make sure I help you correctly.';
     }
 

@@ -10,7 +10,7 @@ import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.
 import { recordUsage, searchMemories } from '../memory/memory.js';
 import { recordToolResult, getLearningContext } from '../memory/learning.js';
 import { buildPersonalContext } from '../memory/relationship.js';
-import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler } from './stallDetector.js';
+import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler, setAutonomousMode } from './stallDetector.js';
 import { checkForLoop, resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
 import { getCachedResponse, setCachedResponse } from './responseCache.js';
@@ -21,11 +21,47 @@ import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
 import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
+import { shouldReflect, reflect } from './reflection.js';
+import { analyzeForDelegation, executeDelegationPlan } from './orchestrator.js';
+import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
+import { registerTool } from './toolRunner.js';
 import logger from '../utils/logger.js';
 import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js';
 
 const COMPONENT = 'Agent';
 const MAX_TOOL_ROUNDS = 10;
+
+// ── Register spawn_agent tool ────────────────────────────────────
+let spawnAgentRegistered = false;
+function ensureSpawnAgentRegistered(): void {
+    if (spawnAgentRegistered) return;
+    spawnAgentRegistered = true;
+    registerTool({
+        name: 'spawn_agent',
+        description: 'Spawn a sub-agent to handle a specific task. Sub-agents run in isolation with their own tool set and return results. Available templates: explorer (web research), coder (file/code), browser (interactive web), analyst (analysis/memory).',
+        parameters: {
+            type: 'object',
+            properties: {
+                name: { type: 'string', description: 'Name for the sub-agent (e.g., "Explorer", "Coder")' },
+                task: { type: 'string', description: 'The task to delegate to the sub-agent' },
+                template: { type: 'string', description: 'Template: "explorer", "coder", "browser", "analyst" (optional)' },
+                model: { type: 'string', description: 'Model override (default: fast alias)' },
+            },
+            required: ['task'],
+        },
+        execute: async (args) => {
+            const template = SUB_AGENT_TEMPLATES[(args.template as string) || ''] || {};
+            const result = await spawnSubAgent({
+                name: (args.name as string) || template.name || 'SubAgent',
+                task: args.task as string,
+                tools: template.tools,
+                systemPrompt: template.systemPrompt,
+                model: args.model as string | undefined,
+            });
+            return `[Sub-Agent: ${result.success ? 'SUCCESS' : 'FAILED'}] (${result.rounds} rounds, ${result.durationMs}ms)\n${result.content}`;
+        },
+    });
+}
 
 /** Strip leaked tool-call JSON from LLM responses (common with small local models) */
 function stripToolJson(text: string): string {
@@ -162,6 +198,20 @@ export async function processMessage(
     const session = getOrCreateSession(channel, userId);
 
     logger.info(COMPONENT, `Processing message in session ${session.id} (${channel}/${userId})`);
+
+    // ── Register spawn_agent tool if sub-agents enabled ───────
+    const subAgentConfig = (config as Record<string, unknown>).subAgents as { enabled?: boolean } | undefined;
+    if (subAgentConfig?.enabled !== false) {
+        ensureSpawnAgentRegistered();
+    }
+
+    // ── Determine effective limits based on autonomy mode ─────
+    const isAutonomous = config.autonomy.mode === 'autonomous';
+    const effectiveMaxRounds = isAutonomous
+        ? (config.autonomy as Record<string, unknown>).maxToolRoundsOverride as number || 25
+        : MAX_TOOL_ROUNDS;
+    const reflectionEnabled = config.agent.reflectionEnabled ?? true;
+    const reflectionInterval = config.agent.reflectionInterval ?? 3;
 
     // ── Brain: background warmup (non-blocking) ──────────────
     ensureBrainLoaded().catch(() => {});
@@ -355,20 +405,64 @@ export async function processMessage(
         logger.info(COMPONENT, `[ToolSearch] Compact mode: ${allToolsBackup.length} → ${activeTools.length} tools (${allToolsBackup.length - activeTools.length} discoverable via tool_search)`);
     }
 
-    // ── Stall detector: start heartbeat for this session ────────
+    // ── Stall detector: configure for autonomy mode + start heartbeat ──
+    setAutonomousMode(isAutonomous);
     heartbeat(session.id);
 
-    // Agent loop with tool calling
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools`);
+    // ── Orchestration: check if task benefits from sub-agent delegation ──
+    const autoDelegate = (subAgentConfig as Record<string, unknown> | undefined)?.autoDelegate !== false;
+    if (isAutonomous && autoDelegate && message.split(/\s+/).length >= 10) {
+        try {
+            const delegationPlan = await analyzeForDelegation(message);
+            if (delegationPlan.shouldDelegate && delegationPlan.tasks.length >= 2) {
+                logger.info(COMPONENT, `Orchestrator: delegating to ${delegationPlan.tasks.length} sub-agents`);
+                const orchResult = await executeDelegationPlan(delegationPlan);
+                if (orchResult.subResults.length > 0 && orchResult.subResults.some(r => r.success)) {
+                    // Inject sub-agent results as context for the main agent
+                    messages.push({
+                        role: 'user',
+                        content: `[Sub-agent results for your request]\n\n${orchResult.content}\n\nSynthesize these results into a coherent response for the user.`,
+                    });
+                }
+            }
+        } catch (err) {
+            logger.warn(COMPONENT, `Orchestration failed, falling through: ${(err as Error).message}`);
+        }
+    }
 
-        // ── Force summarization after round 5 — stop tool looping ───
-        if (round >= 5) {
+    // Agent loop with tool calling
+    for (let round = 0; round < effectiveMaxRounds; round++) {
+        logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools: [${activeTools.map(t => t.function.name).join(', ')}]`);
+
+        // ── Reflection: periodic self-assessment (replaces forced summarization) ───
+        if (!isAutonomous && round >= 5) {
+            // In supervised mode, keep the forced summarization for backward compat
             messages.push({
                 role: 'user',
                 content: 'IMPORTANT: You have already used enough tools. Do NOT call any more tools. Summarize the information you have gathered and respond to the user directly with a clear answer NOW.',
             });
             logger.info(COMPONENT, `[Round ${round + 1}] Injecting forced summarization prompt`);
+        } else if (reflectionEnabled && shouldReflect(round, reflectionInterval)) {
+            // Reflection: let the LLM decide whether to continue
+            try {
+                const lastToolResult = messages.filter(m => m.role === 'tool').slice(-1)[0]?.content || '';
+                const reflectionResult = await reflect(round, toolsUsed, message, lastToolResult);
+                if (reflectionResult.decision === 'stop') {
+                    logger.info(COMPONENT, `Reflection says stop at round ${round + 1}: ${reflectionResult.reasoning}`);
+                    messages.push({
+                        role: 'user',
+                        content: `You've reflected on your progress and decided you have enough information. Respond to the user now with your findings. Reasoning: ${reflectionResult.reasoning}`,
+                    });
+                } else if (reflectionResult.decision === 'adjust') {
+                    messages.push({
+                        role: 'user',
+                        content: `Reflection suggests adjusting approach: ${reflectionResult.reasoning}. Try a different strategy.`,
+                    });
+                }
+                // 'continue' → no injection, just keep going
+            } catch {
+                // Reflection failed, continue without it
+            }
         }
 
         // ── Cost optimizer: context compression to save tokens ───
@@ -503,7 +597,10 @@ export async function processMessage(
             }
 
             // ── Loop detection: advanced 3-detector analysis ──────────
-            const loopCheck = checkForLoop(session.id, result.name, tcArgs, result.content);
+            const loopConfig = isAutonomous
+                ? { globalCircuitBreakerThreshold: (config.autonomy as Record<string, unknown>).circuitBreakerOverride as number || 50 }
+                : {};
+            const loopCheck = checkForLoop(session.id, result.name, tcArgs, result.content, loopConfig);
             if (!loopCheck.allowed) {
                 logger.warn(COMPONENT, `Loop breaker [${loopCheck.level}]: ${loopCheck.reason}`);
                 finalContent = loopCheck.reason || 'Loop detected — stopping to prevent runaway execution.';
@@ -543,7 +640,7 @@ export async function processMessage(
         }
 
         // If this is the last round, add a note
-        if (round === MAX_TOOL_ROUNDS - 1) {
+        if (round === effectiveMaxRounds - 1) {
             finalContent = stripToolJson(response.content || 'I completed the tool operations. Let me know if you need anything else.');
         }
     }

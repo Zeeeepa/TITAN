@@ -46,7 +46,8 @@ export class OllamaProvider extends LLMProvider {
             }),
             stream: false,
             options: {
-                num_predict: options.maxTokens || 8192,
+                num_predict: options.maxTokens || 16384,
+                num_ctx: 65536,
                 temperature: options.temperature ?? 0.7,
             },
         };
@@ -67,6 +68,8 @@ export class OllamaProvider extends LLMProvider {
                     parameters: t.function.parameters,
                 },
             }));
+            // Lower temperature for better tool-calling compliance
+            (body.options as Record<string, unknown>).temperature = options.temperature ?? 0.3;
         }
 
         let response = await fetchWithRetry(`${this.baseUrl}/api/chat`, {
@@ -97,6 +100,7 @@ export class OllamaProvider extends LLMProvider {
 
         const data = await response.json() as Record<string, unknown>;
         const message = data.message as Record<string, unknown>;
+        logger.debug(COMPONENT, `Raw response: tool_calls=${JSON.stringify(message.tool_calls)}, content_length=${((message.content as string) || '').length}`);
         const toolCalls: ToolCall[] = [];
 
         if (message.tool_calls) {
@@ -113,9 +117,13 @@ export class OllamaProvider extends LLMProvider {
             }
         }
 
+        // Strip leaked thinking tags from Qwen/DeepSeek models
+        let content = (message.content as string) || '';
+        content = content.replace(/^[\s\S]*?<\/think>\s*/m, '').trim();
+
         return {
             id: uuid(),
-            content: (message.content as string) || '',
+            content,
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             usage: {
                 promptTokens: (data.prompt_eval_count as number) || 0,
@@ -142,7 +150,7 @@ export class OllamaProvider extends LLMProvider {
                 return msg;
             }),
             stream: true,
-            options: { num_predict: options.maxTokens || 8192, temperature: options.temperature ?? 0.7 },
+            options: { num_predict: options.maxTokens || 16384, num_ctx: 65536, temperature: options.temperature ?? 0.7 },
         };
 
         // Explicit thinking mode for Ollama models
@@ -154,6 +162,8 @@ export class OllamaProvider extends LLMProvider {
 
         if (options.tools && options.tools.length > 0) {
             body.tools = options.tools.map((t) => ({ type: 'function', function: { name: t.function.name, description: t.function.description, parameters: t.function.parameters } }));
+            // Lower temperature for better tool-calling compliance
+            (body.options as Record<string, unknown>).temperature = options.temperature ?? 0.3;
         }
 
         try {
@@ -188,6 +198,7 @@ export class OllamaProvider extends LLMProvider {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
+            let insideThink = false;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -202,7 +213,18 @@ export class OllamaProvider extends LLMProvider {
                     try {
                         const chunk = JSON.parse(line);
                         if (chunk.message?.content) {
-                            yield { type: 'text', content: chunk.message.content };
+                            let text = chunk.message.content;
+                            // Strip leaked <think>...</think> blocks from Qwen/DeepSeek
+                            if (text.includes('<think>')) insideThink = true;
+                            if (insideThink) {
+                                if (text.includes('</think>')) {
+                                    text = text.split('</think>').pop()?.trim() || '';
+                                    insideThink = false;
+                                } else {
+                                    continue; // suppress thinking content
+                                }
+                            }
+                            if (text) yield { type: 'text', content: text };
                         }
                         if (chunk.message?.tool_calls) {
                             for (const tc of chunk.message.tool_calls) {

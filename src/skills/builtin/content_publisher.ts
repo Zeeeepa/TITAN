@@ -367,39 +367,43 @@ export function registerContentPublisherSkill(): void {
                     const niche = args.niche as string;
                     const repo = args.repo as string;
 
-                    const schedules: Record<string, string> = {
+                    const cronExpressions: Record<string, string> = {
+                        daily: '0 9 * * *',
+                        'twice-weekly': '0 9 * * 2,5',
+                        weekly: '0 9 * * 1',
+                    };
+                    const scheduleLabels: Record<string, string> = {
                         daily: 'every day at 9:00 AM',
                         'twice-weekly': 'every Tuesday and Friday at 9:00 AM',
                         weekly: 'every Monday at 9:00 AM',
                     };
 
-                    const schedule = schedules[frequency] || schedules.daily;
+                    const cronExpr = cronExpressions[frequency] || cronExpressions.daily;
+                    const scheduleLabel = scheduleLabels[frequency] || scheduleLabels.daily;
 
-                    const autopilotEntry = [
-                        `## Content Publishing Schedule`,
-                        ``,
-                        `**Frequency:** ${schedule}`,
-                        `**Niche:** ${niche}`,
-                        `**Target:** ${repo}`,
-                        ``,
-                        `### Autopilot Tasks`,
-                        `- [ ] Research trending topics in "${niche}" using content_research`,
-                        `- [ ] Generate an article outline using content_outline`,
-                        `- [ ] Write the full article based on the outline`,
-                        `- [ ] Publish to ${repo} using content_publish`,
-                        `- [ ] Log the publication in income tracker if monetized`,
-                    ].join('\n');
+                    // Wire to the real goal system instead of just writing docs
+                    const { createGoal } = await import('../../agent/goals.js');
+                    const goal = createGoal({
+                        title: `Publish content: ${niche}`,
+                        description: `Automated content pipeline for "${niche}" niche, publishing to ${repo}`,
+                        schedule: cronExpr,
+                        subtasks: [
+                            { title: `Research trending topics in "${niche}"`, description: `Use content_research tool to find trending topics in "${niche}"` },
+                            { title: 'Generate article outline', description: 'Use content_outline tool to create a structured outline from research' },
+                            { title: 'Write full article', description: 'Write the complete article based on the outline' },
+                            { title: `Publish to ${repo}`, description: `Use content_publish tool to commit the article to ${repo}` },
+                        ],
+                    });
 
                     const lines: string[] = [];
-                    lines.push(`Content Schedule Created`);
-                    lines.push(`Frequency: ${schedule}`);
+                    lines.push(`Content Schedule Created (Goal ID: ${goal.id})`);
+                    lines.push(`Frequency: ${scheduleLabel}`);
+                    lines.push(`Cron: ${cronExpr}`);
                     lines.push(`Niche: ${niche}`);
                     lines.push(`Repo: ${repo}`);
+                    lines.push(`Subtasks: ${goal.subtasks.length}`);
                     lines.push('');
-                    lines.push('Add this to your ~/.titan/AUTOPILOT.md:');
-                    lines.push('```markdown');
-                    lines.push(autopilotEntry);
-                    lines.push('```');
+                    lines.push('Goal created with subtasks. Enable autopilot in goals mode to auto-execute on schedule.');
 
                     return lines.join('\n');
                 } catch (e) {

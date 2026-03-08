@@ -136,7 +136,14 @@
       "src/skills/builtin/lead_scorer.ts",
       "src/skills/builtin/code_exec.ts",
       "src/skills/builtin/weather.ts",
-      "src/agent/sandbox.ts"
+      "src/skills/builtin/goals.ts",
+      "src/skills/builtin/x_poster.ts",
+      "src/agent/sandbox.ts",
+      "src/agent/reflection.ts",
+      "src/agent/subAgent.ts",
+      "src/agent/orchestrator.ts",
+      "src/agent/goals.ts",
+      "src/agent/initiative.ts"
     ],
     "format": [
       "esm"
@@ -150,6 +157,7 @@
       "playwright",
       "playwright-core",
       "chromium-bidi",
+      "@browserbasehq/stagehand",
       "@whiskeysockets/baileys",
       "matrix-js-sdk",
       "pdf-parse",
@@ -161,6 +169,7 @@
     }
   },
   "optionalDependencies": {
+    "@browserbasehq/stagehand": "^3.1.0",
     "@whiskeysockets/baileys": "^6.7.0",
     "bonjour-service": "^1.3.0",
     "matrix-js-sdk": "^34.0.0",

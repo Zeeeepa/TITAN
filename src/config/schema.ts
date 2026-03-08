@@ -96,6 +96,10 @@ export const AgentConfigSchema = z.object({
     }).optional(),
     /** Restrict which models users can select via /model. Empty = all allowed. Supports wildcards: "openai/*" */
     allowedModels: z.array(z.string()).default([]),
+    /** Enable periodic reflection during agent loop (LLM self-assessment) */
+    reflectionEnabled: z.boolean().default(true),
+    /** Reflect every N rounds (default: 3) */
+    reflectionInterval: z.number().default(3),
 });
 
 export const MeshConfigSchema = z.object({
@@ -281,6 +285,19 @@ export const TitanConfigSchema = z.object({
             start: z.number().min(0).max(23).default(0),
             end: z.number().min(0).max(23).default(23),
         }).optional(),
+        /** Autopilot mode: 'checklist' (AUTOPILOT.md) or 'goals' (goal-based) */
+        mode: z.enum(['checklist', 'goals']).default('checklist'),
+        /** Goal-based autopilot settings */
+        goals: z.object({
+            /** Maximum active goals */
+            maxActiveGoals: z.number().default(5),
+            /** Maximum subtasks per goal */
+            maxSubtasksPerGoal: z.number().default(20),
+            /** Budget per goal in USD */
+            budgetPerGoal: z.number().default(1.00),
+            /** Allow TITAN to self-initiate tasks from the goal queue */
+            selfInitiate: z.boolean().default(false),
+        }).default({}),
     }).default({}),
     sandbox: SandboxConfigSchema.default({}),
     toolSearch: ToolSearchConfigSchema.default({}),
@@ -297,6 +314,30 @@ export const TitanConfigSchema = z.object({
         approvalTimeoutMs: z.number().default(60000),
         /** Notify user of auto-approved actions */
         notifyOnAutoApprove: z.boolean().default(true),
+        /** Override MAX_TOOL_ROUNDS in autonomous mode */
+        maxToolRoundsOverride: z.number().default(25),
+        /** Override circuit breaker threshold in autonomous mode */
+        circuitBreakerOverride: z.number().default(50),
+        /** Auto-trigger deliberation without approval in autonomous mode */
+        autoDeliberate: z.boolean().default(true),
+    }).default({}),
+    subAgents: z.object({
+        /** Enable sub-agent spawning */
+        enabled: z.boolean().default(true),
+        /** Maximum concurrent sub-agents */
+        maxConcurrent: z.number().default(3),
+        /** Maximum tool rounds per sub-agent */
+        maxRoundsPerAgent: z.number().default(10),
+        /** Default model for sub-agents */
+        defaultModel: z.string().default('fast'),
+        /** Auto-delegate complex tasks to sub-agents */
+        autoDelegate: z.boolean().default(true),
+    }).default({}),
+    x: z.object({
+        /** Enable X/Twitter integration */
+        enabled: z.boolean().default(false),
+        /** Require human review before posting */
+        reviewRequired: z.boolean().default(true),
     }).default({}),
 });
 

@@ -81,6 +81,7 @@ vi.mock('../src/agent/session.js', () => ({
 vi.mock('../src/agent/toolRunner.js', () => ({
     executeTools: mockExecuteTools,
     getToolDefinitions: mockGetToolDefinitions,
+    registerTool: vi.fn(),
 }));
 
 vi.mock('../src/memory/memory.js', () => ({
@@ -104,6 +105,7 @@ vi.mock('../src/agent/stallDetector.js', () => ({
     getNudgeMessage: mockGetNudgeMessage,
     clearSession: mockClearSession,
     setStallHandler: mockSetStallHandler,
+    setAutonomousMode: vi.fn(),
 }));
 
 vi.mock('../src/agent/loopDetection.js', () => ({
@@ -137,6 +139,21 @@ vi.mock('../src/memory/graph.js', () => ({
     getGraphContext: mockGetGraphContext,
 }));
 
+vi.mock('../src/agent/reflection.js', () => ({
+    shouldReflect: vi.fn().mockReturnValue(false),
+    reflect: vi.fn(),
+}));
+
+vi.mock('../src/agent/orchestrator.js', () => ({
+    analyzeForDelegation: vi.fn().mockResolvedValue({ shouldDelegate: false, reason: 'test', tasks: [] }),
+    executeDelegationPlan: vi.fn(),
+}));
+
+vi.mock('../src/agent/subAgent.js', () => ({
+    spawnSubAgent: vi.fn(),
+    SUB_AGENT_TEMPLATES: {},
+}));
+
 vi.mock('../src/agent/deliberation.js', () => ({
     shouldDeliberate: vi.fn().mockReturnValue(false),
     analyze: vi.fn(),
@@ -164,6 +181,8 @@ function makeDefaultConfig() {
         gateway: { port: 48420 },
         security: { sandboxMode: 'host' },
         deliberation: { enabled: false, autoDetect: false, approvalRequired: true, maxPlanSteps: 10 },
+        autonomy: { mode: 'supervised', autoApproveMainSession: true, approvalTimeoutMs: 60000, notifyOnAutoApprove: true },
+        subAgents: { enabled: false },
     };
 }
 

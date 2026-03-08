@@ -16,6 +16,8 @@ import { processMessage } from './agent.js';
 import { loadConfig } from '../config/config.js';
 import { getDailyTotal } from './costOptimizer.js';
 import { AUTOPILOT_MD, AUTOPILOT_RUNS_PATH } from '../utils/constants.js';
+import { getReadyTasks, completeSubtask, failSubtask, getGoalsSummary } from './goals.js';
+import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
 import logger from '../utils/logger.js';
 import type { TitanConfig } from '../config/schema.js';
 
@@ -275,6 +277,12 @@ export async function runAutopilotNow(): Promise<AutopilotResult> {
             return { run, delivered: false };
         }
 
+        // ── Goal-based mode: pick next subtask from active goals ──
+        const autopilotMode = (config.autopilot as Record<string, unknown>).mode as string || 'checklist';
+        if (autopilotMode === 'goals') {
+            return await runGoalBasedAutopilot(config, startTime);
+        }
+
         // Get previous run summary for context
         const history = getRunHistory(1);
         const prevSummary = history.length > 0 ? history[history.length - 1].summary : undefined;
@@ -330,6 +338,96 @@ export async function runAutopilotNow(): Promise<AutopilotResult> {
         return { run, delivered: false };
     } finally {
         isRunning = false;
+    }
+}
+
+// ─── Goal-based autopilot ────────────────────────────────────────
+
+async function runGoalBasedAutopilot(config: TitanConfig, startTime: number): Promise<AutopilotResult> {
+    const readyTasks = getReadyTasks();
+    if (readyTasks.length === 0) {
+        const run: AutopilotRun = {
+            timestamp: new Date().toISOString(),
+            duration: 0,
+            tokensUsed: 0,
+            cost: 0,
+            classification: 'ok',
+            summary: 'No ready subtasks in active goals.',
+            toolsUsed: [],
+            skipped: true,
+            skipReason: 'no_ready_tasks',
+        };
+        lastRun = run;
+        appendRun(run);
+        return { run, delivered: false };
+    }
+
+    // Pick the highest-priority ready task
+    const { goal, subtask } = readyTasks[0];
+    logger.info(COMPONENT, `Goal-based autopilot: executing "${subtask.title}" from goal "${goal.title}"`);
+
+    try {
+        // Infer template from subtask description
+        const lower = subtask.description.toLowerCase();
+        let templateKey = 'explorer';
+        if (/\b(write|create|build|code|implement)\b/.test(lower)) templateKey = 'coder';
+        else if (/\b(browse|navigate|login|click)\b/.test(lower)) templateKey = 'browser';
+        else if (/\b(analyze|report|summarize|compare)\b/.test(lower)) templateKey = 'analyst';
+
+        const template = SUB_AGENT_TEMPLATES[templateKey] || {};
+        const result = await spawnSubAgent({
+            name: `Autopilot-${template.name || templateKey}`,
+            task: `Goal: ${goal.title}\n\nSubtask: ${subtask.title}\n\nInstructions: ${subtask.description}`,
+            tools: template.tools,
+            systemPrompt: template.systemPrompt,
+            model: config.autopilot.model,
+            maxRounds: config.autopilot.maxToolRounds,
+        });
+
+        if (result.success) {
+            completeSubtask(goal.id, subtask.id, result.content.slice(0, 500));
+        } else {
+            failSubtask(goal.id, subtask.id, result.content.slice(0, 200));
+        }
+
+        const duration = Date.now() - startTime;
+        const classification = classifyResult(result.content);
+        const summary = `Goal "${goal.title}" → ${subtask.title}: ${result.success ? 'completed' : 'failed'}\n${result.content.slice(0, 300)}`;
+
+        const run: AutopilotRun = {
+            timestamp: new Date().toISOString(),
+            duration,
+            tokensUsed: 0,
+            cost: 0,
+            classification,
+            summary,
+            toolsUsed: result.toolsUsed,
+        };
+        lastRun = run;
+        appendRun(run);
+        pruneHistory(config.autopilot.maxRunHistory);
+
+        let delivered = false;
+        if (classification !== 'ok') {
+            delivered = await deliverResult(config, run);
+        }
+
+        return { run, delivered };
+    } catch (error) {
+        failSubtask(goal.id, subtask.id, (error as Error).message);
+        const duration = Date.now() - startTime;
+        const run: AutopilotRun = {
+            timestamp: new Date().toISOString(),
+            duration,
+            tokensUsed: 0,
+            cost: 0,
+            classification: 'urgent',
+            summary: `Goal autopilot error: ${(error as Error).message}`,
+            toolsUsed: [],
+        };
+        lastRun = run;
+        appendRun(run);
+        return { run, delivered: false };
     }
 }
 

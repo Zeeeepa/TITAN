@@ -35,6 +35,17 @@ const DEFAULT_CONFIG: LoopDetectionConfig = {
     historySize: 30,
 };
 
+/**
+ * Get config with autonomy-aware overrides.
+ * In autonomous mode, the circuit breaker threshold is raised (configurable).
+ */
+export function getAutonomousConfig(overrides?: Partial<LoopDetectionConfig>): Partial<LoopDetectionConfig> {
+    return {
+        ...overrides,
+        // Caller passes the higher threshold from config.autonomy.circuitBreakerOverride
+    };
+}
+
 const sessionHistory: Map<string, ToolCallRecord[]> = new Map();
 // Per-session call counts (reset when session history is cleared)
 const sessionCallCounts: Map<string, number> = new Map();

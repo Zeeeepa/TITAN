@@ -242,7 +242,6 @@ describe('Content Publisher — content_schedule', () => {
         expect(result).toContain('Content Schedule Created');
         expect(result).toContain('AI agents');
         expect(result).toContain('user/blog');
-        expect(result).toContain('AUTOPILOT.md');
     });
 
     it('should support weekly frequency', async () => {

@@ -45,6 +45,7 @@ import { getMissionControlHTML } from './dashboard.js';
 import { serializePrometheus, getMetricsSummary, titanRequestsTotal, titanRequestDuration, titanErrorsTotal, titanActiveSessions, titanToolCallsTotal, titanTokensTotal, titanModelRequestsTotal } from './metrics.js';
 import { initSlashCommands, handleSlashCommand } from './slashCommands.js';
 import { initMcpServers } from '../mcp/registry.js';
+import { mountMcpHttpEndpoints, getMcpServerStatus } from '../mcp/server.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
@@ -582,6 +583,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // JSON metrics summary for dashboard
   app.get('/api/metrics/summary', (_req, res) => {
     res.json(getMetricsSummary());
+  });
+
+  // MCP server status
+  app.get('/api/mcp/server', (_req, res) => {
+    res.json(getMcpServerStatus());
   });
 
   // Multi-agent endpoints
@@ -1681,6 +1687,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   initSlashCommands();
   seedBuiltinRecipes();
   initMcpServers().catch((e) => logger.warn(COMPONENT, `MCP init error: ${e.message}`));
+  mountMcpHttpEndpoints(app);
 
   // ── Persistent webhooks — reload saved webhooks ─────────────
   initPersistentWebhooks().catch((e) => logger.warn(COMPONENT, `Webhook init: ${(e as Error).message}`));

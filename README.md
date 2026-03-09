@@ -374,6 +374,34 @@ Or add static peers manually: `titan mesh --add "192.168.1.100:48420"`
 
 ---
 
+## MCP Server Mode
+
+TITAN can act as an **MCP server**, exposing all ~112 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
+
+**HTTP transport** (runs on the gateway port):
+```json
+// titan.json
+{ "mcp": { "server": { "enabled": true } } }
+```
+Then any MCP client can connect to `http://localhost:48420/mcp`.
+
+**Stdio transport** (launch TITAN as a subprocess):
+```json
+// claude_desktop_config.json or .cursor/mcp.json
+{
+  "mcpServers": {
+    "titan": {
+      "command": "npx",
+      "args": ["titan-agent", "mcp-server"]
+    }
+  }
+}
+```
+
+Security: MCP server respects the same `security.deniedTools` and `security.allowedTools` config as the gateway.
+
+---
+
 ## Sandbox Code Execution
 
 When the LLM needs to run complex logic — loops, data processing, batch operations — it writes Python and executes it in an isolated Docker container. Tool calls from inside the sandbox route through a secure HTTP bridge back to TITAN.
@@ -482,7 +510,7 @@ Works with all 21 providers. Especially beneficial for smaller local models wher
 | `titan config [key]` | View/edit configuration |
 | `titan graphiti --init` | Initialize knowledge graph |
 | `titan graphiti --stats` | Graph statistics |
-| `titan mcp` | Manage MCP servers |
+| `titan mcp` | Manage MCP servers (client + server mode) |
 | `titan recipe --list` | List and run saved recipes |
 | `titan monitor` | Manage proactive monitors |
 | `titan autopilot --init` | Create AUTOPILOT.md checklist |

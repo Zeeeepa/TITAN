@@ -105,6 +105,14 @@
   - Kept `voice.ts` skill (file-based OpenAI STT/TTS, independent of pipeline)
   - ~3,450 total tests across 102 files, ~112 tools, 34 providers, 15 channels
 
+### Phase 11: MCP Server Mode (v2026.9.0)
+- **MCP Server**: Expose all TITAN tools via Model Context Protocol
+  - HTTP transport: `POST /mcp` JSON-RPC endpoint on gateway port
+  - Stdio transport: launch as subprocess for MCP clients
+  - `GET /api/mcp/server` status API
+  - Security: respects denied/allowed tools and skill enable state
+  - 15 tests
+
 ---
 
 ## Current State (v2026.9.0)
@@ -115,8 +123,9 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | ~3,450 across 102 files |
+| Tests | ~3,476 across 103 files |
 | Line Coverage | ~82% |
+| MCP | Client + Server (expose tools to other agents) |
 | Voice | LiveKit WebRTC (replaced custom pipeline) |
 | RAG/Vector Search | Yes (FTS5 + embeddings) |
 | Token Streaming | Yes (SSE + WebSocket) |

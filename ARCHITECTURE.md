@@ -164,6 +164,33 @@ Real-time voice uses [LiveKit](https://livekit.io/) for production-grade WebRTC:
 - **File-based tools**: `generate_speech` and `transcribe_audio` still available via OpenAI API for offline/file-based use cases (independent of WebRTC pipeline)
 - LiveKit is an optional dependency — TITAN runs fine without voice enabled
 
+## MCP Server Architecture
+
+TITAN serves its tools via the Model Context Protocol (JSON-RPC 2.0, spec 2025-03-26):
+
+```
+  External MCP Client (Claude Code, Cursor, etc.)
+        |
+  POST /mcp (HTTP transport)  or  stdin/stdout (stdio transport)
+        |
+  JSON-RPC Dispatcher (src/mcp/server.ts)
+        |
+  +-----+-----+-----+
+  |           |       |
+  initialize  tools/  tools/
+              list    call
+                |       |
+           getRegistered  executeTool()
+           Tools()        (with timeout,
+           (filtered by   security check)
+            security)
+```
+
+- **HTTP transport**: `POST /mcp` on gateway port, enabled via `mcp.server.enabled: true`
+- **Stdio transport**: `startStdioServer()` — newline-delimited JSON-RPC on stdin/stdout
+- **Security**: Filters tools by `security.deniedTools`, `allowedTools`, and skill enable state
+- **Status**: `GET /api/mcp/server` returns enabled/initialized/toolCount
+
 ## File Layout
 
 ```
@@ -219,7 +246,9 @@ src/
 |   +-- dashboard.ts        # Mission Control inline HTML/JS
 |   +-- slashCommands.ts    # Slash command registry
 +-- mcp/
-|   +-- ...                 # MCP protocol support
+|   +-- client.ts           # MCP client (connect to external MCP servers)
+|   +-- registry.ts         # MCP server configuration persistence
+|   +-- server.ts           # MCP server (expose TITAN tools via MCP)
 +-- memory/
 |   +-- memory.ts           # JSON file-based persistent memory
 |   +-- graph.ts            # Temporal graph memory (entities + episodes)

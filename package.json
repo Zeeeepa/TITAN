@@ -138,6 +138,7 @@
       "src/skills/builtin/weather.ts",
       "src/skills/builtin/goals.ts",
       "src/skills/builtin/x_poster.ts",
+      "src/mcp/server.ts",
       "src/voice/livekitAgent.ts",
       "src/agent/sandbox.ts",
       "src/agent/reflection.ts",

@@ -398,6 +398,13 @@ export const TitanConfigSchema = z.object({
         /** Auto-delegate complex tasks to sub-agents */
         autoDelegate: z.boolean().default(true),
     }).default({}),
+    mcp: z.object({
+        /** MCP server mode — expose TITAN's tools to other agents */
+        server: z.object({
+            /** Enable MCP server (HTTP transport on gateway port) */
+            enabled: z.boolean().default(false),
+        }).default({}),
+    }).default({}),
     x: z.object({
         /** Enable X/Twitter integration */
         enabled: z.boolean().default(false),

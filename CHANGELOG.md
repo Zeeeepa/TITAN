@@ -4,6 +4,53 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.0] — 2026-03-09
+
+### Added
+- **MCP Server Mode** — expose TITAN's ~112 tools via Model Context Protocol (JSON-RPC 2.0)
+  - HTTP transport: `POST /mcp` endpoint on gateway port
+  - Stdio transport: launch TITAN as subprocess for MCP clients (Claude Code, Cursor, etc.)
+  - `GET /api/mcp/server` status endpoint
+  - Respects security policy (denied/allowed tools, skill enable state)
+  - 15 tests
+- **LiveKit Voice Integration** — replaced custom PCM-over-WebSocket voice pipeline with LiveKit WebRTC
+  - `POST /api/livekit/token` for secure room access (JWT, 15-min TTL)
+  - Dashboard voice panel with connect/mute/disconnect, bar visualizer, agent state
+  - Agent bridge (`src/voice/livekitAgent.ts`) routes STT → TITAN brain → TTS
+  - LiveKit, Inc. MIT attribution in LICENSE and package.json
+
+### Removed
+- Old voice pipeline: 10 source files (pipeline.ts, audioUtils.ts, 4 STT/4 TTS providers)
+- 4 voice test files (replaced with voice-livekit.test.ts)
+
+### Changed
+- `VoiceConfigSchema` now uses LiveKit provider config (url, apiKey, apiSecret, agentName)
+- Updated README, ARCHITECTURE, TASKS docs for LiveKit voice and MCP server
+
+---
+
+## [2026.8.0] — 2026-03-09
+
+### Added
+- **ContextEngine Plugin System** — lifecycle hooks (bootstrap/ingest/assemble/compact/afterTurn), config-driven registry
+- **Prometheus Metrics** — Counter/Histogram/Gauge, `GET /metrics` endpoint, Telemetry dashboard panel
+- **30 OpenAI-compatible Provider Presets** — HuggingFace, AI21, Cohere v2, Reka, Zhipu, 01.AI, and more (34 total)
+- **6 New Channels** — IRC, Mattermost, Lark/Feishu, Email (IMAP), LINE, Zulip (15 total)
+- **Fallback Model Chains** — auto-cascade on failure with configurable chain
+- **Deep Research Agent** — researcher sub-agent template with iterative search-read-synthesize and citation tracking
+
+---
+
+## [2026.7.0] — 2026-03-09
+
+### Added
+- **RAG/Vector Search** — SQLite FTS5 + Ollama/OpenAI embeddings, 4 tools (rag_ingest/search/list/delete)
+- **Token Streaming** — SSE (`Accept: text/event-stream`) + WebSocket live token streaming to dashboard
+- **Adaptive Teaching** — first-run wizard, progressive skill reveal, teach mode, user skill profiles
+- **Memory Importance Scoring** — LLM-rated importance (1-10), smart context eviction
+
+---
+
 ## [2026.6.7] — 2026-03-08
 
 ### Added

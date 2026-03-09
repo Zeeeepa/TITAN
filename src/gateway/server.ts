@@ -19,7 +19,7 @@ import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../ski
 import { searchSkills as marketplaceSearch, installSkill, uninstallSkill, listSkills as listMarketplaceSkills, listInstalled as listInstalledMarketplace } from '../skills/marketplace.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
-import { healthCheckAll, discoverAllModels, getModelAliases, chatStream } from '../providers/router.js';
+import { healthCheckAll, discoverAllModels, getModelAliases, chatStream, getFallbackState } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { WebChatChannel } from '../channels/webchat.js';
 import { DiscordChannel } from '../channels/discord.js';
@@ -30,12 +30,19 @@ import { WhatsAppChannel } from '../channels/whatsapp.js';
 import { MatrixChannel } from '../channels/matrix.js';
 import { SignalChannel } from '../channels/signal.js';
 import { MSTeamsChannel } from '../channels/msteams.js';
+import { IRCChannel } from '../channels/irc.js';
+import { MattermostChannel } from '../channels/mattermost.js';
+import { LarkChannel } from '../channels/lark.js';
+import { EmailInboundChannel } from '../channels/email_inbound.js';
+import { LineChannel } from '../channels/line.js';
+import { ZulipChannel } from '../channels/zulip.js';
 import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity } from '../agent/multiAgent.js';
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger, { initFileLogger } from '../utils/logger.js';
 import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR } from '../utils/constants.js';
 import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
+import { serializePrometheus, getMetricsSummary, titanRequestsTotal, titanRequestDuration, titanErrorsTotal, titanActiveSessions, titanToolCallsTotal, titanTokensTotal, titanModelRequestsTotal } from './metrics.js';
 import { initSlashCommands, handleSlashCommand } from './slashCommands.js';
 import { initMcpServers } from '../mcp/registry.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
@@ -569,6 +576,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ status: 'ok', version: TITAN_VERSION, uptime: process.uptime() });
   });
 
+  // Prometheus metrics endpoint
+  app.get('/metrics', (_req, res) => {
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4');
+    res.send(serializePrometheus());
+  });
+
+  // JSON metrics summary for dashboard
+  app.get('/api/metrics/summary', (_req, res) => {
+    res.json(getMetricsSummary());
+  });
+
   // Multi-agent endpoints
   app.get('/api/agents', (_req, res) => {
     res.json({ agents: listAgents(), capacity: getAgentCapacity() });
@@ -597,12 +615,16 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       return;
     }
 
+    const startTime = process.hrtime.bigint();
     const wantsSSE = req.headers.accept === 'text/event-stream';
 
     // Check slash commands first (same as handleInboundMessage)
     try {
       const slashResult = await handleSlashCommand(content, channel, userId);
       if (slashResult) {
+        titanRequestsTotal.increment({ channel, status: 'ok' });
+        const durationSec = Number(process.hrtime.bigint() - startTime) / 1e9;
+        titanRequestDuration.observe(durationSec, { channel });
         if (wantsSSE) {
           res.setHeader('Content-Type', 'text/event-stream');
           res.setHeader('Cache-Control', 'no-cache');
@@ -621,6 +643,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     // Concurrent LLM request limit (auto-tuned to 2 on CPU-only systems)
     const maxConcurrent = maxConcurrentOverride ?? (loadConfig().security.maxConcurrentTasks || 5);
     if (activeLlmRequests >= maxConcurrent) {
+      titanRequestsTotal.increment({ channel, status: 'busy' });
+      titanErrorsTotal.increment({ type: 'busy' });
       if (wantsSSE) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.flushHeaders();
@@ -632,6 +656,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       return;
     }
     activeLlmRequests++;
+    titanActiveSessions.inc();
     try {
       if (wantsSSE) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -648,13 +673,33 @@ export async function startGateway(options?: { port?: number; host?: string; ver
             res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
           },
         });
+        titanRequestsTotal.increment({ channel, status: 'ok' });
+        if (response.toolsUsed) {
+          for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
+        }
+        if (response.tokenUsage) {
+          if (response.tokenUsage.prompt) titanTokensTotal.increment({ type: 'prompt' }, response.tokenUsage.prompt);
+          if (response.tokenUsage.completion) titanTokensTotal.increment({ type: 'completion' }, response.tokenUsage.completion);
+        }
+        if (response.model) titanModelRequestsTotal.increment({ model: response.model, provider: 'default' });
         res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
         res.end();
       } else {
         const response = await routeMessage(content, channel, userId);
+        titanRequestsTotal.increment({ channel, status: 'ok' });
+        if (response.toolsUsed) {
+          for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
+        }
+        if (response.tokenUsage) {
+          if (response.tokenUsage.prompt) titanTokensTotal.increment({ type: 'prompt' }, response.tokenUsage.prompt);
+          if (response.tokenUsage.completion) titanTokensTotal.increment({ type: 'completion' }, response.tokenUsage.completion);
+        }
+        if (response.model) titanModelRequestsTotal.increment({ model: response.model, provider: 'default' });
         res.json(response);
       }
     } catch (error) {
+      titanRequestsTotal.increment({ channel, status: 'error' });
+      titanErrorsTotal.increment({ type: 'request' });
       if (wantsSSE) {
         res.write(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
         res.end();
@@ -663,6 +708,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       }
     } finally {
       activeLlmRequests--;
+      titanActiveSessions.dec();
+      const durationSec = Number(process.hrtime.bigint() - startTime) / 1e9;
+      titanRequestDuration.observe(durationSec, { channel });
     }
   });
 
@@ -871,6 +919,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     });
   });
 
+  app.get('/api/fallback-state', (_req, res) => {
+    const state = getFallbackState();
+    res.json(state || { active: null });
+  });
+
   app.post('/api/model/switch', (req, res) => {
     try {
       const { model } = req.body as { model?: string };
@@ -1020,6 +1073,16 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       broadcast({ type: 'mesh_peer_revoked', nodeId: req.params.nodeId });
     }
     res.json({ revoked });
+  });
+
+  // ── Plugins API ────────────────────────────────────────────────
+  app.get('/api/plugins', async (_req, res) => {
+    const { getPlugins } = await import('../plugins/registry.js');
+    const plugins = getPlugins().map((p: { name: string; version: string }) => ({
+      name: p.name,
+      version: p.version,
+    }));
+    res.json({ plugins });
   });
 
   // Native Memory Graph endpoint (replaces Neo4j/Graphiti)
@@ -1259,6 +1322,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/autopilot/status':   { get:  { summary: 'Autopilot status',                      tags: ['Autopilot'] } },
         '/api/autopilot/history':  { get:  { summary: 'Autopilot run history',                 tags: ['Autopilot'] } },
         '/api/autopilot/run':      { post: { summary: 'Trigger autopilot run',                 tags: ['Autopilot'] } },
+        '/metrics':                { get:  { summary: 'Prometheus metrics endpoint',            tags: ['Telemetry'] } },
+        '/api/metrics/summary':    { get:  { summary: 'Metrics summary (JSON)',                 tags: ['Telemetry'] } },
         '/api/docs':               { get:  { summary: 'OpenAPI spec (JSON)',                    tags: ['Docs'] } },
         '/docs':                   { get:  { summary: 'API documentation page',                 tags: ['Docs'] } },
       },
@@ -1331,6 +1396,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         { method: 'GET',  path: '/api/autopilot/status', desc: 'Autopilot status' },
         { method: 'GET',  path: '/api/autopilot/history', desc: 'Autopilot run history' },
         { method: 'POST', path: '/api/autopilot/run',    desc: 'Trigger autopilot run' },
+      ]},
+      { cat: 'Telemetry', routes: [
+        { method: 'GET',  path: '/metrics',              desc: 'Prometheus text exposition format' },
+        { method: 'GET',  path: '/api/metrics/summary',  desc: 'Metrics summary (JSON)' },
       ]},
       { cat: 'Tunnel',   routes: [
         { method: 'GET',  path: '/api/tunnel/status',    desc: 'Cloudflare tunnel status' },
@@ -1648,6 +1717,12 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
     ['matrix', new MatrixChannel()],
     ['signal', new SignalChannel()],
     ['msteams', new MSTeamsChannel()],
+    ['irc', new IRCChannel()],
+    ['mattermost', new MattermostChannel()],
+    ['lark', new LarkChannel()],
+    ['email_inbound', new EmailInboundChannel()],
+    ['line', new LineChannel()],
+    ['zulip', new ZulipChannel()],
   ];
 
   for (const [name, adapter] of channelAdapters) {

@@ -96,6 +96,10 @@ export const AgentConfigSchema = z.object({
     }).optional(),
     /** Restrict which models users can select via /model. Empty = all allowed. Supports wildcards: "openai/*" */
     allowedModels: z.array(z.string()).default([]),
+    /** Ordered fallback chain of model IDs to try when the primary model fails (e.g. rate limit, timeout, 5xx) */
+    fallbackChain: z.array(z.string()).default([]),
+    /** Maximum retries across the fallback chain before giving up */
+    fallbackMaxRetries: z.number().default(3),
     /** Enable periodic reflection during agent loop (LLM self-assessment) */
     reflectionEnabled: z.boolean().default(true),
     /** Reflect every N rounds (default: 3) */
@@ -226,6 +230,16 @@ export const VoiceConfigSchema = z.object({
     maxRecordingSeconds: z.number().default(60),
 });
 
+export const ContextEnginePluginConfigSchema = z.object({
+    name: z.string(),
+    enabled: z.boolean().default(true),
+    options: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const PluginsConfigSchema = z.object({
+    contextEngine: z.array(ContextEnginePluginConfigSchema).default([]),
+});
+
 export const TeachingConfigSchema = z.object({
     /** Enable adaptive teaching system */
     enabled: z.boolean().default(true),
@@ -272,6 +286,20 @@ export const TitanConfigSchema = z.object({
         azure: ProviderConfigSchema.default({}),
         deepinfra: ProviderConfigSchema.default({}),
         sambanova: ProviderConfigSchema.default({}),
+        kimi: ProviderConfigSchema.default({}),
+        huggingface: ProviderConfigSchema.default({}),
+        ai21: ProviderConfigSchema.default({}),
+        'cohere-v2': ProviderConfigSchema.default({}),
+        reka: ProviderConfigSchema.default({}),
+        zhipu: ProviderConfigSchema.default({}),
+        yi: ProviderConfigSchema.default({}),
+        inflection: ProviderConfigSchema.default({}),
+        novita: ProviderConfigSchema.default({}),
+        replicate: ProviderConfigSchema.default({}),
+        lepton: ProviderConfigSchema.default({}),
+        anyscale: ProviderConfigSchema.default({}),
+        octo: ProviderConfigSchema.default({}),
+        nous: ProviderConfigSchema.default({}),
     }).default({}),
     channels: z.object({
         discord: ChannelConfigSchema.default({}),
@@ -284,6 +312,12 @@ export const TitanConfigSchema = z.object({
         signal: ChannelConfigSchema.default({}),
         msteams: ChannelConfigSchema.default({}),
         bluebubbles: ChannelConfigSchema.default({}),
+        irc: ChannelConfigSchema.default({}),
+        mattermost: ChannelConfigSchema.default({}),
+        lark: ChannelConfigSchema.default({}),
+        email_inbound: ChannelConfigSchema.default({}),
+        line: ChannelConfigSchema.default({}),
+        zulip: ChannelConfigSchema.default({}),
     }).default({}),
     gateway: GatewayConfigSchema.default({}),
     security: SecurityConfigSchema.default({}),
@@ -350,6 +384,7 @@ export const TitanConfigSchema = z.object({
     deliberation: DeliberationConfigSchema.default({}),
     voice: VoiceConfigSchema.default({}),
     oauth: OAuthConfigSchema.default({}),
+    plugins: PluginsConfigSchema.default({}),
     teaching: TeachingConfigSchema.default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */

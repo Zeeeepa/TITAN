@@ -17,6 +17,8 @@ import logger from '../utils/logger.js';
 import type { ChatMessage } from '../providers/base.js';
 import { flushMemoryBeforeCompaction } from '../memory/graph.js';
 import { getRagContext } from '../memory/vectors.js';
+import { getPlugins } from '../plugins/registry.js';
+import { runAssemble, runCompact } from '../plugins/contextEngine.js';
 
 const COMPONENT = 'Context';
 
@@ -267,4 +269,45 @@ export async function injectRagContext(
         logger.debug(COMPONENT, `RAG context injection failed: ${(e as Error).message}`);
         return messages;
     }
+}
+
+/**
+ * Assemble context with plugin hooks.
+ * Runs RAG injection first (built-in), then all registered plugins.
+ */
+export async function assembleContextWithPlugins(
+    messages: ChatMessage[],
+    userMessage: string,
+    ragTopK: number = 3,
+): Promise<ChatMessage[]> {
+    // Built-in RAG injection as first step
+    let result = await injectRagContext(messages, ragTopK);
+
+    // Run registered plugin assemble hooks
+    const plugins = getPlugins();
+    if (plugins.length > 0) {
+        result = await runAssemble(plugins, result, userMessage);
+    }
+
+    return result;
+}
+
+/**
+ * Compact context with plugin hooks.
+ * Runs built-in smart context first, then all registered plugins.
+ */
+export async function compactContextWithPlugins(
+    messages: ChatMessage[],
+    maxTokens: number,
+): Promise<ChatMessage[]> {
+    // Built-in smart context compaction
+    let result = buildSmartContext(messages, maxTokens);
+
+    // Run registered plugin compact hooks
+    const plugins = getPlugins();
+    if (plugins.length > 0) {
+        result = await runCompact(plugins, result, maxTokens);
+    }
+
+    return result;
 }

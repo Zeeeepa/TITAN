@@ -321,6 +321,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" data-panel="sessions"><span class="icon">🔗</span>Sessions</div>
     <div class="nav-item" data-panel="learning"><span class="icon">🧠</span>Learning</div>
     <div class="nav-section">System</div>
+    <div class="nav-item" data-panel="telemetry" data-load="telemetry"><span class="icon">📈</span>Telemetry</div>
     <div class="nav-item" data-panel="autopilot" data-load="autopilot"><span class="icon">🚁</span>Autopilot</div>
     <div class="nav-item" data-panel="security"><span class="icon">🔒</span>Security</div>
     <div class="nav-item" data-panel="logs" data-load="logs"><span class="icon">📜</span>Logs</div>
@@ -565,6 +566,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <button class="stab-btn" data-stab="gateway-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🌐 Gateway</button>
           <button class="stab-btn" data-stab="profile-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">👤 Profile</button>
           <button class="stab-btn" data-stab="mesh-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🕸 Mesh</button>
+          <button class="stab-btn" data-stab="plugins-cfg" style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);font-size:12px;font-weight:500;cursor:pointer;background:var(--bg3);color:var(--text-dim);transition:all .15s">🔌 Plugins</button>
         </div>
 
         <!-- Tab 1: AI & Model -->
@@ -572,6 +574,7 @@ tr:hover{background:rgba(6,182,212,.03)}
           <div class="form-group">
             <label>Active Model</label>
             <select id="cfg-model" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"><option>Loading models...</option></select>
+            <div id="fallback-indicator" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(255,165,0,0.1);border:1px solid rgba(255,165,0,0.3);border-radius:var(--radius-sm);font-size:12px;color:#ffa500"></div>
             <input type="text" id="cfg-model-manual" placeholder="Or type a custom model ID (e.g. ollama/my-model)" style="width:100%;margin-top:8px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-size:13px;outline:none"/>
             <button class="btn" data-action="refresh-ollama" style="margin-top:8px;font-size:12px">🔄 Refresh Ollama Models</button>
           </div>
@@ -847,6 +850,17 @@ tr:hover{background:rgba(6,182,212,.03)}
           </div>
         </div>
 
+        <!-- Tab 8: Plugins -->
+        <div id="stab-plugins-cfg" class="stab-content" style="padding:20px;display:none">
+          <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Context Engine plugins extend how TITAN assembles and compacts conversation context.</p>
+          <div id="plugins-info-list" style="margin-bottom:16px">
+            <div style="color:var(--text-dim);font-size:13px;padding:8px">No plugins loaded</div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" data-action="refresh-plugins">🔄 Refresh</button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -946,6 +960,34 @@ tr:hover{background:rgba(6,182,212,.03)}
         </div>
         <div id="graphiti-node-list" style="display:none;margin-top:16px"></div>
       </div>
+    </div>
+
+    <!-- Telemetry Panel -->
+    <div id="panel-telemetry" class="panel">
+      <div class="card-grid">
+        <div class="stat-card cyan"><div class="stat-label">Total Requests</div><div class="stat-value" id="tm-requests">—</div></div>
+        <div class="stat-card purple"><div class="stat-label">Avg Latency</div><div class="stat-value" id="tm-latency" style="font-size:20px">—</div></div>
+        <div class="stat-card green"><div class="stat-label">Error Rate</div><div class="stat-value" id="tm-error-rate">—</div></div>
+        <div class="stat-card amber"><div class="stat-label">Total Errors</div><div class="stat-value" id="tm-errors">—</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">Top Tools by Usage</h3>
+          <button class="btn" data-action="refresh-telemetry" style="font-size:12px;padding:6px 14px">↻ Refresh</button>
+        </div>
+        <table>
+          <thead><tr><th>Tool</th><th>Calls</th></tr></thead>
+          <tbody id="tm-top-tools"><tr><td colspan="2" style="color:var(--text-dim)">No data yet</td></tr></tbody>
+        </table>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>Token Usage</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px">
+          <div class="stat-card cyan"><div class="stat-label">Prompt Tokens</div><div class="stat-value" id="tm-prompt-tokens" style="font-size:20px">—</div></div>
+          <div class="stat-card purple"><div class="stat-label">Completion Tokens</div><div class="stat-value" id="tm-completion-tokens" style="font-size:20px">—</div></div>
+        </div>
+      </div>
+      <div style="margin-top:12px;font-size:12px;color:var(--text-dim)">Prometheus endpoint: <code style="background:var(--bg3);padding:2px 8px;border-radius:4px">GET /metrics</code></div>
     </div>
 
     <!-- Autopilot Panel -->
@@ -1086,6 +1128,7 @@ document.addEventListener('click', (e) => {
     if (target.dataset.load === 'logs') startLogs();
     if (target.dataset.load === 'graphiti') loadGraphiti();
     if (target.dataset.load === 'autopilot') loadAutopilot();
+    if (target.dataset.load === 'telemetry') loadTelemetry();
     // Close sidebar on mobile
     document.getElementById('sidebar')?.classList.remove('open');
   }
@@ -1116,7 +1159,9 @@ document.addEventListener('click', (e) => {
     if (a === 'refresh-ollama') refreshOllamaModels();
     if (a === 'test-ollama') testOllamaConnection();
     if (a === 'refresh-mesh') loadMeshPanel();
+    if (a === 'refresh-plugins') loadPluginsPanel();
     if (a === 'refresh-logs') loadLogs();
+    if (a === 'refresh-telemetry') loadTelemetry();
     if (a === 'refresh-graphiti') loadGraphiti();
     if (a === 'clear-graph') clearGraphData();
     if (a === 'clear-all-data') clearAllData();
@@ -1167,7 +1212,8 @@ const panelTitles = {
   overview:'📊 Overview', chat:'💬 WebChat', agents:'🤖 Agents',
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
   sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
-  logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot'
+  logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot',
+  telemetry:'📈 Telemetry'
 };
 
 // ── Contextual Hints ────────────────────────────────────────────────
@@ -1753,6 +1799,17 @@ async function populateModels() {
       fallback.value = data.current; fallback.textContent = data.current; fallback.selected = true;
       sel.insertBefore(fallback, sel.firstChild);
     }
+    // Check fallback chain state
+    try {
+      const fbData = await fetch('/api/fallback-state', {headers:authHeaders()}).then(r=>r.json());
+      const fbEl = document.getElementById('fallback-indicator');
+      if (fbEl && fbData && fbData.active) {
+        fbEl.style.display = 'block';
+        fbEl.innerHTML = '\u26A1 Fallback active: using <b>' + fbData.active + '</b> (primary ' + fbData.primary + ' failed)';
+      } else if (fbEl) {
+        fbEl.style.display = 'none';
+      }
+    } catch(_) { /* fallback state check is best-effort */ }
   } catch(e) { console.error('populateModels error:', e); }
 }
 
@@ -1823,6 +1880,32 @@ async function loadMeshPanel() {
     }
   } catch(e) {
     if (statusBar) statusBar.innerHTML = '❌ Cannot reach mesh API';
+  }
+}
+
+async function loadPluginsPanel() {
+  var list = document.getElementById('plugins-info-list');
+  try {
+    var r = await fetch('/api/plugins', {headers:authHeaders()});
+    var data = await r.json();
+    var plugins = data.plugins || [];
+    if (list) {
+      if (plugins.length === 0) {
+        list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px">No plugins loaded</div>';
+      } else {
+        list.innerHTML = plugins.map(function(p) {
+          return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px;border-left:3px solid #22c55e">'
+            + '<div>'
+            + '<div style="font-weight:600;font-size:13px;color:var(--text-bright)">' + p.name + '</div>'
+            + '<div style="font-size:11px;color:var(--text-dim)">v' + p.version + '</div>'
+            + '</div>'
+            + '<span style="font-size:11px;color:#22c55e">Active</span>'
+            + '</div>';
+        }).join('');
+      }
+    }
+  } catch(e) {
+    if (list) list.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px">Failed to load plugins</div>';
   }
 }
 
@@ -2191,6 +2274,26 @@ async function submitOnboarding() {
 }
 
 // ── Autopilot ─────────────────────────────────────────────────────
+async function loadTelemetry() {
+  try {
+    const data = await fetch('/api/metrics/summary', {headers:authHeaders()}).then(r=>r.json());
+    document.getElementById('tm-requests').textContent = String(data.totalRequests || 0);
+    document.getElementById('tm-latency').textContent = (data.avgLatencyMs || 0).toFixed(1) + ' ms';
+    document.getElementById('tm-error-rate').textContent = ((data.errorRate || 0) * 100).toFixed(2) + '%';
+    document.getElementById('tm-errors').textContent = String(data.totalErrors || 0);
+    document.getElementById('tm-prompt-tokens').textContent = (data.totalTokens?.prompt || 0).toLocaleString();
+    document.getElementById('tm-completion-tokens').textContent = (data.totalTokens?.completion || 0).toLocaleString();
+    const tbody = document.getElementById('tm-top-tools');
+    if (data.topTools && data.topTools.length > 0) {
+      tbody.innerHTML = data.topTools.map(t => '<tr><td>' + t.tool + '</td><td style="font-family:monospace;font-weight:600">' + t.count + '</td></tr>').join('');
+    } else {
+      tbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-dim)">No tool usage data yet</td></tr>';
+    }
+  } catch(e) {
+    console.error('Failed to load telemetry:', e);
+  }
+}
+
 async function loadAutopilot() {
   try {
     const [status, history] = await Promise.all([

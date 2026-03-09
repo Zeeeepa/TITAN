@@ -16,7 +16,7 @@ import { processMessage } from './agent.js';
 import { loadConfig } from '../config/config.js';
 import { getDailyTotal } from './costOptimizer.js';
 import { AUTOPILOT_MD, AUTOPILOT_RUNS_PATH } from '../utils/constants.js';
-import { getReadyTasks, completeSubtask, failSubtask, getGoalsSummary } from './goals.js';
+import { getReadyTasks, completeSubtask, failSubtask } from './goals.js';
 import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
 import { checkInitiative } from './initiative.js';
 import logger from '../utils/logger.js';

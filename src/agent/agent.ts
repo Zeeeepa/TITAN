@@ -16,7 +16,7 @@ import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimi
 import { getCachedResponse, setCachedResponse } from './responseCache.js';
 import { buildSmartContext } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
-import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanForApproval, formatPlanResults } from './deliberation.js';
+import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanResults } from './deliberation.js';
 import type { ChatMessage, ChatResponse } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
@@ -259,8 +259,7 @@ export async function processMessage(
                 return { content, sessionId: session.id, toolsUsed: ['deliberation'], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
             } else {
                 // Planning failed, fall through to normal processing
-                const content = `I tried to create a deliberative plan but it didn't work out: ${planned.error || 'unknown error'}. Let me try answering directly instead.`;
-                logger.warn(COMPONENT, `Deliberation failed, falling through: ${planned.error}`);
+                logger.warn(COMPONENT, `Deliberation failed, falling through: ${planned.error || 'unknown error'}`);
             }
         }
     }

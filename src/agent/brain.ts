@@ -286,7 +286,7 @@ async function downloadModel(modelId: string): Promise<void> {
     let downloaded = 0;
     let lastLogPct = 0;
 
-    while (true) {
+    for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         fileStream.write(Buffer.from(value));

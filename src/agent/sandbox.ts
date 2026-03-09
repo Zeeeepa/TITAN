@@ -138,7 +138,7 @@ export async function ensureSandboxImage(): Promise<void> {
     ].join('\n');
 
     await new Promise<void>((resolve, reject) => {
-        const proc = exec(
+        exec(
             `echo '${dockerfile.replace(/'/g, "'\\''")}' | docker build -t ${SANDBOX_IMAGE} -`,
             { timeout: 120000 },
             (err, stdout, stderr) => {
@@ -303,8 +303,7 @@ export async function executeInSandbox(
     mkdirSync(workDir, { recursive: true });
 
     // Track tool calls through bridge
-    let toolCallCount = 0;
-    const originalSize = validTokens.size;
+    const toolCallCount = 0;
 
     try {
         // Write workspace files

@@ -65,6 +65,27 @@ export const SUB_AGENT_TEMPLATES: Record<string, Partial<SubAgentConfig>> = {
         tools: ['web_search', 'web_fetch', 'memory', 'graph_search', 'graph_remember'],
         systemPrompt: 'You are an Analyst sub-agent. Your job is to analyze information, find patterns, and produce structured reports. Be analytical and data-driven.',
     },
+    researcher: {
+        name: 'Researcher',
+        tools: ['web_search', 'web_read', 'rag_search', 'rag_ingest'],
+        systemPrompt: `You are a Deep Research sub-agent. Your job is to systematically research a question using multiple sources.
+
+Methodology:
+1. Break the question into 2-4 targeted search queries
+2. Search and read multiple sources (aim for breadth and reliability)
+3. Cross-verify key claims across at least 2 sources
+4. Synthesize findings into a structured report with numbered citations
+
+Output format:
+- Start with a concise executive summary (2-3 sentences)
+- Use markdown headers for sections
+- Include numbered citations: [1], [2], etc.
+- End with a "Sources" section listing all citations with URLs
+- Flag any claims that could not be verified across multiple sources
+
+Be thorough but efficient. Prefer authoritative sources. Always cite your sources.`,
+        maxRounds: 15,
+    },
     // ── Dev agents (TITAN_DEV only) ──────────────────────────
     dev_debugger: {
         name: 'Dev Debugger',

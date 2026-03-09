@@ -193,6 +193,39 @@ export const DeliberationConfigSchema = z.object({
     maxPlanSteps: z.number().default(10),
 });
 
+export const VoiceConfigSchema = z.object({
+    /** Enable real-time voice pipeline */
+    enabled: z.boolean().default(false),
+    stt: z.object({
+        provider: z.enum(['openai', 'deepgram', 'local']).default('local'),
+        model: z.string().default('whisper-large-v3'),
+        language: z.string().default('en'),
+        /** Local Whisper ASR server URL (configure via onboarding or titan.json) */
+        localUrl: z.string().default(''),
+        /** Deepgram API key (if using Deepgram provider) */
+        deepgramApiKey: z.string().optional(),
+    }).default({}),
+    tts: z.object({
+        provider: z.enum(['chatterbox', 'orpheus', 'openai']).default('chatterbox'),
+        voice: z.string().default('default'),
+        speed: z.number().default(1.0),
+        /** Chatterbox TTS server URL (configure via onboarding or titan.json) */
+        chatterboxUrl: z.string().default(''),
+        /** Orpheus TTS server URL (configure via onboarding or titan.json) */
+        orpheusUrl: z.string().default(''),
+    }).default({}),
+    /** Cloned voice name for Chatterbox (personal sessions) */
+    personalVoice: z.string().default(''),
+    /** Path to reference audio clip for voice cloning */
+    personalReferenceClip: z.string().default(''),
+    /** Orpheus built-in voice for customer sessions */
+    customerVoice: z.string().default('tara'),
+    /** Default input mode */
+    defaultMode: z.enum(['push-to-talk', 'hands-free']).default('push-to-talk'),
+    /** Maximum recording duration in seconds */
+    maxRecordingSeconds: z.number().default(60),
+});
+
 export const OAuthConfigSchema = z.object({
     google: z.object({
         clientId: z.string().optional(),
@@ -304,6 +337,7 @@ export const TitanConfigSchema = z.object({
     brain: BrainConfigSchema.default({}),
     tunnel: TunnelConfigSchema.default({}),
     deliberation: DeliberationConfigSchema.default({}),
+    voice: VoiceConfigSchema.default({}),
     oauth: OAuthConfigSchema.default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
@@ -350,3 +384,4 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type MeshConfig = z.infer<typeof MeshConfigSchema>;
 export type AutopilotConfig = TitanConfig['autopilot'];
 export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;
+export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;

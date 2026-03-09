@@ -30,7 +30,7 @@
 </p>
 
 <p align="center">
-  <em>TITAN is built solo by <a href="https://github.com/Djtony707">Tony Elliott</a> — a father, college student studying AI Software Engineering, and open-source builder. I was laid off in October 2025 and have been building TITAN between classes and taking care of my kids. If this project helps you, please consider sponsoring. Every dollar makes a real difference for my family right now.</em>
+  <em>TITAN is built solo by <a href="https://github.com/Djtony707">Tony Elliott</a> — a single father, college student studying AI Software Engineering, and open-source builder. I was laid off in October 2025 and have been building TITAN between classes and raising my kids on my own. If this project helps you, please consider sponsoring. Every dollar makes a real difference for my family right now.</em>
 </p>
 
 <p align="center">

@@ -4,6 +4,16 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.6] — 2026-03-09
+
+### Fixed
+- **Version constant** — `TITAN_VERSION` in constants.ts was stuck at 2026.9.1 while package.json was at 2026.9.5, causing `/api/health` to report wrong version
+- **Version test** — updated core.test.ts to match current version
+- **README audit** — corrected all stats: 108 tools (was 112), 34 providers (was 21), 15 channels (was 9), 3,561 tests, updated roadmap, added all missing providers/channels to tables
+- **ARCHITECTURE.md** — updated diagram counts, added MCP/metrics/RBAC/voice to overview
+
+---
+
 ## [2026.9.5] — 2026-03-09
 
 ### Added

@@ -11,30 +11,32 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
 
 ```
                           CLI Interface
-  onboard | gateway | agent | mesh | doctor | config | autopilot
+  onboard | gateway | agent | mesh | doctor | config | autopilot | teams
                               |
                       Gateway Server
             HTTP + WebSocket Control Plane
-        Express REST API | Dashboard | WS Broadcast
+        Express REST API | Dashboard (14 panels) | WS Broadcast
+        MCP Server (JSON-RPC 2.0) | Prometheus /metrics
                               |
             +-----------------+-----------------+
             |                 |                 |
       Multi-Agent        Channel           Security
-      Router (1-5)       Adapters (9)      Sandbox + Pairing
+      Router (1-5)       Adapters (15)     Sandbox + Pairing
             |                                Shield + Vault
       Agent Core                             Audit Log
-      Session Mgmt | Reflection
+      Session Mgmt | Reflection              Team RBAC
       Tool Runner  | Sub-Agents
       Orchestrator | Goals
             |
        +----+----+--------+
        |         |         |
     Skills    LLM Providers  Browsing
-    36 files  21 providers   Browser Pool
-    95 tools  (4 native +    Stagehand
-       |       17 compat)
-    Memory + Learning
-    Graph + Relationship
+    38 files  34 providers   Browser Pool
+    ~108 tools (4 native +   Stagehand
+       |       30 compat)
+    Memory + Learning        Voice
+    Graph + RAG              LiveKit WebRTC
+    Relationship
     Briefings
 ```
 

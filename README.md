@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,561 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~108 tools, ~3,561 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-108-orange" alt="108 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
   <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C561-brightgreen" alt="3,561 Tests"/></a>
 </p>
@@ -135,7 +135,7 @@ TITAN queries the income tracker, pulls cost data from provider logs, runs the n
 **"Deploy this to my mini PC"**
 TITAN SSHs into the target machine via the mesh network, pulls the latest code, builds the Docker container, and reports back. All through the `shell` tool with mesh routing.
 
-No custom code required for any of the above. TITAN ships with 36 built-in skills exposing 95 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
+No custom code required for any of the above. TITAN ships with 38 built-in skills exposing ~108 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
 
 ---
 
@@ -152,24 +152,24 @@ No custom code required for any of the above. TITAN ships with 36 built-in skill
             +-----------------+-----------------+
             |                 |                 |
       Multi-Agent        Channel           Security
-      Router (1-5)       Adapters (9)      Sandbox + Pairing
+      Router (1-5)       Adapters (15)     Sandbox + Pairing
             |            Discord            Shield + Vault
       Agent Core         Telegram           Audit Log
-      Session Mgmt       Slack
-      Reflection         WhatsApp           Browsing
-      Sub-Agents         Teams              Browser Pool
-      Orchestrator       Google Chat        Stagehand
-      Goals              Matrix
-      Initiative         Signal              Mesh
-            |            WebChat             mDNS + Tailscale
-       +----+----+--------+                 Peer Discovery
-       |         |         |                WS Transport
-    Skills    LLM Providers  Voice
-    39 files  34 providers   LiveKit WebRTC
-    ~112 tools (4 native +   (STT + TTS)
-       |       30 compat)
-    Memory + Learning
-    Graph + Relationship
+      Session Mgmt       Slack              Team RBAC
+      Reflection         WhatsApp
+      Sub-Agents         Teams              Browsing
+      Orchestrator       Google Chat        Browser Pool
+      Goals              Matrix             Stagehand
+      Initiative         Signal
+            |            WebChat             Mesh
+       +----+----+       IRC                mDNS + Tailscale
+       |         |       Mattermost         Peer Discovery
+    Skills    Providers  Lark/Feishu        WS Transport
+    38 files  34 total   Email (IMAP)
+    ~108 tools (4 native  LINE               Voice
+       |       + 30       Zulip             LiveKit WebRTC
+    Memory     compat)
+    Graph + RAG
     Briefings
 ```
 
@@ -179,7 +179,7 @@ Full architecture details: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Autonomy System
 
-TITAN v2026.6.7 introduced a complete autonomy overhaul. This isn't just tool calling — it's self-directed goal pursuit with reflection, delegation, and initiative.
+TITAN's autonomy system is a complete self-directed execution framework. This isn't just tool calling — it's self-directed goal pursuit with reflection, delegation, and initiative.
 
 ### Reflection
 
@@ -261,16 +261,16 @@ When TITAN detects an ambitious request, it enters a multi-stage loop:
 
 ## Mission Control
 
-A 12-panel dark-mode dashboard at `http://localhost:48420`.
+A 14-panel dark-mode dashboard at `http://localhost:48420`.
 
 | Panel | What It Does |
 |-------|-------------|
 | **Overview** | System health, uptime, memory usage, model info, cost stats |
-| **WebChat** | Real-time chat with your agent via WebSocket |
+| **WebChat** | Real-time chat with your agent via WebSocket with token streaming |
 | **Agents** | Spawn, stop, and monitor up to 5 agent instances |
 | **Settings** | 6-tab live config: AI, Providers, Channels, Security, Gateway, Profile |
-| **Channels** | Connection status for all 9 channel adapters |
-| **Skills** | 36 installed skills with per-skill enable/disable toggles |
+| **Channels** | Connection status for all 15 channel adapters |
+| **Skills** | 38 installed skills with per-skill enable/disable toggles |
 | **Sessions** | Active sessions with message counts and history |
 | **Learning** | Tool success rates and knowledge base stats |
 | **Autopilot** | Schedule, status, history, and run control |
@@ -278,6 +278,8 @@ A 12-panel dark-mode dashboard at `http://localhost:48420`.
 | **Logs** | Color-coded real-time log viewer with filtering |
 | **Mesh** | Peer management — approve, reject, revoke connections |
 | **Memory Graph** | Visual force-directed graph of entities and relationships |
+| **Workflows** | Visual drag-and-drop recipe builder with YAML export/import |
+| **Telemetry** | Prometheus metrics — request counts, latency, token usage |
 
 Settings includes a SOUL.md live editor (Profile tab) and Google OAuth connection manager (Providers tab). All changes take effect without restarting the gateway.
 
@@ -285,7 +287,7 @@ Settings includes a SOUL.md live editor (Profile tab) and Google OAuth connectio
 
 ## Channels
 
-TITAN connects to 9 messaging platforms. All support the DM pairing security system.
+TITAN connects to 15 messaging platforms. All support the DM pairing security system.
 
 | Channel | Library | Notes |
 |---------|---------|-------|
@@ -298,6 +300,12 @@ TITAN connects to 9 messaging platforms. All support the DM pairing security sys
 | **Matrix** | matrix-js-sdk | Decentralized chat support |
 | **Signal** | signal-cli REST | Privacy-focused messaging |
 | **WebChat** | Built-in WebSocket | Included in Mission Control |
+| **IRC** | irc-framework | Any IRC network |
+| **Mattermost** | API client | Self-hosted team chat |
+| **Lark/Feishu** | API client | Enterprise messaging (ByteDance) |
+| **Email (IMAP)** | IMAP/SMTP | Inbound email monitoring |
+| **LINE** | LINE Messaging API | Popular in Asia-Pacific |
+| **Zulip** | API client | Open-source team chat |
 
 Configure via `~/.titan/titan.json` or the Mission Control Settings panel.
 
@@ -305,11 +313,11 @@ Configure via `~/.titan/titan.json` or the Mission Control Settings panel.
 
 ## Providers
 
-21 AI providers. Add your API key and go. TITAN routes, fails over, and load-balances automatically.
+34 AI providers. Add your API key and go. TITAN routes, fails over, and load-balances automatically with configurable fallback chains.
 
 | Provider | Type | Notable Models |
 |----------|------|----------------|
-| **Anthropic** | Native | Claude Opus 4, Sonnet 4, Haiku 4, 3.5 Sonnet/Haiku |
+| **Anthropic** | Native | Claude Opus 4, Sonnet 4, Haiku 4 |
 | **OpenAI** | Native | GPT-4o, GPT-4o-mini, o1, o3-mini |
 | **Google** | Native | Gemini 2.5 Pro/Flash, 2.0 Flash |
 | **Ollama** | Native | Any locally installed model |
@@ -322,6 +330,7 @@ Configure via `~/.titan/titan.json` or the Mission Control Settings panel.
 | **DeepSeek** | OpenAI-compat | DeepSeek Chat, DeepSeek Reasoner |
 | **Cerebras** | OpenAI-compat | LLaMA 3.3, Qwen 3 |
 | **Cohere** | OpenAI-compat | Command-R+, Command-R |
+| **Cohere v2** | OpenAI-compat | Command-R+ v2 with tool use |
 | **Perplexity** | OpenAI-compat | Sonar, Sonar Pro, Sonar Reasoning |
 | **Venice AI** | OpenAI-compat | LLaMA 3.3 70B, DeepSeek-R1 671B |
 | **AWS Bedrock** | OpenAI-compat | Claude, Titan Text, LLaMA 3 (via proxy) |
@@ -330,8 +339,20 @@ Configure via `~/.titan/titan.json` or the Mission Control Settings panel.
 | **DeepInfra** | OpenAI-compat | LLaMA 3.3, Mixtral 8x22B, Qwen 2.5 |
 | **SambaNova** | OpenAI-compat | LLaMA 3.3, DeepSeek-R1 Distill |
 | **Kimi** | OpenAI-compat | Kimi K2.5 |
+| **HuggingFace** | OpenAI-compat | Inference API models |
+| **AI21** | OpenAI-compat | Jamba 1.5 |
+| **Reka** | OpenAI-compat | Reka Core, Flash |
+| **Zhipu** | OpenAI-compat | GLM-4 |
+| **Yi/01.AI** | OpenAI-compat | Yi-34B, Yi-Lightning |
+| **Inflection** | OpenAI-compat | Pi |
+| **Nous Research** | OpenAI-compat | Hermes |
+| **Replicate** | OpenAI-compat | Run any model via API |
+| **Novita** | OpenAI-compat | LLaMA, Mistral variants |
+| **Lepton** | OpenAI-compat | LLaMA 3.3, Mixtral |
+| **Anyscale** | OpenAI-compat | LLaMA, Mistral variants |
+| **OctoAI** | OpenAI-compat | LLaMA, Mixtral variants |
 
-**4 native providers** with full API integration. **17 OpenAI-compatible providers** that work through a unified adapter. All 21 support automatic failover — your agent stays up even when OpenAI doesn't.
+**4 native providers** with full API integration. **30 OpenAI-compatible providers** through a unified adapter. All 34 support automatic failover with configurable fallback chains — if your primary model goes down, TITAN cascades to the next one automatically.
 
 ```bash
 titan model --discover                              # Live-detect all available models
@@ -423,7 +444,7 @@ Or add static peers manually: `titan mesh --add "192.168.1.100:48420"`
 
 ## MCP Server Mode
 
-TITAN can act as an **MCP server**, exposing all ~112 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
+TITAN can act as an **MCP server**, exposing all ~108 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
 
 **HTTP transport** (runs on the gateway port):
 ```json
@@ -487,7 +508,7 @@ print(f"Found {len(results)} results")
 
 ## Built-in Tools
 
-39 skills exposing ~112 tools. All individually toggleable from Mission Control.
+38 skills exposing ~108 tools. All individually toggleable from Mission Control.
 
 | Category | Tools |
 |----------|-------|
@@ -517,14 +538,14 @@ print(f"Found {len(results)} results")
 
 ### Tool Search — Compact Mode
 
-TITAN doesn't dump all 95 tool schemas into every LLM call. It sends only 8 core tools plus `tool_search`. When the LLM needs a capability, it calls `tool_search("email")` and gets the relevant tools added dynamically.
+TITAN doesn't dump all 108 tool schemas into every LLM call. It sends only 8 core tools plus `tool_search`. When the LLM needs a capability, it calls `tool_search("email")` and gets the relevant tools added dynamically.
 
 ```
-Before: 95 tools x ~50 tokens each = ~4,750 input tokens
-After:  10 core tools + tool_search  = ~700 input tokens (85% reduction)
+Before: 108 tools x ~50 tokens each = ~5,400 input tokens
+After:  10 core tools + tool_search  = ~700 input tokens (87% reduction)
 ```
 
-Works with all 21 providers. Especially beneficial for smaller local models where context window is precious.
+Works with all 34 providers. Especially beneficial for smaller local models where context window is precious.
 
 ---
 
@@ -680,7 +701,7 @@ The temporal graph is pure TypeScript — no Neo4j, no Docker, no external servi
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (3,323 tests across 94 files)
+npm run test           # vitest (3,561 tests across 107 files)
 npm run test:coverage  # ~82% line coverage
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
@@ -694,23 +715,30 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ## Roadmap
 
-### Recently Shipped (v2026.6.x)
+### Current (v2026.9.x)
 
-- **v2026.6.7**: Autonomy Overhaul — reflection, sub-agents, orchestrator, goals, initiative, shared browser pool, Stagehand browser automation, X/Twitter integration, deliberation fallback fix. 3,323 tests across 94 files.
+- **v2026.9.6**: Version sync fix, mini PC deployment update
+- **v2026.9.5**: Visual Workflow Builder — drag-and-drop recipe editor, YAML export/import, node-graph canvas, 7 API endpoints
+- **v2026.9.4**: One-Line Install, Cloud Deploy (Railway/Render/Replit), optimized Dockerfile
+- **v2026.9.2**: Team Mode with RBAC — 4 roles, invite system, per-role tool permissions, 14 API endpoints
+- **v2026.9.1**: Plugin SDK + Skill Scaffolding — CLI templates for JS/TS/YAML skill development
+- **v2026.9.0**: MCP Server Mode — expose all tools via Model Context Protocol, LiveKit Voice Integration
 
-### Previously Shipped (v2026.5.x)
+### Previous (v2026.7.x–8.x)
 
-- **v2026.5.17**: GitHub-hosted Skills Marketplace, dynamic model dropdown, 3,171 tests
-- **v2026.5.14**: Income Automation Skills (16 new tools), autopilot playbooks, per-skill toggles
-- **v2026.5.13**: Kimi K2.5 provider, web_read + web_act tools
-- **v2026.5.11**: Deliberative Reasoning, Gmail OAuth, Soul Onboarding, 2,860+ tests
-- **v2026.5.9**: Small model tool reduction, config validation, stall detector
-- **v2026.5.4**: Secrets vault, audit log, self-healing doctor, 3 new providers
+- **v2026.8.0**: ContextEngine plugins, Prometheus metrics, 30 OpenAI-compat provider presets, 6 new channels (15 total), fallback model chains, deep research agent
+- **v2026.7.0**: RAG/Vector Search (FTS5 + embeddings), token streaming (SSE + WebSocket), adaptive teaching system, memory importance scoring
 
-### Upcoming
+### Previous (v2026.5.x–6.x)
 
-- **Vector Search & RAG** — SQLite FTS5 + embeddings for semantic memory
-- **Team Mode & RBAC** — Role-based access control for multi-user deployments
+- **v2026.6.7**: Autonomy Overhaul — reflection, sub-agents, orchestrator, goals, initiative, shared browser pool, Stagehand, X/Twitter
+- **v2026.6.0**: Tool Search, Sandbox Code Execution, Deliberative Reasoning
+- **v2026.5.17**: Skills Marketplace, dynamic model dropdown
+- **v2026.5.4–5.16**: Secrets vault, audit log, autopilot, mesh networking, income skills
+
+### What's Next
+
+Sponsors vote on the roadmap. See [TITAN Insiders](https://github.com/TITANframework/TITAN-insiders) for early access and feature voting.
 
 ---
 
@@ -754,9 +782,9 @@ Express, Zod, Commander.js, ws, Chalk, Ora, Boxen, Inquirer, dotenv, node-cron, 
 
 ## Support
 
-If TITAN saves you time, consider supporting its development:
+If TITAN saves you time, consider sponsoring its development:
 
-[![Fund with thanks.dev](https://img.shields.io/badge/Fund%20with-thanks.dev-brightgreen)](https://thanks.dev/Djtony707/TITAN)
+[![Sponsor on GitHub](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F_Sponsor-ea4aaa?style=for-the-badge&logo=github)](https://github.com/sponsors/Djtony707)
 
 ---
 

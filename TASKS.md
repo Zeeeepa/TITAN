@@ -150,14 +150,14 @@
 
 ---
 
-## Current State (v2026.9.5)
+## Current State (v2026.9.6)
 
 | Metric | Value |
 |--------|-------|
 | Providers | 34 (4 native + 30 OpenAI-compat) |
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
-| Tools | ~112 registered |
+| Tools | ~108 registered |
 | Tests | ~3,561 across 107 files |
 | Line Coverage | ~82% |
 | MCP | Client + Server (expose tools to other agents) |

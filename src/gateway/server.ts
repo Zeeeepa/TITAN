@@ -61,6 +61,7 @@ import { invalidateCacheForModel } from '../agent/responseCache.js';
 import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
+import { createTeam, getTeam, listTeams, deleteTeam, updateTeam, addMember, removeMember, updateMemberRole, createInvite, acceptInvite, getEffectivePermissions, setRolePermissions, getTeamStats, isToolAllowed, getUserRole } from '../security/teams.js';
 import { TITAN_WORKSPACE } from '../utils/constants.js';
 const COMPONENT = 'Gateway';
 
@@ -1118,6 +1119,111 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ revoked });
   });
 
+  // ── Teams RBAC API ─────────────────────────────────────────────
+
+  app.get('/api/teams', (_req, res) => {
+    res.json({ teams: listTeams().map(t => ({ id: t.id, name: t.name, description: t.description, memberCount: t.members.filter(m => m.status === 'active').length, createdAt: t.createdAt })) });
+  });
+
+  app.post('/api/teams', (req, res) => {
+    try {
+      const { name, description, ownerId = 'api-user' } = req.body;
+      if (!name) { res.status(400).json({ error: 'name is required' }); return; }
+      const team = createTeam(name, ownerId, description);
+      res.status(201).json({ team: { id: team.id, name: team.name } });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.get('/api/teams/:teamId', (req, res) => {
+    const team = getTeam(req.params.teamId);
+    if (!team) { res.status(404).json({ error: 'Team not found' }); return; }
+    res.json({ team, stats: getTeamStats(req.params.teamId) });
+  });
+
+  app.patch('/api/teams/:teamId', (req, res) => {
+    try {
+      const { name, description, actorId = 'api-user' } = req.body;
+      const team = updateTeam(req.params.teamId, actorId, { name, description });
+      res.json({ team: { id: team.id, name: team.name, description: team.description } });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.delete('/api/teams/:teamId', (req, res) => {
+    try {
+      const actorId = (req.query.actorId as string) || 'api-user';
+      const deleted = deleteTeam(req.params.teamId, actorId);
+      res.json({ deleted });
+    } catch (e) { res.status(403).json({ error: (e as Error).message }); }
+  });
+
+  app.get('/api/teams/:teamId/members', (req, res) => {
+    const team = getTeam(req.params.teamId);
+    if (!team) { res.status(404).json({ error: 'Team not found' }); return; }
+    res.json({ members: team.members });
+  });
+
+  app.post('/api/teams/:teamId/members', (req, res) => {
+    try {
+      const { userId, role = 'operator', displayName, actorId = 'api-user' } = req.body;
+      if (!userId) { res.status(400).json({ error: 'userId is required' }); return; }
+      const member = addMember(req.params.teamId, actorId, userId, role, displayName);
+      res.status(201).json({ member });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.delete('/api/teams/:teamId/members/:userId', (req, res) => {
+    try {
+      const actorId = (req.query.actorId as string) || 'api-user';
+      const removed = removeMember(req.params.teamId, actorId, req.params.userId);
+      res.json({ removed });
+    } catch (e) { res.status(403).json({ error: (e as Error).message }); }
+  });
+
+  app.patch('/api/teams/:teamId/members/:userId/role', (req, res) => {
+    try {
+      const { role, actorId = 'api-user' } = req.body;
+      if (!role) { res.status(400).json({ error: 'role is required' }); return; }
+      const member = updateMemberRole(req.params.teamId, actorId, req.params.userId, role);
+      res.json({ member });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.post('/api/teams/:teamId/invites', (req, res) => {
+    try {
+      const { role = 'operator', expiresInHours = 48, actorId = 'api-user' } = req.body;
+      const code = createInvite(req.params.teamId, actorId, role, expiresInHours);
+      res.status(201).json({ code, expiresInHours });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.post('/api/teams/join', (req, res) => {
+    try {
+      const { code, userId, displayName } = req.body;
+      if (!code || !userId) { res.status(400).json({ error: 'code and userId are required' }); return; }
+      const result = acceptInvite(code, userId, displayName);
+      res.json({ teamId: result.team.id, teamName: result.team.name, role: result.member.role });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.get('/api/teams/:teamId/permissions/:userId', (req, res) => {
+    const perms = getEffectivePermissions(req.params.teamId, req.params.userId);
+    const role = getUserRole(req.params.teamId, req.params.userId);
+    res.json({ role, permissions: perms });
+  });
+
+  app.put('/api/teams/:teamId/roles/:role/permissions', (req, res) => {
+    try {
+      const { actorId = 'api-user', ...perms } = req.body;
+      setRolePermissions(req.params.teamId, actorId, req.params.role as 'admin' | 'operator' | 'viewer', perms);
+      res.json({ updated: true });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
+  });
+
+  app.get('/api/teams/:teamId/tools/:toolName/check/:userId', (req, res) => {
+    const allowed = isToolAllowed(req.params.teamId, req.params.userId, req.params.toolName);
+    res.json({ allowed, tool: req.params.toolName, userId: req.params.userId });
+  });
+
   // ── Plugins API ────────────────────────────────────────────────
   app.get('/api/plugins', async (_req, res) => {
     const { getPlugins } = await import('../plugins/registry.js');
@@ -1360,6 +1466,19 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/mesh/approve/:nodeId': { post: { summary: 'Approve a discovered peer',            tags: ['Mesh'] } },
         '/api/mesh/reject/:nodeId': { post: { summary: 'Reject a pending peer',                 tags: ['Mesh'] } },
         '/api/mesh/revoke/:nodeId': { post: { summary: 'Disconnect and revoke a peer',          tags: ['Mesh'] } },
+        '/api/teams':              { get:  { summary: 'List all teams',                          tags: ['Teams'] },
+                                     post: { summary: 'Create a new team',                        tags: ['Teams'] } },
+        '/api/teams/{teamId}':     { get:  { summary: 'Get team details',                        tags: ['Teams'] },
+                                     patch: { summary: 'Update team settings',                    tags: ['Teams'] },
+                                     delete: { summary: 'Delete a team',                          tags: ['Teams'] } },
+        '/api/teams/{teamId}/members':  { get:  { summary: 'List team members',                   tags: ['Teams'] },
+                                          post: { summary: 'Add a team member',                    tags: ['Teams'] } },
+        '/api/teams/{teamId}/members/{userId}': { delete: { summary: 'Remove a team member',      tags: ['Teams'] } },
+        '/api/teams/{teamId}/members/{userId}/role': { patch: { summary: 'Update member role',    tags: ['Teams'] } },
+        '/api/teams/{teamId}/invites':  { post: { summary: 'Create invite code',                  tags: ['Teams'] } },
+        '/api/teams/join':         { post: { summary: 'Join team via invite code',                tags: ['Teams'] } },
+        '/api/teams/{teamId}/permissions/{userId}': { get: { summary: 'Get user permissions',     tags: ['Teams'] } },
+        '/api/teams/{teamId}/roles/{role}/permissions': { put: { summary: 'Set role permissions', tags: ['Teams'] } },
         '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
         '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['Tunnel'] } },
         '/api/autopilot/status':   { get:  { summary: 'Autopilot status',                      tags: ['Autopilot'] } },
@@ -1426,6 +1545,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         { method: 'POST', path: '/api/mesh/approve/:id', desc: 'Approve a discovered peer' },
         { method: 'POST', path: '/api/mesh/reject/:id',  desc: 'Reject a pending peer' },
         { method: 'POST', path: '/api/mesh/revoke/:id',  desc: 'Disconnect & revoke a peer' },
+      ]},
+      { cat: 'Teams',    routes: [
+        { method: 'GET',  path: '/api/teams',                    desc: 'List all teams' },
+        { method: 'POST', path: '/api/teams',                    desc: 'Create a new team' },
+        { method: 'GET',  path: '/api/teams/:id',                desc: 'Get team details' },
+        { method: 'PATCH',path: '/api/teams/:id',                desc: 'Update team settings' },
+        { method: 'DELETE',path: '/api/teams/:id',               desc: 'Delete a team' },
+        { method: 'GET',  path: '/api/teams/:id/members',        desc: 'List team members' },
+        { method: 'POST', path: '/api/teams/:id/members',        desc: 'Add a member' },
+        { method: 'DELETE',path: '/api/teams/:id/members/:uid',  desc: 'Remove a member' },
+        { method: 'PATCH',path: '/api/teams/:id/members/:uid/role', desc: 'Change member role' },
+        { method: 'POST', path: '/api/teams/:id/invites',        desc: 'Create invite code' },
+        { method: 'POST', path: '/api/teams/join',               desc: 'Join via invite code' },
+        { method: 'GET',  path: '/api/teams/:id/permissions/:uid', desc: 'Get user permissions' },
       ]},
       { cat: 'Memory',   routes: [
         { method: 'GET',  path: '/api/profile',          desc: 'Get personal profile' },

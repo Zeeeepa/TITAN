@@ -28,6 +28,7 @@ import { runRecipe } from '../recipes/runner.js';
 import { listMonitors, addMonitor, removeMonitor } from '../agent/monitor.js';
 import { searchSkills, installSkill, installFromUrl } from '../skills/marketplace.js';
 import { scaffoldSkill, testSkill } from '../skills/scaffold.js';
+import { createTeam, listTeams, getTeam, deleteTeam, addMember, removeMember, createInvite, acceptInvite, getTeamStats, updateMemberRole } from '../security/teams.js';
 import { checkForUpdates } from '../utils/updater.js';
 
 const program = new Command();
@@ -163,6 +164,95 @@ program
                     console.log(`  📩 Code: ${chalk.yellow(p.code)} | ${p.channel} / ${p.userId} (${p.userName || 'unknown'}) | ${p.createdAt}`);
                 }
                 console.log(chalk.gray('\n  Approve: titan pairing --approve <channel> <code>'));
+            }
+        }
+        process.exit(0);
+    });
+
+// ─── TEAMS (RBAC team management) ────────────────────────────────
+program
+    .command('teams')
+    .description('Manage teams with role-based access control')
+    .option('--list', 'List all teams')
+    .option('--create <name>', 'Create a new team')
+    .option('--delete <teamId>', 'Delete a team')
+    .option('--info <teamId>', 'Show team details')
+    .option('--add-member <teamId>', 'Add a member to a team')
+    .option('--remove-member <teamId>', 'Remove a member from a team')
+    .option('--user <userId>', 'User ID for member operations')
+    .option('--role <role>', 'Role: owner, admin, operator, viewer')
+    .option('--invite <teamId>', 'Create an invite code for a team')
+    .option('--join <code>', 'Join a team with an invite code')
+    .option('--set-role <teamId>', 'Change a member\'s role')
+    .action((options) => {
+        if (options.create) {
+            try {
+                const team = createTeam(options.create, 'cli-user');
+                console.log(chalk.green(`Team "${team.name}" created (ID: ${team.id})`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.delete) {
+            try {
+                deleteTeam(options.delete, 'cli-user');
+                console.log(chalk.green('Team deleted'));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.info) {
+            const team = getTeam(options.info);
+            if (!team) { console.log(chalk.red('Team not found')); process.exit(1); }
+            const stats = getTeamStats(options.info);
+            console.log(chalk.cyan(`\n📋 Team: ${team.name}`));
+            if (team.description) console.log(`   ${team.description}`);
+            console.log(`   ID: ${team.id}`);
+            console.log(`   Owner: ${team.ownerId}`);
+            console.log(`   Members: ${stats?.activeCount || 0} active`);
+            if (stats) {
+                console.log(`   Roles: ${stats.roleBreakdown.owner}×owner, ${stats.roleBreakdown.admin}×admin, ${stats.roleBreakdown.operator}×operator, ${stats.roleBreakdown.viewer}×viewer`);
+            }
+            console.log(`   Created: ${team.createdAt}\n`);
+            for (const m of team.members) {
+                const status = m.status === 'active' ? chalk.green('active') : chalk.gray(m.status);
+                console.log(`   ${m.role.padEnd(8)} ${m.userId} [${status}]`);
+            }
+        } else if (options.addMember) {
+            if (!options.user) { console.log(chalk.red('--user <userId> required')); process.exit(1); }
+            try {
+                const member = addMember(options.addMember, 'cli-user', options.user, options.role || 'operator');
+                console.log(chalk.green(`Added ${member.userId} as ${member.role}`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.removeMember) {
+            if (!options.user) { console.log(chalk.red('--user <userId> required')); process.exit(1); }
+            try {
+                removeMember(options.removeMember, 'cli-user', options.user);
+                console.log(chalk.green(`Removed ${options.user}`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.setRole) {
+            if (!options.user || !options.role) { console.log(chalk.red('--user and --role required')); process.exit(1); }
+            try {
+                updateMemberRole(options.setRole, 'cli-user', options.user, options.role);
+                console.log(chalk.green(`${options.user} role changed to ${options.role}`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.invite) {
+            try {
+                const code = createInvite(options.invite, 'cli-user', options.role || 'operator');
+                console.log(chalk.green(`Invite code: ${chalk.yellow(code)}`));
+                console.log(chalk.gray(`  Join: titan teams --join ${code}`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else if (options.join) {
+            const userId = options.user || 'cli-user';
+            try {
+                const result = acceptInvite(options.join, userId);
+                console.log(chalk.green(`Joined team "${result.team.name}" as ${result.member.role}`));
+            } catch (e) { console.log(chalk.red((e as Error).message)); }
+        } else {
+            // Default: list teams
+            const teams = listTeams();
+            if (teams.length === 0) {
+                console.log(chalk.gray('No teams. Create one: titan teams --create <name>'));
+            } else {
+                console.log(chalk.cyan(`\n👥 Teams (${teams.length})\n`));
+                for (const t of teams) {
+                    const active = t.members.filter(m => m.status === 'active').length;
+                    console.log(`  ${chalk.bold(t.name)} (${t.id.slice(0, 8)}) — ${active} member${active !== 1 ? 's' : ''}`);
+                }
             }
         }
         process.exit(0);

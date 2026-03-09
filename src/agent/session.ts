@@ -21,6 +21,8 @@ export interface Session {
     createdAt: string;
     lastActive: string;
     e2eKey?: string; // Stored only in memory for active sessions
+    /** Team ID if this session belongs to a team (for RBAC) */
+    teamId?: string;
     // Per-session overrides (in-memory only, reset when session closes/times out)
     modelOverride?: string;
     thinkingOverride?: 'off' | 'low' | 'medium' | 'high';

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,450 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,517 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
@@ -507,6 +507,13 @@ Works with all 21 providers. Especially beneficial for smaller local models wher
 | `titan create-skill <name>` | Alias for skill scaffolding |
 | `titan skills --test <name>` | Test a skill with sample arguments |
 | `titan mcp-server` | Launch as stdio MCP server for external clients |
+| `titan teams` | List teams |
+| `titan teams --create <name>` | Create a new team |
+| `titan teams --info <teamId>` | Show team details and members |
+| `titan teams --add-member <teamId> --user <id> --role <role>` | Add a team member |
+| `titan teams --invite <teamId>` | Generate invite code |
+| `titan teams --join <code>` | Join a team via invite |
+| `titan teams --set-role <teamId> --user <id> --role <role>` | Change member role |
 | `titan pairing` | Manage DM access control |
 | `titan doctor` | System diagnostics |
 | `titan doctor --fix` | Auto-fix detected issues |

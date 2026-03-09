@@ -4,6 +4,21 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.2] — 2026-03-09
+
+### Added
+- **Team Mode with RBAC** — multi-user support with role-based access control
+  - 4 hierarchical roles: owner > admin > operator > viewer
+  - Team CRUD, member management, invite codes with expiry
+  - Per-role tool permissions with wildcard pattern matching (deny overrides allow)
+  - 14 API endpoints: `/api/teams/*` for full team lifecycle
+  - CLI: `titan teams --create|--delete|--info|--add-member|--invite|--join|--set-role`
+  - Session `teamId` field for RBAC-scoped sessions
+  - JSON persistence at `~/.titan/teams.json`
+  - 32 tests
+
+---
+
 ## [2026.9.1] — 2026-03-09
 
 ### Added

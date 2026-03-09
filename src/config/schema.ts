@@ -246,6 +246,21 @@ export const OAuthConfigSchema = z.object({
     }).default({}),
 });
 
+export const TeamConfigSchema = z.object({
+    /** Enable team mode with RBAC */
+    enabled: z.boolean().default(false),
+    /** Default role for new members added via invite */
+    defaultRole: z.enum(['admin', 'operator', 'viewer']).default('operator'),
+    /** Require invite code to join (vs. direct add by admin) */
+    requireInvite: z.boolean().default(true),
+    /** Invite code expiry in hours */
+    inviteExpiryHours: z.number().default(48),
+    /** Maximum teams a single instance can host */
+    maxTeams: z.number().default(10),
+    /** Maximum members per team */
+    maxMembersPerTeam: z.number().default(50),
+});
+
 export const TitanConfigSchema = z.object({
     agent: AgentConfigSchema.default({}),
     providers: z.object({
@@ -398,6 +413,7 @@ export const TitanConfigSchema = z.object({
         /** Auto-delegate complex tasks to sub-agents */
         autoDelegate: z.boolean().default(true),
     }).default({}),
+    teams: TeamConfigSchema.default({}),
     mcp: z.object({
         /** MCP server mode — expose TITAN's tools to other agents */
         server: z.object({
@@ -424,3 +440,4 @@ export type AutopilotConfig = TitanConfig['autopilot'];
 export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export type TeachingConfig = z.infer<typeof TeachingConfigSchema>;
+export type TeamConfig = z.infer<typeof TeamConfigSchema>;

@@ -270,6 +270,7 @@ src/
 |   +-- ...                 # Recipe system (multi-step workflows)
 +-- security/
 |   +-- sandbox.ts          # Session security contexts
+|   +-- teams.ts            # Team Mode RBAC (roles, members, invites, permissions)
 |   +-- pairing.ts          # DM pairing manager
 |   +-- shield.ts           # Prompt injection detection
 |   +-- secrets.ts          # Encrypted secrets vault

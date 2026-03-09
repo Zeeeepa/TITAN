@@ -125,9 +125,23 @@
   - Name sanitization (special chars → underscores)
   - 8 tests
 
+### Phase 13: Team Mode with RBAC (v2026.9.2)
+- **Team Management**: Multi-user support with role-based access control
+  - 4 roles: owner > admin > operator > viewer (hierarchical)
+  - Team CRUD: create, update, delete with owner-only enforcement
+  - Member management: add, remove, role changes with permission checks
+  - Invite system: time-limited invite codes with role assignment
+  - RBAC engine: per-role permissions, tool wildcard patterns, deny-overrides-allow
+  - Per-role permission overrides per team
+  - Session integration: `teamId` field on Session interface
+  - JSON persistence at `~/.titan/teams.json`
+  - Full CLI: `titan teams --create|--delete|--info|--add-member|--invite|--join|--set-role`
+  - 14 API endpoints (CRUD + members + invites + permissions)
+  - 32 tests
+
 ---
 
-## Current State (v2026.9.1)
+## Current State (v2026.9.2)
 
 | Metric | Value |
 |--------|-------|
@@ -135,7 +149,7 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | ~3,485 across 105 files |
+| Tests | ~3,517 across 106 files |
 | Line Coverage | ~82% |
 | MCP | Client + Server (expose tools to other agents) |
 | Voice | LiveKit WebRTC (replaced custom pipeline) |
@@ -146,6 +160,8 @@
 | Metrics | Yes (Prometheus /metrics endpoint) |
 | Fallback Chains | Yes (auto-cascade on model failure) |
 | Deep Research | Yes (multi-step with citations) |
+| Team Mode RBAC | Yes (owner/admin/operator/viewer, invites, per-role tool permissions) |
+| Plugin SDK | Yes (skill scaffolding CLI for JS/TS/YAML) |
 
 ---
 

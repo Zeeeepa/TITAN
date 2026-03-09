@@ -329,3 +329,223 @@ export function flushVectors(): void {
         } catch { /* ignore */ }
     }
 }
+
+// ── RAG Document Management ─────────────────────────────────────────
+
+const RAG_DOCS_PATH = join(TITAN_HOME, 'rag-documents.json');
+const RAG_SOURCE = 'rag';
+const DEFAULT_CHUNK_SIZE = 1000;
+const DEFAULT_CHUNK_OVERLAP = 200;
+
+export interface RAGDocument {
+    id: string;
+    title: string;
+    sourceType: 'file' | 'url' | 'text';
+    sourcePath: string;
+    chunkCount: number;
+    totalChars: number;
+    ingestedAt: string;
+}
+
+interface RAGDocStore {
+    documents: RAGDocument[];
+}
+
+let ragDocStore: RAGDocStore | null = null;
+
+function loadRagDocStore(): RAGDocStore {
+    if (ragDocStore) return ragDocStore;
+    mkdirSync(TITAN_HOME, { recursive: true });
+    if (existsSync(RAG_DOCS_PATH)) {
+        try {
+            ragDocStore = JSON.parse(readFileSync(RAG_DOCS_PATH, 'utf-8')) as RAGDocStore;
+            ragDocStore.documents = ragDocStore.documents || [];
+        } catch {
+            ragDocStore = { documents: [] };
+        }
+    } else {
+        ragDocStore = { documents: [] };
+    }
+    return ragDocStore;
+}
+
+function saveRagDocStore(): void {
+    if (!ragDocStore) return;
+    try {
+        writeFileSync(RAG_DOCS_PATH, JSON.stringify(ragDocStore, null, 2), 'utf-8');
+    } catch (e) {
+        logger.error(COMPONENT, `Failed to save RAG doc store: ${(e as Error).message}`);
+    }
+}
+
+/** Split text into overlapping chunks */
+export function chunkText(
+    text: string,
+    chunkSize: number = DEFAULT_CHUNK_SIZE,
+    overlap: number = DEFAULT_CHUNK_OVERLAP,
+): string[] {
+    if (text.length <= chunkSize) return [text];
+    const chunks: string[] = [];
+    let start = 0;
+    while (start < text.length) {
+        let end = start + chunkSize;
+        // Try to break at paragraph or sentence boundary
+        if (end < text.length) {
+            const paragraphBreak = text.lastIndexOf('\n\n', end);
+            if (paragraphBreak > start + chunkSize / 2) {
+                end = paragraphBreak + 2;
+            } else {
+                const sentenceBreak = text.lastIndexOf('. ', end);
+                if (sentenceBreak > start + chunkSize / 2) {
+                    end = sentenceBreak + 2;
+                }
+            }
+        }
+        chunks.push(text.slice(start, end).trim());
+        start = end - overlap;
+        if (start >= text.length) break;
+    }
+    return chunks.filter(c => c.length > 0);
+}
+
+/** Extract text content from various file types */
+function extractText(content: string, filePath: string): string {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    switch (ext) {
+        case 'md':
+        case 'markdown':
+            // Strip markdown formatting for better embedding
+            return content
+                .replace(/^#{1,6}\s+/gm, '')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/`{3}[\s\S]*?`{3}/g, (match) => match)  // keep code blocks
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                .trim();
+        case 'json':
+            try {
+                return JSON.stringify(JSON.parse(content), null, 2);
+            } catch {
+                return content;
+            }
+        default:
+            return content;
+    }
+}
+
+/** Ingest a document into the RAG vector store */
+export async function ragIngest(
+    sourcePath: string,
+    title: string,
+    content: string,
+    sourceType: 'file' | 'url' | 'text' = 'file',
+    chunkSize?: number,
+    chunkOverlap?: number,
+): Promise<{ success: boolean; docId: string; chunks: number; error?: string }> {
+    if (!available) {
+        return { success: false, docId: '', chunks: 0, error: 'Vector search not available. Enable it in config and ensure Ollama is running.' };
+    }
+
+    const docId = `rag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const processedText = extractText(content, sourcePath);
+    const chunks = chunkText(processedText, chunkSize || DEFAULT_CHUNK_SIZE, chunkOverlap || DEFAULT_CHUNK_OVERLAP);
+
+    logger.info(COMPONENT, `RAG ingest: "${title}" — ${chunks.length} chunks from ${sourcePath}`);
+
+    let ingestedCount = 0;
+    for (let i = 0; i < chunks.length; i++) {
+        const chunkId = `${docId}_chunk_${i}`;
+        const metadata = { docId, title, sourcePath, sourceType, chunkIndex: i, totalChunks: chunks.length };
+        const ok = await addVector(chunkId, chunks[i], RAG_SOURCE, metadata);
+        if (ok) ingestedCount++;
+    }
+
+    if (ingestedCount === 0) {
+        return { success: false, docId, chunks: 0, error: 'Failed to embed any chunks. Check Ollama connectivity.' };
+    }
+
+    // Record document metadata
+    const docs = loadRagDocStore();
+    docs.documents.push({
+        id: docId,
+        title,
+        sourceType,
+        sourcePath,
+        chunkCount: ingestedCount,
+        totalChars: processedText.length,
+        ingestedAt: new Date().toISOString(),
+    });
+    saveRagDocStore();
+
+    logger.info(COMPONENT, `RAG ingest complete: ${ingestedCount}/${chunks.length} chunks for "${title}"`);
+    return { success: true, docId, chunks: ingestedCount };
+}
+
+/** Search RAG documents by semantic similarity */
+export async function ragSearch(
+    query: string,
+    topK: number = 5,
+    minScore: number = 0.3,
+): Promise<Array<{ text: string; score: number; docId: string; title: string; chunkIndex: number }>> {
+    const results = await searchVectors(query, topK, RAG_SOURCE, minScore);
+    return results.map(r => {
+        let meta = { docId: '', title: '', chunkIndex: 0 };
+        try {
+            if (r.metadata) meta = JSON.parse(r.metadata);
+        } catch { /* ignore */ }
+        return {
+            text: r.text,
+            score: r.score,
+            docId: meta.docId || r.id,
+            title: meta.title || 'Unknown',
+            chunkIndex: meta.chunkIndex || 0,
+        };
+    });
+}
+
+/** List all ingested RAG documents */
+export function ragListDocuments(): RAGDocument[] {
+    return loadRagDocStore().documents;
+}
+
+/** Delete a RAG document and all its chunks */
+export function ragDeleteDocument(docId: string): boolean {
+    const docs = loadRagDocStore();
+    const docIndex = docs.documents.findIndex(d => d.id === docId);
+    if (docIndex < 0) return false;
+
+    const doc = docs.documents[docIndex];
+
+    // Remove all chunks from vector store
+    if (store) {
+        store.entries = store.entries.filter(e => {
+            if (e.source !== RAG_SOURCE) return true;
+            try {
+                const meta = JSON.parse(e.metadata || '{}');
+                return meta.docId !== docId;
+            } catch {
+                return !e.id.startsWith(docId);
+            }
+        });
+        debouncedSave();
+    }
+
+    // Remove from doc store
+    docs.documents.splice(docIndex, 1);
+    saveRagDocStore();
+
+    logger.info(COMPONENT, `RAG delete: removed "${doc.title}" (${doc.chunkCount} chunks)`);
+    return true;
+}
+
+/** Get RAG context for a query (used by context manager) */
+export async function getRagContext(query: string, topK: number = 3): Promise<string> {
+    if (!available) return '';
+    const results = await ragSearch(query, topK, 0.35);
+    if (results.length === 0) return '';
+
+    const contextParts = results.map((r, i) =>
+        `[RAG ${i + 1}/${results.length} — "${r.title}" (score: ${r.score.toFixed(2)})]:\n${r.text}`
+    );
+    return contextParts.join('\n\n');
+}

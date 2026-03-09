@@ -16,6 +16,7 @@
 import logger from '../utils/logger.js';
 import type { ChatMessage } from '../providers/base.js';
 import { flushMemoryBeforeCompaction } from '../memory/graph.js';
+import { getRagContext } from '../memory/vectors.js';
 
 const COMPONENT = 'Context';
 
@@ -227,4 +228,43 @@ export function getContextStats(messages: ChatMessage[]): {
         assistantMessages: assistantMsgs,
         toolCalls,
     };
+}
+
+/**
+ * Inject RAG context into messages before the agent turn.
+ * Queries the RAG vector store with the latest user message and prepends
+ * relevant chunks as a system message.
+ */
+export async function injectRagContext(
+    messages: ChatMessage[],
+    topK: number = 3,
+): Promise<ChatMessage[]> {
+    // Find the last user message
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMsg?.content) return messages;
+
+    try {
+        const ragContext = await getRagContext(lastUserMsg.content, topK);
+        if (!ragContext) return messages;
+
+        logger.debug(COMPONENT, `Injecting RAG context (${ragContext.length} chars) for query: "${lastUserMsg.content.slice(0, 80)}"`);
+
+        const ragMessage: ChatMessage = {
+            role: 'system',
+            content: `[Relevant knowledge from ingested documents]\n${ragContext}`,
+        };
+
+        // Insert RAG context before the last user message
+        const result = [...messages];
+        const lastUserIndex = result.lastIndexOf(lastUserMsg);
+        if (lastUserIndex >= 0) {
+            result.splice(lastUserIndex, 0, ragMessage);
+        } else {
+            result.push(ragMessage);
+        }
+        return result;
+    } catch (e) {
+        logger.debug(COMPONENT, `RAG context injection failed: ${(e as Error).message}`);
+        return messages;
+    }
 }

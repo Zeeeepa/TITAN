@@ -30,6 +30,14 @@ const PROVIDER_ALIASES: Record<string, string> = {
     'aws': 'bedrock',
     'amazon': 'bedrock',
     'litellm-proxy': 'litellm',
+    'hf': 'huggingface',
+    'hugging-face': 'huggingface',
+    '01ai': 'yi',
+    '01.ai': 'yi',
+    'glm': 'zhipu',
+    'bigmodel': 'zhipu',
+    'pi': 'inflection',
+    'octoai': 'octo',
 };
 
 /** Normalize provider names for consistency (e.g. "grok" → "xai", "local" → "ollama") */
@@ -174,6 +182,108 @@ export function getModelAliases(): Record<string, string> {
     return config.agent.modelAliases || {};
 }
 
+// ── Fallback chain state ─────────────────────────────────────────
+/** Tracks the most recent fallback event for dashboard display */
+let lastFallbackEvent: { primary: string; active: string; reason: string; timestamp: number } | null = null;
+
+/** Get the current fallback state (for dashboard display) */
+export function getFallbackState(): { primary: string; active: string; reason: string; timestamp: number } | null {
+    // Expire after 5 minutes
+    if (lastFallbackEvent && (Date.now() - lastFallbackEvent.timestamp) > 300_000) {
+        lastFallbackEvent = null;
+    }
+    return lastFallbackEvent;
+}
+
+/** Check if an error is retryable (rate limit, timeout, auth error, 5xx) */
+function isRetryableError(error: unknown): boolean {
+    const msg = (error as Error).message?.toLowerCase() || '';
+    const status = (error as { status?: number }).status;
+    if (status && status >= 500) return true;
+    if (status === 429) return true;
+    if (msg.includes('rate limit') || msg.includes('rate_limit')) return true;
+    if (msg.includes('timeout') || msg.includes('timed out') || msg.includes('ETIMEDOUT')) return true;
+    if (msg.includes('econnrefused') || msg.includes('econnreset')) return true;
+    if (status === 401 || status === 403 || msg.includes('auth') || msg.includes('unauthorized')) return true;
+    if (msg.includes('503') || msg.includes('502') || msg.includes('500') || msg.includes('overloaded')) return true;
+    return false;
+}
+
+/** Try the fallback chain for a chat request. Returns null if chain is empty or exhausted. */
+async function tryFallbackChain(
+    options: ChatOptions,
+    primaryModelId: string,
+    originalError: Error,
+): Promise<ChatResponse | null> {
+    const config = loadConfig();
+    const chain = config.agent.fallbackChain;
+    if (!chain || chain.length === 0) return null;
+
+    const maxRetries = config.agent.fallbackMaxRetries ?? 3;
+    let attempts = 0;
+
+    for (const fallbackModelId of chain) {
+        if (attempts >= maxRetries) break;
+        if (fallbackModelId === primaryModelId) continue;
+
+        attempts++;
+        try {
+            const { provider: fbProvider, model: fbModel } = resolveModel(fallbackModelId);
+            logger.warn(COMPONENT, `Model ${primaryModelId} failed (${originalError.message}), falling back to ${fallbackModelId}`);
+            const result = await fbProvider.chat({ ...options, model: fbModel });
+            lastFallbackEvent = {
+                primary: primaryModelId,
+                active: fallbackModelId,
+                reason: originalError.message,
+                timestamp: Date.now(),
+            };
+            return result;
+        } catch (chainErr) {
+            logger.warn(COMPONENT, `Fallback model ${fallbackModelId} also failed: ${(chainErr as Error).message}`);
+            continue;
+        }
+    }
+    return null;
+}
+
+/** Try the fallback chain for a streaming request. Returns an async generator or null if exhausted. */
+async function tryFallbackChainStream(
+    options: ChatOptions,
+    primaryModelId: string,
+    originalError: Error,
+): Promise<AsyncGenerator<ChatStreamChunk> | null> {
+    const config = loadConfig();
+    const chain = config.agent.fallbackChain;
+    if (!chain || chain.length === 0) return null;
+
+    const maxRetries = config.agent.fallbackMaxRetries ?? 3;
+    let attempts = 0;
+
+    for (const fallbackModelId of chain) {
+        if (attempts >= maxRetries) break;
+        if (fallbackModelId === primaryModelId) continue;
+
+        attempts++;
+        try {
+            const { provider: fbProvider, model: fbModel } = resolveModel(fallbackModelId);
+            logger.warn(COMPONENT, `Stream model ${primaryModelId} failed (${originalError.message}), falling back to ${fallbackModelId}`);
+            // Verify the provider responds by getting the generator (will throw on immediate errors)
+            const gen = fbProvider.chatStream({ ...options, model: fbModel });
+            lastFallbackEvent = {
+                primary: primaryModelId,
+                active: fallbackModelId,
+                reason: originalError.message,
+                timestamp: Date.now(),
+            };
+            return gen;
+        } catch (chainErr) {
+            logger.warn(COMPONENT, `Fallback stream model ${fallbackModelId} also failed: ${(chainErr as Error).message}`);
+            continue;
+        }
+    }
+    return null;
+}
+
 /** Route a chat request to a mesh peer */
 async function meshChat(peer: MeshPeer, modelId: string, message: string): Promise<ChatResponse> {
     const requestId = randomBytes(8).toString('hex');
@@ -195,9 +305,17 @@ export async function chat(options: ChatOptions): Promise<ChatResponse> {
     logger.info(COMPONENT, `Routing to ${provider.displayName} (model: ${model})`);
 
     try {
-        return await provider.chat({ ...options, model });
+        const result = await provider.chat({ ...options, model });
+        lastFallbackEvent = null; // Clear fallback state on primary success
+        return result;
     } catch (error) {
         logger.error(COMPONENT, `Provider ${provider.name} failed: ${(error as Error).message}`);
+
+        // Try configured fallback chain first (model-level fallback)
+        if (isRetryableError(error)) {
+            const chainResult = await tryFallbackChain(options, modelId, error as Error);
+            if (chainResult) return chainResult;
+        }
 
         // Try mesh peers before local failover
         const config = loadConfig();
@@ -253,8 +371,24 @@ export async function* chatStream(options: ChatOptions): AsyncGenerator<ChatStre
 
     try {
         yield* provider.chatStream({ ...options, model });
+        lastFallbackEvent = null; // Clear fallback state on primary success
     } catch (error) {
         logger.error(COMPONENT, `Stream provider ${provider.name} failed: ${(error as Error).message}`);
+
+        // Try configured fallback chain first (model-level fallback)
+        if (isRetryableError(error)) {
+            const chainStream = await tryFallbackChainStream(options, modelId, error as Error);
+            if (chainStream) {
+                yield {
+                    type: 'failover' as const,
+                    originalProvider: provider.name,
+                    originalModel: model,
+                    error: (error as Error).message,
+                };
+                yield* chainStream;
+                return;
+            }
+        }
 
         // Try mesh peers before local failover (non-streaming — yield as single chunk)
         const config = loadConfig();

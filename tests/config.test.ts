@@ -96,7 +96,7 @@ describe('TitanConfigSchema providers', () => {
             'openrouter', 'fireworks', 'xai', 'together', 'deepseek', 'cerebras', 'cohere', 'perplexity',
             'venice', 'bedrock', 'litellm', 'azure', 'deepinfra', 'sambanova'];
         for (const name of expected) expect(keys).toContain(name);
-        expect(keys).toHaveLength(20);
+        expect(keys).toHaveLength(34);
     });
 });
 

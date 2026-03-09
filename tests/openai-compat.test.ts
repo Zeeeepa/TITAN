@@ -454,8 +454,8 @@ describe('OpenAICompatProvider', () => {
     // ── PROVIDER_PRESETS ──────────────────────────────────────────────
 
     describe('PROVIDER_PRESETS', () => {
-        it('should contain 17 provider presets', () => {
-            expect(PROVIDER_PRESETS).toHaveLength(17);
+        it('should contain 30 provider presets', () => {
+            expect(PROVIDER_PRESETS).toHaveLength(30);
         });
 
         it('should include groq, mistral, openrouter, fireworks, xai, together, deepseek, cerebras, cohere, perplexity, venice, bedrock, litellm', () => {

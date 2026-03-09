@@ -1690,8 +1690,8 @@ async function loadMeshPanel() {
             + '<div style="font-size:11px;color:var(--text-dim)">' + p.address + ':' + p.port + ' — ' + (p.models||[]).length + ' models — via ' + p.discoveredVia + '</div>'
             + '</div>'
             + '<div style="display:flex;gap:6px">'
-            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#22c55e;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="meshApprove(\\'' + p.nodeId + '\\')">Approve</button>'
-            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="meshReject(\\'' + p.nodeId + '\\')">Reject</button>'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#22c55e;color:#fff;border:none;border-radius:4px;cursor:pointer" data-node-id="' + p.nodeId + '" onclick="meshApprove(this.dataset.nodeId)">Approve</button>'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer" data-node-id="' + p.nodeId + '" onclick="meshReject(this.dataset.nodeId)">Reject</button>'
             + '</div></div>';
         }).join('');
       }
@@ -1710,7 +1710,7 @@ async function loadMeshPanel() {
             + '<div style="font-weight:600;font-size:13px;color:var(--text-bright)">' + p.hostname + '</div>'
             + '<div style="font-size:11px;color:var(--text-dim)">' + (p.address||'ws') + ':' + (p.port||'') + ' — ' + (p.models||[]).length + ' models — load: <span style="color:' + loadColor + '">' + loadPct + '%</span></div>'
             + '</div>'
-            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:var(--bg2);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="meshRevoke(\\'' + p.nodeId + '\\')">Disconnect</button>'
+            + '<button class="btn" style="padding:4px 10px;font-size:11px;background:var(--bg2);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;cursor:pointer" data-node-id="' + p.nodeId + '" onclick="meshRevoke(this.dataset.nodeId)">Disconnect</button>'
             + '</div>';
         }).join('');
       }

@@ -4,6 +4,25 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.5] — 2026-03-09
+
+### Added
+- **Visual Workflow Builder** — drag-and-drop recipe/pipeline editor in dashboard
+  - Node-graph canvas visualization of workflow steps (HTML5 Canvas)
+  - Step builder with prompt, tool, and awaitConfirm fields
+  - Add/remove steps with live canvas update
+  - YAML export/import for workflow sharing
+  - 7 REST API endpoints: `GET/POST/PUT/DELETE /api/recipes`, `/api/recipes/builtin/templates`, `/api/recipes/import`
+  - Workflow execution from dashboard (sends steps to agent chat)
+  - 6 builtin recipe templates (code-review, standup, explain, brainstorm, debug, briefing)
+  - 12 workflow tests (YAML roundtrip, store integration, parameter handling)
+
+### Changed
+- Recipe store now exports `importRecipeYaml` and `exportRecipeYaml` for YAML serialization
+- Dashboard nav updated with Workflows panel
+
+---
+
 ## [2026.9.4] — 2026-03-09
 
 ### Added

@@ -1,7 +1,7 @@
 # TITAN Architecture
 
 > **TITAN -- The Intelligent Task Automation Network**
-> v2026.6.7
+> v2026.9.5
 
 ## System Overview
 
@@ -267,7 +267,8 @@ src/
 |   +-- router.ts           # Provider router + failover
 |   +-- authResolver.ts     # Auth profile rotation
 +-- recipes/
-|   +-- ...                 # Recipe system (multi-step workflows)
+|   +-- store.ts            # Recipe CRUD, YAML export/import
+|   +-- types.ts            # Recipe & RecipeStep interfaces
 +-- security/
 |   +-- sandbox.ts          # Session security contexts
 |   +-- teams.ts            # Team Mode RBAC (roles, members, invites, permissions)

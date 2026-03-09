@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,517 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,561 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
-  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C517-brightgreen" alt="3,517 Tests"/></a>
+  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C561-brightgreen" alt="3,561 Tests"/></a>
 </p>
 
 <p align="center">

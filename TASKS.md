@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
 **Last Updated:** 2026-03-09
-**Current Version:** 2026.8.0
+**Current Version:** 2026.9.5
 
 ---
 
@@ -150,7 +150,7 @@
 
 ---
 
-## Current State (v2026.9.4)
+## Current State (v2026.9.5)
 
 | Metric | Value |
 |--------|-------|
@@ -158,7 +158,7 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | ~3,549 across 107 files |
+| Tests | ~3,561 across 107 files |
 | Line Coverage | ~82% |
 | MCP | Client + Server (expose tools to other agents) |
 | Voice | LiveKit WebRTC (replaced custom pipeline) |
@@ -172,6 +172,7 @@
 | Team Mode RBAC | Yes (owner/admin/operator/viewer, invites, per-role tool permissions) |
 | Plugin SDK | Yes (skill scaffolding CLI for JS/TS/YAML) |
 | Cloud Deploy | Yes (one-line install, Railway/Render/Replit, optimized Docker) |
+| Visual Workflows | Yes (drag-and-drop builder, YAML export/import, node-graph canvas, 7 recipe API endpoints) |
 
 ---
 

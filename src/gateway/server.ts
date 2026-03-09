@@ -47,7 +47,7 @@ import { initSlashCommands, handleSlashCommand } from './slashCommands.js';
 import { initMcpServers } from '../mcp/registry.js';
 import { mountMcpHttpEndpoints, getMcpServerStatus } from '../mcp/server.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
-import { seedBuiltinRecipes } from '../recipes/store.js';
+import { seedBuiltinRecipes, listRecipes, getRecipe, saveRecipe, deleteRecipe, getBuiltinRecipes, importRecipeYaml } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
 import { initLearning, getLearningStats } from '../memory/learning.js';
@@ -1222,6 +1222,54 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/teams/:teamId/tools/:toolName/check/:userId', (req, res) => {
     const allowed = isToolAllowed(req.params.teamId, req.params.userId, req.params.toolName);
     res.json({ allowed, tool: req.params.toolName, userId: req.params.userId });
+  });
+
+  // ── Recipes / Workflow API ──────────────────────────────────────
+
+  app.get('/api/recipes', (_req, res) => {
+    res.json({ recipes: listRecipes() });
+  });
+
+  app.get('/api/recipes/:id', (req, res) => {
+    const recipe = getRecipe(req.params.id);
+    if (!recipe) { res.status(404).json({ error: 'Recipe not found' }); return; }
+    res.json({ recipe });
+  });
+
+  app.post('/api/recipes', (req, res) => {
+    const recipe = req.body;
+    if (!recipe.id || !recipe.name || !recipe.steps) {
+      res.status(400).json({ error: 'id, name, and steps are required' }); return;
+    }
+    if (!recipe.createdAt) recipe.createdAt = new Date().toISOString();
+    saveRecipe(recipe);
+    res.status(201).json({ recipe });
+  });
+
+  app.put('/api/recipes/:id', (req, res) => {
+    const existing = getRecipe(req.params.id);
+    if (!existing) { res.status(404).json({ error: 'Recipe not found' }); return; }
+    const updated = { ...existing, ...req.body, id: req.params.id };
+    saveRecipe(updated);
+    res.json({ recipe: updated });
+  });
+
+  app.delete('/api/recipes/:id', (req, res) => {
+    if (!getRecipe(req.params.id)) { res.status(404).json({ error: 'Recipe not found' }); return; }
+    deleteRecipe(req.params.id);
+    res.json({ deleted: true });
+  });
+
+  app.get('/api/recipes/builtin/templates', (_req, res) => {
+    res.json({ templates: getBuiltinRecipes() });
+  });
+
+  app.post('/api/recipes/import', express.text({ type: 'text/*' }), (req, res) => {
+    try {
+      const recipe = importRecipeYaml(req.body);
+      saveRecipe(recipe);
+      res.status(201).json({ recipe });
+    } catch (e) { res.status(400).json({ error: (e as Error).message }); }
   });
 
   // ── Plugins API ────────────────────────────────────────────────

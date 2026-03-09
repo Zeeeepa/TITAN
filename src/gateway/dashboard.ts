@@ -325,6 +325,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-item" data-panel="autopilot" data-load="autopilot"><span class="icon">🚁</span>Autopilot</div>
     <div class="nav-item" data-panel="security"><span class="icon">🔒</span>Security</div>
     <div class="nav-item" data-panel="logs" data-load="logs"><span class="icon">📜</span>Logs</div>
+    <div class="nav-item" data-panel="workflows" data-load="workflows"><span class="icon">🔀</span>Workflows</div>
     <div class="nav-item" data-panel="graphiti" data-load="graphiti"><span class="icon">🕸️</span>Memory Graph</div>
   </nav>
   <div class="sidebar-footer">
@@ -927,6 +928,40 @@ tr:hover{background:rgba(6,182,212,.03)}
     </div>
 
     <!-- Memory Graph Panel -->
+    <div id="panel-workflows" class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="wfNew()">+ New Workflow</button>
+          <button class="btn" onclick="wfImportYaml()">Import YAML</button>
+        </div>
+        <span id="wf-count" style="color:#94a3b8;font-size:13px"></span>
+      </div>
+      <div id="wf-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px"></div>
+      <div id="wf-editor" style="display:none;margin-top:16px">
+        <div style="background:rgba(17,24,39,0.7);border:1px solid #2a3050;border-radius:12px;padding:20px">
+          <h3 id="wf-editor-title" style="color:#06b6d4;margin-bottom:16px">New Workflow</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+            <div><label style="font-size:11px;color:#94a3b8;text-transform:uppercase">Name</label><input id="wf-name" class="input" placeholder="My Workflow"></div>
+            <div><label style="font-size:11px;color:#94a3b8;text-transform:uppercase">Slash Command</label><input id="wf-slash" class="input" placeholder="my-workflow"></div>
+          </div>
+          <div style="margin-bottom:16px"><label style="font-size:11px;color:#94a3b8;text-transform:uppercase">Description</label><input id="wf-desc" class="input" placeholder="What does this workflow do?" style="width:100%"></div>
+          <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px;color:#06b6d4;font-weight:600">Steps</span>
+            <button class="btn" onclick="wfAddStep()" style="font-size:12px;padding:4px 12px">+ Step</button>
+          </div>
+          <div id="wf-steps" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="margin-top:16px">
+            <canvas id="wf-canvas" width="700" height="120" style="width:100%;border:1px solid #2a3050;border-radius:8px;background:rgba(10,14,26,0.5)"></canvas>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn" onclick="wfSave()" style="background:#06b6d4;color:#0a0e1a">Save Workflow</button>
+            <button class="btn" onclick="wfExportYaml()">Export YAML</button>
+            <button class="btn" onclick="wfCancel()" style="opacity:0.7">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="panel-graphiti" class="panel">
       <div class="card-grid">
         <div class="stat-card cyan"><div class="stat-label">Graph Status</div><div class="stat-value" id="g-neo4j" style="font-size:18px">—</div></div>
@@ -1127,6 +1162,7 @@ document.addEventListener('click', (e) => {
     showPanel(target.dataset.panel, target);
     if (target.dataset.load === 'config') { loadConfig(); populateModels(); loadProfileTab(); }
     if (target.dataset.load === 'logs') startLogs();
+    if (target.dataset.load === 'workflows') loadWorkflows();
     if (target.dataset.load === 'graphiti') loadGraphiti();
     if (target.dataset.load === 'autopilot') loadAutopilot();
     if (target.dataset.load === 'telemetry') loadTelemetry();
@@ -1214,7 +1250,7 @@ const panelTitles = {
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
   sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
   logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot',
-  telemetry:'📈 Telemetry'
+  telemetry:'📈 Telemetry', workflows:'🔀 Workflows'
 };
 
 // ── Contextual Hints ────────────────────────────────────────────────
@@ -1231,6 +1267,7 @@ const panelHints = {
   autopilot: 'Tip: Autopilot runs on a schedule. Add tasks to AUTOPILOT.md or use goal mode.',
   agents: 'Tip: Each agent runs independently with its own session and tool access.',
   graphiti: 'Tip: The memory graph stores relationships between entities for richer context.',
+  workflows: 'Tip: Workflows are reusable multi-step recipes. Export as YAML to share with your team.',
 };
 let hintDismissed = false;
 
@@ -2336,6 +2373,253 @@ async function runAutopilotNow() {
 // ── Graphiti ──────────────────────────────────────────────────────
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Workflows Panel ──────────────────────────────────────────
+let wfEditingId = null;
+let wfStepCount = 0;
+
+async function loadWorkflows() {
+  try {
+    const res = await authFetch('/api/recipes');
+    const data = await res.json();
+    const recipes = data.recipes || [];
+    document.getElementById('wf-count').textContent = recipes.length + ' workflow' + (recipes.length !== 1 ? 's' : '');
+    const list = document.getElementById('wf-list');
+    if (recipes.length === 0) {
+      list.innerHTML = '<div style="color:#94a3b8;padding:20px;text-align:center">No workflows yet. Click <b>+ New Workflow</b> to create one.</div>';
+      return;
+    }
+    list.innerHTML = recipes.map(r => {
+      const stepCount = (r.steps || []).length;
+      const slash = r.slashCommand ? '<span style="color:#06b6d4">/' + esc(r.slashCommand) + '</span> · ' : '';
+      const lastRun = r.lastRunAt ? 'Last run: ' + new Date(r.lastRunAt).toLocaleDateString() : 'Never run';
+      return '<div style="background:rgba(17,24,39,0.7);border:1px solid #2a3050;border-radius:10px;padding:16px;cursor:pointer" onclick="wfEdit(\\'' + esc(r.id) + '\\')">' +
+        '<div style="font-weight:600;color:#e2e8f0;margin-bottom:4px">' + esc(r.name) + '</div>' +
+        '<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">' + esc(r.description || '') + '</div>' +
+        '<div style="font-size:11px;color:#64748b">' + slash + stepCount + ' step' + (stepCount !== 1 ? 's' : '') + ' · ' + lastRun + '</div>' +
+        '<div style="margin-top:8px;display:flex;gap:6px">' +
+          '<button class="btn" onclick="event.stopPropagation();wfRun(\\'' + esc(r.id) + '\\')" style="font-size:11px;padding:3px 10px">Run</button>' +
+          '<button class="btn" onclick="event.stopPropagation();wfDelete(\\'' + esc(r.id) + '\\')" style="font-size:11px;padding:3px 10px;opacity:0.6">Delete</button>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) { console.error('loadWorkflows:', e); }
+}
+
+function wfNew() {
+  wfEditingId = null;
+  wfStepCount = 0;
+  document.getElementById('wf-editor-title').textContent = 'New Workflow';
+  document.getElementById('wf-name').value = '';
+  document.getElementById('wf-slash').value = '';
+  document.getElementById('wf-desc').value = '';
+  document.getElementById('wf-steps').innerHTML = '';
+  document.getElementById('wf-list').style.display = 'none';
+  document.getElementById('wf-editor').style.display = 'block';
+  wfAddStep();
+  wfDrawCanvas();
+}
+
+async function wfEdit(id) {
+  try {
+    const res = await authFetch('/api/recipes/' + id);
+    const { recipe } = await res.json();
+    wfEditingId = id;
+    wfStepCount = 0;
+    document.getElementById('wf-editor-title').textContent = 'Edit: ' + recipe.name;
+    document.getElementById('wf-name').value = recipe.name || '';
+    document.getElementById('wf-slash').value = recipe.slashCommand || '';
+    document.getElementById('wf-desc').value = recipe.description || '';
+    document.getElementById('wf-steps').innerHTML = '';
+    for (const step of recipe.steps || []) {
+      wfAddStep(step.prompt, step.tool, step.awaitConfirm);
+    }
+    document.getElementById('wf-list').style.display = 'none';
+    document.getElementById('wf-editor').style.display = 'block';
+    wfDrawCanvas();
+  } catch (e) { console.error('wfEdit:', e); }
+}
+
+function wfAddStep(prompt, tool, awaitConfirm) {
+  const idx = wfStepCount++;
+  const container = document.getElementById('wf-steps');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:10px;background:rgba(10,14,26,0.5);border:1px solid #2a3050;border-radius:8px';
+  div.id = 'wf-step-' + idx;
+  div.innerHTML =
+    '<span style="color:#06b6d4;font-weight:bold;min-width:24px;padding-top:8px">' + (idx + 1) + '</span>' +
+    '<div style="flex:1;display:flex;flex-direction:column;gap:6px">' +
+      '<textarea class="input wf-prompt" rows="2" placeholder="Step prompt... Use {{param}} for parameters" style="resize:vertical;font-size:13px">' + esc(prompt || '') + '</textarea>' +
+      '<div style="display:flex;gap:8px">' +
+        '<input class="input wf-tool" placeholder="Tool (optional)" value="' + esc(tool || '') + '" style="width:140px;font-size:12px">' +
+        '<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8"><input type="checkbox" class="wf-confirm"' + (awaitConfirm ? ' checked' : '') + '> Confirm</label>' +
+      '</div>' +
+    '</div>' +
+    '<button onclick="wfRemoveStep(' + idx + ')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:8px">✕</button>';
+  container.appendChild(div);
+  wfDrawCanvas();
+}
+
+function wfRemoveStep(idx) {
+  const el = document.getElementById('wf-step-' + idx);
+  if (el) el.remove();
+  wfDrawCanvas();
+}
+
+function wfDrawCanvas() {
+  const canvas = document.getElementById('wf-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const steps = document.querySelectorAll('#wf-steps > div');
+  const n = steps.length;
+  canvas.height = 80;
+  canvas.width = canvas.parentElement.clientWidth || 700;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (n === 0) return;
+  const pad = 40;
+  const nodeW = 100;
+  const spacing = Math.min((canvas.width - pad * 2 - nodeW) / Math.max(n - 1, 1), 160);
+  for (let i = 0; i < n; i++) {
+    const x = pad + i * spacing;
+    const y = 30;
+    // Draw connection line
+    if (i > 0) {
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(pad + (i - 1) * spacing + nodeW, y + 12);
+      ctx.lineTo(x, y + 12);
+      ctx.stroke();
+      // Arrow
+      ctx.fillStyle = '#06b6d4';
+      ctx.beginPath();
+      ctx.moveTo(x, y + 12);
+      ctx.lineTo(x - 6, y + 7);
+      ctx.lineTo(x - 6, y + 17);
+      ctx.fill();
+    }
+    // Draw node
+    ctx.fillStyle = 'rgba(6,182,212,0.15)';
+    ctx.strokeStyle = '#06b6d4';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, nodeW, 24, 6);
+    ctx.fill();
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '11px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Step ' + (i + 1), x + nodeW / 2, y + 16);
+  }
+}
+
+async function wfSave() {
+  const name = document.getElementById('wf-name').value.trim();
+  if (!name) { alert('Workflow name is required'); return; }
+  const id = wfEditingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const steps = [];
+  document.querySelectorAll('#wf-steps > div').forEach(div => {
+    const prompt = div.querySelector('.wf-prompt')?.value?.trim();
+    if (!prompt) return;
+    const tool = div.querySelector('.wf-tool')?.value?.trim() || undefined;
+    const awaitConfirm = div.querySelector('.wf-confirm')?.checked || false;
+    steps.push({ prompt, tool, awaitConfirm: awaitConfirm || undefined });
+  });
+  if (steps.length === 0) { alert('Add at least one step'); return; }
+  const recipe = {
+    id, name,
+    description: document.getElementById('wf-desc').value.trim(),
+    slashCommand: document.getElementById('wf-slash').value.trim() || undefined,
+    steps,
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    const method = wfEditingId ? 'PUT' : 'POST';
+    const url = wfEditingId ? '/api/recipes/' + id : '/api/recipes';
+    await authFetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(recipe) });
+    wfCancel();
+    loadWorkflows();
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+
+function wfCancel() {
+  document.getElementById('wf-editor').style.display = 'none';
+  document.getElementById('wf-list').style.display = 'grid';
+}
+
+async function wfDelete(id) {
+  if (!confirm('Delete this workflow?')) return;
+  try {
+    await authFetch('/api/recipes/' + id, { method: 'DELETE' });
+    loadWorkflows();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+async function wfRun(id) {
+  showPanel('chat');
+  const chatInput = document.getElementById('chat-input');
+  if (chatInput) {
+    const res = await authFetch('/api/recipes/' + id);
+    const { recipe } = await res.json();
+    chatInput.value = '/' + (recipe.slashCommand || recipe.id);
+    chatInput.focus();
+  }
+}
+
+async function wfExportYaml() {
+  const name = document.getElementById('wf-name').value.trim();
+  const id = wfEditingId || name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const steps = [];
+  document.querySelectorAll('#wf-steps > div').forEach(div => {
+    const prompt = div.querySelector('.wf-prompt')?.value?.trim();
+    if (prompt) steps.push('  - prompt: "' + prompt.replace(/"/g, '\\\\"') + '"');
+  });
+  const yaml = '# TITAN Workflow: ' + name + '\\nid: ' + id + '\\nname: "' + name + '"\\n' +
+    'description: "' + (document.getElementById('wf-desc').value || '') + '"\\n' +
+    (document.getElementById('wf-slash').value ? 'slashCommand: ' + document.getElementById('wf-slash').value + '\\n' : '') +
+    'steps:\\n' + steps.join('\\n') + '\\n';
+  const blob = new Blob([yaml.replace(/\\\\n/g, '\\n')], { type: 'text/yaml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (id || 'workflow') + '.yaml';
+  a.click();
+}
+
+function wfImportYaml() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.yaml,.yml';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const res = await authFetch('/api/recipes/import', { method: 'POST', headers: {'Content-Type': 'text/yaml'}, body: text });
+      if (res.ok) { loadWorkflows(); } else { alert('Import failed'); }
+    } catch (err) {
+      // Fallback: parse YAML client-side (basic)
+      const lines = text.split('\\n');
+      const recipe = { steps: [], createdAt: new Date().toISOString() };
+      let inSteps = false;
+      for (const line of lines) {
+        if (line.startsWith('#')) continue;
+        if (line.startsWith('id:')) recipe.id = line.split(':').slice(1).join(':').trim().replace(/['"]/g, '');
+        if (line.startsWith('name:')) recipe.name = line.split(':').slice(1).join(':').trim().replace(/['"]/g, '');
+        if (line.startsWith('description:')) recipe.description = line.split(':').slice(1).join(':').trim().replace(/['"]/g, '');
+        if (line.startsWith('slashCommand:')) recipe.slashCommand = line.split(':').slice(1).join(':').trim();
+        if (line.startsWith('steps:')) { inSteps = true; continue; }
+        if (inSteps && line.trim().startsWith('- prompt:')) {
+          recipe.steps.push({ prompt: line.trim().replace(/^- prompt:\\s*["']?/, '').replace(/["']$/, '') });
+        }
+      }
+      if (recipe.id && recipe.name && recipe.steps.length) {
+        await authFetch('/api/recipes', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(recipe) });
+        loadWorkflows();
+      } else { alert('Invalid YAML format'); }
+    }
+  };
+  input.click();
 }
 
 async function loadGraphiti() {

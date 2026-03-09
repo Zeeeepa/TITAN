@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
-import type { Recipe } from './types.js';
+import type { Recipe, RecipeStep } from './types.js';
 
 const RECIPES_DIR = join(TITAN_HOME, 'recipes');
 
@@ -155,4 +155,90 @@ export function seedBuiltinRecipes(): void {
             saveRecipe(r);
         }
     }
+}
+
+/** Export a recipe to YAML format */
+export function exportRecipeYaml(recipe: Recipe): string {
+    const lines: string[] = [];
+    lines.push(`# TITAN Workflow: ${recipe.name}`);
+    lines.push(`id: ${recipe.id}`);
+    lines.push(`name: "${recipe.name}"`);
+    lines.push(`description: "${recipe.description}"`);
+    if (recipe.slashCommand) lines.push(`slashCommand: ${recipe.slashCommand}`);
+    if (recipe.author) lines.push(`author: "${recipe.author}"`);
+    if (recipe.tags?.length) lines.push(`tags: [${recipe.tags.join(', ')}]`);
+
+    if (recipe.parameters && Object.keys(recipe.parameters).length > 0) {
+        lines.push('parameters:');
+        for (const [key, param] of Object.entries(recipe.parameters)) {
+            lines.push(`  ${key}:`);
+            lines.push(`    description: "${param.description}"`);
+            lines.push(`    required: ${param.required}`);
+            if (param.default) lines.push(`    default: "${param.default}"`);
+        }
+    }
+
+    lines.push('steps:');
+    for (const step of recipe.steps) {
+        lines.push(`  - prompt: "${step.prompt.replace(/"/g, '\\"')}"`);
+        if (step.tool) lines.push(`    tool: ${step.tool}`);
+        if (step.awaitConfirm) lines.push(`    awaitConfirm: true`);
+    }
+
+    return lines.join('\n') + '\n';
+}
+
+/** Import a recipe from simple YAML-like format */
+export function importRecipeYaml(yaml: string): Recipe {
+    const lines = yaml.split('\n').filter(l => !l.startsWith('#') && l.trim());
+    const recipe: Partial<Recipe> = { steps: [], createdAt: new Date().toISOString() };
+
+    let inSteps = false;
+    let inParams = false;
+    let currentStep: Partial<RecipeStep> = {};
+    let currentParamKey = '';
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('steps:')) { inSteps = true; inParams = false; continue; }
+        if (trimmed.startsWith('parameters:')) { inParams = true; inSteps = false; recipe.parameters = {}; continue; }
+
+        if (!inSteps && !inParams) {
+            const [key, ...rest] = trimmed.split(':');
+            const val = rest.join(':').trim().replace(/^["']|["']$/g, '');
+            if (key === 'id') recipe.id = val;
+            else if (key === 'name') recipe.name = val;
+            else if (key === 'description') recipe.description = val;
+            else if (key === 'slashCommand') recipe.slashCommand = val;
+            else if (key === 'author') recipe.author = val;
+            else if (key === 'tags') recipe.tags = val.replace(/[[\]]/g, '').split(',').map(t => t.trim());
+        } else if (inParams) {
+            if (line.match(/^\s{2}\w+:$/)) {
+                currentParamKey = trimmed.replace(':', '');
+                if (recipe.parameters) recipe.parameters[currentParamKey] = { description: '', required: false };
+            } else if (currentParamKey && recipe.parameters) {
+                const [k, ...v] = trimmed.split(':');
+                const val = v.join(':').trim().replace(/^["']|["']$/g, '');
+                if (k.trim() === 'description') recipe.parameters[currentParamKey].description = val;
+                else if (k.trim() === 'required') recipe.parameters[currentParamKey].required = val === 'true';
+                else if (k.trim() === 'default') recipe.parameters[currentParamKey].default = val;
+            }
+        } else if (inSteps) {
+            if (trimmed.startsWith('- prompt:')) {
+                if (currentStep.prompt) recipe.steps!.push(currentStep as RecipeStep);
+                currentStep = { prompt: trimmed.replace(/^- prompt:\s*["']?/, '').replace(/["']$/, '') };
+            } else if (trimmed.startsWith('tool:')) {
+                currentStep.tool = trimmed.replace('tool:', '').trim();
+            } else if (trimmed.startsWith('awaitConfirm:')) {
+                currentStep.awaitConfirm = trimmed.includes('true');
+            }
+        }
+    }
+    if (currentStep.prompt) recipe.steps!.push(currentStep as RecipeStep);
+
+    if (!recipe.id || !recipe.name || !recipe.steps?.length) {
+        throw new Error('Invalid YAML: id, name, and at least one step are required');
+    }
+
+    return recipe as Recipe;
 }

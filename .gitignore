@@ -3,7 +3,19 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+.env.*.local
 .DS_Store
 *.log
 coverage/
 target/
+
+# Editor temp files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS/process artifacts
+*.pid
+*.tmp

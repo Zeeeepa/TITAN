@@ -156,7 +156,7 @@
 |--------|-------|
 | Providers | 34 (4 native + 30 OpenAI-compat) |
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
-| Built-in Skills | 39 files |
+| Built-in Skills | 38 files |
 | Tools | ~108 registered |
 | Tests | ~3,561 across 107 files |
 | Line Coverage | ~82% |
@@ -203,19 +203,19 @@ Focus on making existing features work correctly before adding new ones.
 - [ ] Multi-layer sandbox (Landlock, Firejail, Bubblewrap auto-detect)
 
 ### Expand What Works
-- [x] 21 providers (Venice, Bedrock, Azure, LiteLLM, DeepInfra, SambaNova, Kimi K2.5)
-- [ ] More channels (IRC, Lark, Email inbound, Mattermost, iMessage)
-- [ ] Vector search + RAG pipeline (SQLite FTS5, embeddings)
+- [x] 34 providers (4 native + 30 OpenAI-compatible) — expanded in v2026.8.0
+- [x] 15 channels (added IRC, Mattermost, Lark, Email, LINE, Zulip in v2026.8.0)
+- [x] Vector search + RAG pipeline (SQLite FTS5 + embeddings) — shipped in v2026.7.0
 - [ ] Memory hygiene (auto-archive stale entities, configurable retention)
-- [ ] Streaming to dashboard (real-time token delivery in WebChat)
-- [ ] Code interpreter skill (sandboxed JS/Python execution)
+- [x] Streaming to dashboard (SSE + WebSocket token delivery) — shipped in v2026.7.0
+- [x] Code interpreter skill (sandboxed JS/Python execution) — shipped as code_exec in v2026.6.0
 
 ---
 
 ## NEXT: Batch 10 — Polish & Expand
 
 ### Performance & Reliability
-- [ ] Streaming response for /api/message — return tokens as they arrive
+- [x] Streaming response for /api/message — SSE with `Accept: text/event-stream` (v2026.7.0)
 - [ ] Ollama model auto-detect — read parameter count, auto-set small model mode
 - [ ] Inference timeout — configurable hard timeout for LLM calls
 - [ ] Connection pooling — reuse HTTP connections to providers
@@ -227,7 +227,7 @@ Focus on making existing features work correctly before adding new ones.
 - [ ] Mobile-responsive dashboard — CSS media queries for small screens
 
 ### New Capabilities
-- [ ] Telemetry Dashboard — usage analytics, cost forecasting, performance trends
+- [x] Telemetry Dashboard — Prometheus metrics + /metrics endpoint (v2026.8.0)
 - [ ] Notion/Jira Skill — project management integration
 - [ ] OAuth Hub — one-click connection to SaaS services
 
@@ -235,19 +235,23 @@ Focus on making existing features work correctly before adding new ones.
 
 ## LATER: Scale & Ecosystem
 
-Only after the above is solid:
-
-- [ ] Team Mode — multi-user with RBAC and shared agent pools
+- [x] Team Mode — multi-user with RBAC, invites, per-role tool permissions (v2026.9.2)
 - [ ] Mobile App — React Native companion for iOS/Android
 - [ ] Voice-First Mode — always-on voice assistant (wake word detection)
 - [ ] Agent-to-Agent Protocol — standardized inter-agent communication
-- [ ] Visual workflow builder (drag-and-drop recipe editor)
-- [x] Self-reflection loop (agent evaluates own responses) — shipped in v2026.6.7
+- [x] Visual workflow builder — drag-and-drop recipe editor with YAML export/import (v2026.9.5)
+- [x] Self-reflection loop — agent evaluates own responses (v2026.6.7)
 - [ ] Evaluation framework (benchmark agent quality)
 - [ ] WASM runtime / edge deployment
 - [ ] Hardware peripherals (Arduino, RPi GPIO)
-- [ ] Plugin SDK for third-party developers
+- [x] Plugin SDK — skill scaffolding CLI for JS/TS/YAML (v2026.9.1)
 - [ ] PWA version of Mission Control
+- [x] MCP Server Mode — expose tools via Model Context Protocol (v2026.9.0)
+- [x] Cloud Deploy — one-line install, Railway/Render/Replit (v2026.9.4)
+- [x] Fallback Model Chains — auto-cascade on provider failure (v2026.8.0)
+- [x] Deep Research Agent — multi-step search with citations (v2026.8.0)
+- [x] ContextEngine Plugins — lifecycle hooks for extensible context management (v2026.8.0)
+- [x] Adaptive Teaching — first-run wizard, progressive skill reveal (v2026.7.0)
 
 ---
 
@@ -259,7 +263,8 @@ Only after the above is solid:
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
 | Phase 5 | 2,856 | 69 | ~72% |
 | Phase 6 | 3,171 | 81 | ~80.7% |
-| Phase 7 (current) | 3,323 | 94 | ~82% |
+| Phase 7 | 3,323 | 94 | ~82% |
+| Phase 9 (current) | 3,561 | 107 | ~82% |
 
 ---
 

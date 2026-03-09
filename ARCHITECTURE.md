@@ -278,6 +278,7 @@ src/
 +-- skills/
 |   +-- registry.ts         # Skill discovery, loading, toggle
 |   +-- marketplace.ts      # GitHub-hosted skills marketplace
+|   +-- scaffold.ts         # Plugin SDK: skill template generation (JS/TS/YAML)
 |   +-- builtin/            # 36 built-in skill files (95 tools)
 |       +-- shell.ts        # Shell execution
 |       +-- filesystem.ts   # File operations

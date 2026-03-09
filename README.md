@@ -503,6 +503,10 @@ Works with all 21 providers. Especially beneficial for smaller local models wher
 | `titan mesh --auto-approve` | Toggle auto-approve mode |
 | `titan skills` | List installed skills |
 | `titan skills --create "..."` | Generate a skill with AI |
+| `titan skills --scaffold --name <n> --format js\|ts\|yaml` | Scaffold a skill project from template |
+| `titan create-skill <name>` | Alias for skill scaffolding |
+| `titan skills --test <name>` | Test a skill with sample arguments |
+| `titan mcp-server` | Launch as stdio MCP server for external clients |
 | `titan pairing` | Manage DM access control |
 | `titan doctor` | System diagnostics |
 | `titan doctor --fix` | Auto-fix detected issues |
@@ -523,7 +527,22 @@ Works with all 21 providers. Especially beneficial for smaller local models wher
 
 ## Custom Skills
 
-Create new tools in seconds. Drop files into `~/.titan/skills/`:
+Create new tools in seconds. Use the scaffolding CLI or drop files into `~/.titan/skills/`:
+
+### Scaffold a Skill (Recommended)
+
+```bash
+# Generate a full skill project with template, metadata, and tests
+titan create-skill my_tool --format ts
+
+# Or use the long form
+titan skills --scaffold --name my_tool --format js --description "Fetches data" --author "Your Name"
+
+# Test your skill
+titan skills --test my_tool
+```
+
+This creates `~/.titan/skills/my_tool/` with the skill source, `SKILL.md` metadata, and a test file.
 
 ### YAML (Easiest)
 

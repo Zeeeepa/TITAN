@@ -4,6 +4,14 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Use vi.hoisted so mock functions are shared between factory and tests
+const fsMocks = vi.hoisted(() => ({
+    existsSync: vi.fn().mockReturnValue(false),
+    readFileSync: vi.fn().mockReturnValue(''),
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+}));
+
 vi.mock('../src/utils/logger.js', () => ({
     default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -14,13 +22,7 @@ vi.mock('../src/utils/constants.js', () => ({
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
-    return {
-        ...actual,
-        existsSync: vi.fn().mockReturnValue(false),
-        readFileSync: vi.fn().mockReturnValue(''),
-        writeFileSync: vi.fn(),
-        mkdirSync: vi.fn(),
-    };
+    return { ...actual, ...fsMocks };
 });
 
 vi.mock('../src/memory/relationship.js', () => ({
@@ -157,18 +159,20 @@ describe('Daily Briefing', () => {
 
     describe('checkAndSendBriefing', () => {
         it('should not send if already run today', async () => {
-            const { existsSync, readFileSync } = await import('fs');
-            vi.mocked(existsSync).mockReturnValue(true);
-            vi.mocked(readFileSync).mockReturnValue(new Date().toISOString());
+            fsMocks.existsSync.mockReturnValue(true);
+            fsMocks.readFileSync.mockReturnValue(new Date().toISOString());
 
             const sender = vi.fn();
             await checkAndSendBriefing(sender);
             expect(sender).not.toHaveBeenCalled();
+
+            // Restore defaults
+            fsMocks.existsSync.mockReturnValue(false);
+            fsMocks.readFileSync.mockReturnValue('');
         });
 
         it('should not send outside morning window (6am-11am)', async () => {
-            const { existsSync } = await import('fs');
-            vi.mocked(existsSync).mockReturnValue(false);
+            fsMocks.existsSync.mockReturnValue(false);
 
             // Only test if we're outside the window
             const hour = new Date().getHours();
@@ -180,8 +184,7 @@ describe('Daily Briefing', () => {
         });
 
         it('should handle sender errors gracefully', async () => {
-            const { existsSync } = await import('fs');
-            vi.mocked(existsSync).mockReturnValue(false);
+            fsMocks.existsSync.mockReturnValue(false);
 
             const hour = new Date().getHours();
             if (hour >= 6 && hour < 12) {

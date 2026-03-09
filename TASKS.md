@@ -113,9 +113,21 @@
   - Security: respects denied/allowed tools and skill enable state
   - 15 tests
 
+### Phase 12: Plugin SDK + Skill Scaffolding (v2026.9.1)
+- **Skill Scaffolding CLI**: Generate skill project templates for third-party developers
+  - `titan skills --scaffold --name <name> --format js|ts|yaml` — generates skill directory with source, SKILL.md, and test file
+  - `titan create-skill <name>` — top-level alias for quick scaffolding
+  - `titan skills --test <name>` — load and execute a skill with sample arguments
+  - `titan mcp-server` — launch TITAN as a stdio MCP server for external clients
+  - JS/TS/YAML templates with parameter schemas, exports, and example implementations
+  - SKILL.md frontmatter metadata (name, version, author, category)
+  - Auto-generated test files for each scaffold
+  - Name sanitization (special chars → underscores)
+  - 8 tests
+
 ---
 
-## Current State (v2026.9.0)
+## Current State (v2026.9.1)
 
 | Metric | Value |
 |--------|-------|
@@ -123,7 +135,7 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | ~3,476 across 103 files |
+| Tests | ~3,485 across 105 files |
 | Line Coverage | ~82% |
 | MCP | Client + Server (expose tools to other agents) |
 | Voice | LiveKit WebRTC (replaced custom pipeline) |

@@ -4,6 +4,23 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.1] — 2026-03-09
+
+### Added
+- **Plugin SDK + Skill Scaffolding** — CLI templates for rapid third-party skill development
+  - `titan skills --scaffold --name <name> --format js|ts|yaml` generates full project structure
+  - `titan create-skill <name>` alias command for quick scaffolding
+  - SKILL.md frontmatter metadata per skill (name, version, author, category)
+  - `titan skills --test <name>` to load and execute skills with sample arguments
+  - `titan mcp-server` to launch stdio MCP transport for external clients
+  - JS/TS/YAML templates with parameter schemas, exports, and auto-generated test files
+
+### Fixed
+- Fixed briefing test mock hoisting issue (vi.hoisted for shared fs mock references)
+- Fixed scaffold test mock hoisting issue (vi.hoisted for testHome variable)
+
+---
+
 ## [2026.9.0] — 2026-03-09
 
 ### Added

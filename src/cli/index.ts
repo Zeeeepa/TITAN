@@ -27,6 +27,7 @@ import { listRecipes, getRecipe, deleteRecipe, seedBuiltinRecipes } from '../rec
 import { runRecipe } from '../recipes/runner.js';
 import { listMonitors, addMonitor, removeMonitor } from '../agent/monitor.js';
 import { searchSkills, installSkill, installFromUrl } from '../skills/marketplace.js';
+import { scaffoldSkill, testSkill } from '../skills/scaffold.js';
 import { checkForUpdates } from '../utils/updater.js';
 
 const program = new Command();
@@ -228,6 +229,11 @@ program
     .option('--list', 'List all installed skills')
     .option('--create <description>', 'Create a new skill from natural language (AI-generated)')
     .option('--name <name>', 'Name for the new skill (used with --create)')
+    .option('--scaffold <name>', 'Scaffold a new skill project from template')
+    .option('--format <format>', 'Scaffold format: js, ts, or yaml (default: js)')
+    .option('--description <desc>', 'Skill description (used with --scaffold)')
+    .option('--author <author>', 'Skill author (used with --scaffold)')
+    .option('--test <name>', 'Test a skill by loading and executing with sample args')
     .option('--search <query>', 'Search TITAN Skills Marketplace')
     .option('--install <name>', 'Install a skill (from marketplace or URL) — security scanned automatically')
     .option('--remove <name>', 'Remove an installed skill')
@@ -236,7 +242,33 @@ program
         initMemory();
         await initBuiltinSkills();
 
-        if (options.create) {
+        if (options.scaffold) {
+            const name = options.scaffold as string;
+            const format = (options.format as 'js' | 'ts' | 'yaml') || 'js';
+            const description = (options.description as string) || `A custom TITAN skill: ${name}`;
+            const author = (options.author as string) || 'TITAN User';
+            console.log(chalk.cyan(`\n🔧 Scaffolding skill "${name}" (${format})...\n`));
+            const result = scaffoldSkill({ name, description, author, format });
+            if (result.success) {
+                console.log(chalk.green(`✅ Skill scaffolded at: ${result.skillDir}\n`));
+                console.log(chalk.white('  Files created:'));
+                for (const f of result.files) console.log(chalk.gray(`    ${f}`));
+                console.log(chalk.gray(`\n  Edit the skill file, then restart TITAN to load it.`));
+                console.log(chalk.gray(`  Test it: titan skills --test ${name}`));
+            } else {
+                console.log(chalk.red(`❌ Scaffold failed: ${result.error}`));
+            }
+        } else if (options.test) {
+            const name = options.test as string;
+            console.log(chalk.cyan(`\n🧪 Testing skill "${name}"...\n`));
+            const result = await testSkill(name);
+            if (result.success) {
+                console.log(chalk.green(`✅ Skill "${name}" passed (${result.durationMs}ms)`));
+                console.log(chalk.gray(`  Output: ${result.output?.slice(0, 500)}`));
+            } else {
+                console.log(chalk.red(`❌ Skill "${name}" failed: ${result.error}`));
+            }
+        } else if (options.create) {
             const description = options.create as string;
             const name = (options.name as string) || description.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 30);
             console.log(chalk.cyan(`\n✨ Generating skill: "${name}"...`));
@@ -299,6 +331,44 @@ program
             console.log(chalk.gray('  Install from marketplace: titan skills --install <name>'));
         }
         process.exit(0);
+    });
+
+// ─── CREATE-SKILL (alias for skills --scaffold) ─────────────────
+program
+    .command('create-skill <name>')
+    .description('Scaffold a new skill project (alias for `skills --scaffold`)')
+    .option('--format <format>', 'Format: js, ts, or yaml (default: js)', 'js')
+    .option('--description <desc>', 'Skill description')
+    .option('--author <author>', 'Skill author')
+    .action(async (name, options) => {
+        const format = (options.format as 'js' | 'ts' | 'yaml') || 'js';
+        const description = (options.description as string) || `A custom TITAN skill: ${name}`;
+        const author = (options.author as string) || 'TITAN User';
+        console.log(chalk.cyan(`\n🔧 Scaffolding skill "${name}" (${format})...\n`));
+        const result = scaffoldSkill({ name, description, author, format });
+        if (result.success) {
+            console.log(chalk.green(`✅ Skill scaffolded at: ${result.skillDir}\n`));
+            console.log(chalk.white('  Files created:'));
+            for (const f of result.files) console.log(chalk.gray(`    ${f}`));
+            console.log(chalk.gray(`\n  Edit the skill file, then restart TITAN to load it.`));
+            console.log(chalk.gray(`  Test it: titan skills --test ${name}`));
+        } else {
+            console.log(chalk.red(`❌ Scaffold failed: ${result.error}`));
+        }
+        process.exit(0);
+    });
+
+// ─── MCP-SERVER (stdio transport) ───────────────────────────────
+program
+    .command('mcp-server')
+    .description('Run TITAN as an MCP server (stdio transport for Claude Code, Cursor, etc.)')
+    .action(async () => {
+        initMemory();
+        await initBuiltinSkills();
+        const { loadAutoSkills } = await import('../skills/registry.js');
+        await loadAutoSkills();
+        const { startStdioServer } = await import('../mcp/server.js');
+        startStdioServer();
     });
 
 // ─── MCP ─────────────────────────────────────────────────────────

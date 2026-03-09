@@ -243,11 +243,22 @@ describe('Gateway Extended', () => {
             expect(res.status).toBe(204);
         });
 
-        it('should set Access-Control-Allow-Methods header', async () => {
-            const res = await fetch(`${BASE}/api/health`, { method: 'OPTIONS' });
+        it('should set Access-Control-Allow-Methods header for allowed origins', async () => {
+            const res = await fetch(`${BASE}/api/health`, {
+                method: 'OPTIONS',
+                headers: { 'Origin': `http://127.0.0.1:${TEST_PORT}` },
+            });
             const methods = res.headers.get('access-control-allow-methods');
             expect(methods).toContain('GET');
             expect(methods).toContain('POST');
+        });
+
+        it('should not set CORS headers for unknown origins', async () => {
+            const res = await fetch(`${BASE}/api/health`, {
+                method: 'OPTIONS',
+                headers: { 'Origin': 'http://evil.com' },
+            });
+            expect(res.headers.get('access-control-allow-methods')).toBeNull();
         });
     });
 

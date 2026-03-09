@@ -55,8 +55,10 @@ import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getR
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
 import { TITAN_WORKSPACE } from '../utils/constants.js';
+import type { VoicePipeline } from '../voice/pipeline.js';
 
 const COMPONENT = 'Gateway';
+let voicePipeline: VoicePipeline | null = null;
 
 /** Get normalized CPU load (0.0–1.0) using 1-minute load average */
 function getCpuLoad(): number {
@@ -204,8 +206,23 @@ function broadcast(data: Record<string, unknown>): void {
   const json = JSON.stringify(data);
   for (const client of wsClients) {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(json);
+      try {
+        client.send(json);
+      } catch (err) {
+        logger.warn(COMPONENT, `Broadcast send failed: ${(err as Error).message}`);
+      }
     }
+  }
+}
+
+/** Safely send a response through a channel adapter */
+async function safeSend(channelName: string, msg: { channel: string; userId: string; groupId?: string; content: string; replyTo?: string }): Promise<void> {
+  const channel = channels.get(channelName);
+  if (!channel) return;
+  try {
+    await channel.send(msg);
+  } catch (err) {
+    logger.warn(COMPONENT, `Channel send failed (${channelName}): ${(err as Error).message}`);
   }
 }
 
@@ -227,8 +244,7 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
   // ── Native slash commands (highest priority) ──────────────────
   const slashResult = await handleSlashCommand(msg.content, msg.channel, msg.userId);
   if (slashResult) {
-    const channel = channels.get(msg.channel);
-    if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: slashResult.response, replyTo: msg.id });
+    await safeSend(msg.channel, { channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: slashResult.response, replyTo: msg.id });
     broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: slashResult.response, timestamp: new Date().toISOString() });
     return;
   }
@@ -245,8 +261,7 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
         const r = await processMessage(step.prompt, msg.channel, msg.userId);
         fullResponse += (fullResponse ? '\n\n' : '') + r.content;
       }
-      const channel = channels.get(msg.channel);
-      if (channel) await channel.send({ channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: fullResponse, replyTo: msg.id });
+      await safeSend(msg.channel, { channel: msg.channel, userId: msg.userId, groupId: msg.groupId, content: fullResponse, replyTo: msg.id });
       broadcast({ type: 'message', direction: 'outbound', channel: msg.channel, userId: msg.userId, content: fullResponse, timestamp: new Date().toISOString() });
       return;
     } catch {
@@ -259,16 +274,13 @@ async function handleInboundMessage(msg: InboundMessage): Promise<void> {
     const response = await routeMessage(msg.content, msg.channel, msg.userId);
 
     // Send response back to the channel
-    const channel = channels.get(msg.channel);
-    if (channel) {
-      await channel.send({
-        channel: msg.channel,
-        userId: msg.userId,
-        groupId: msg.groupId,
-        content: response.content,
-        replyTo: msg.id,
-      });
-    }
+    await safeSend(msg.channel, {
+      channel: msg.channel,
+      userId: msg.userId,
+      groupId: msg.groupId,
+      content: response.content,
+      replyTo: msg.id,
+    });
 
     // Broadcast response to UI
     broadcast({
@@ -391,9 +403,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       if (origin && allowedOrigins.has(origin)) {
           res.setHeader('Access-Control-Allow-Origin', origin);
           res.setHeader('Access-Control-Allow-Credentials', 'true');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       }
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
       if (req.method === 'OPTIONS') { res.sendStatus(204); return; }
       next();
   });
@@ -513,19 +525,19 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });
 
-  app.post('/api/marketplace/install', async (req, res) => {
+  app.post('/api/marketplace/install', async (req, res): Promise<void> => {
     try {
       const { skill } = req.body as { skill: string };
-      if (!skill) return res.status(400).json({ error: 'Missing "skill" field' });
+      if (!skill) { res.status(400).json({ error: 'Missing "skill" field' }); return; }
       const result = await installSkill(skill);
       res.json(result);
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });
 
-  app.post('/api/marketplace/uninstall', (req, res) => {
+  app.post('/api/marketplace/uninstall', (req, res): void => {
     try {
       const { skill } = req.body as { skill: string };
-      if (!skill) return res.status(400).json({ error: 'Missing "skill" field' });
+      if (!skill) { res.status(400).json({ error: 'Missing "skill" field' }); return; }
       const result = uninstallSkill(skill);
       res.json(result);
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
@@ -1042,16 +1054,21 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // ── Google OAuth Endpoints ───────────────────────────────
+  function getGoogleRedirectUri(): string {
+    const cfg = loadConfig();
+    const publicUrl = (cfg.gateway as Record<string, unknown>).publicUrl as string | undefined;
+    return publicUrl
+      ? `${publicUrl}/api/auth/google/callback`
+      : `http://127.0.0.1:${port}/api/auth/google/callback`;
+  }
+
   app.get('/api/auth/google/status', (_req, res) => {
     res.json({ connected: isGoogleConnected(), email: getGoogleEmail() });
   });
 
   app.get('/api/auth/google/start', (req, res) => {
     try {
-      const protocol = req.headers['x-forwarded-proto'] || 'http';
-      const host = req.headers.host || `127.0.0.1:${port}`;
-      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
-      const url = getConsentUrl(redirectUri);
+      const url = getConsentUrl(getGoogleRedirectUri());
       res.redirect(url);
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
@@ -1062,10 +1079,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const code = req.query.code as string;
     if (!code) { res.status(400).send('Missing authorization code'); return; }
     try {
-      const protocol = req.headers['x-forwarded-proto'] || 'http';
-      const host = req.headers.host || `127.0.0.1:${port}`;
-      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
-      await exchangeCode(code, redirectUri);
+      await exchangeCode(code, getGoogleRedirectUri());
       // Redirect back to dashboard
       res.redirect('/?google_connected=1');
     } catch (err) {
@@ -1102,11 +1116,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       // Ensure workspace directory exists
       if (!fs.existsSync(workspace)) fs.mkdirSync(workspace, { recursive: true });
 
-      const { content, aboutMe, personality, userName } = req.body as {
+      const { content, aboutMe, personality } = req.body as {
         content?: string;
         aboutMe?: string;
         personality?: string;
-        userName?: string;
       };
 
       if (content !== undefined) {
@@ -1343,7 +1356,32 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer });
 
+  let voicePipelinePromise: Promise<VoicePipeline | null> | null = null;
+
+  async function getOrInitVoicePipeline(): Promise<VoicePipeline | null> {
+    if (voicePipeline) return voicePipeline;
+    if (!voicePipelinePromise) {
+      voicePipelinePromise = (async () => {
+        try {
+          const { createVoicePipeline } = await import('../voice/pipeline.js');
+          const pipeline = await createVoicePipeline();
+          if (pipeline) {
+            voicePipeline = pipeline;
+            logger.info(COMPONENT, 'Voice pipeline initialized on-demand');
+          }
+          return pipeline;
+        } catch (err) {
+          logger.error(COMPONENT, `Voice pipeline init failed: ${(err as Error).message}`);
+          voicePipelinePromise = null; // Allow retry on failure
+          return null;
+        }
+      })();
+    }
+    return voicePipelinePromise;
+  }
+
   wss.on('connection', async (ws, req) => {
+   try {
     const cfg = loadConfig();
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
 
@@ -1400,9 +1438,75 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
     wsClients.add(ws);
     logger.info(COMPONENT, `WebSocket client connected (${wsClients.size} total)`);
 
-    ws.on('message', async (rawData) => {
+    ws.on('message', async (rawData, isBinary) => {
       try {
-        const data = JSON.parse(rawData.toString());
+        // Binary frames = raw PCM audio from voice pipeline
+        if (isBinary) {
+          // Lazy-init voice pipeline on first audio if not already running
+          if (!voicePipeline) {
+            await getOrInitVoicePipeline();
+          }
+          if (voicePipeline) {
+            const audioBuffer = Buffer.from(rawData as ArrayBuffer);
+            voicePipeline.handleAudioInput(audioBuffer, ws, 'dashboard').catch(err => {
+              logger.error(COMPONENT, `Voice pipeline error: ${(err as Error).message}`);
+            });
+          } else {
+            // No pipeline available — send error transcript back to client
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: 'voice_transcript',
+                text: 'Voice services unavailable. Enable voice in config or check STT/TTS server connections.',
+                direction: 'outbound',
+              }));
+            }
+          }
+          return;
+        }
+
+        let data;
+        try {
+          data = JSON.parse(rawData.toString());
+        } catch (parseErr) {
+          logger.warn(COMPONENT, `Invalid WebSocket JSON: ${(parseErr as Error).message}`);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON message' }));
+          }
+          return;
+        }
+
+        // Voice control messages
+        if (data.type === 'voice_control') {
+          if (voicePipeline) {
+            if (data.action === 'interrupt') {
+              voicePipeline.interrupt(ws);
+            }
+          }
+          return;
+        }
+
+        // Voice speak — TTS a text response (auto-speak when voice is enabled)
+        if (data.type === 'voice_speak' && data.text) {
+          if (!voicePipeline) {
+            await getOrInitVoicePipeline();
+          }
+          if (voicePipeline) {
+            voicePipeline.speakText(data.text, ws, data.userId || 'dashboard').catch(err => {
+              logger.error(COMPONENT, `Voice speak error: ${(err as Error).message}`);
+              // Notify client so it can use browser TTS fallback
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'voice_error', message: (err as Error).message, originalText: data.text }));
+              }
+            });
+          } else {
+            logger.warn(COMPONENT, 'Voice pipeline unavailable, notifying client for browser TTS fallback');
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'voice_error', message: 'Voice pipeline unavailable', originalText: data.text }));
+            }
+          }
+          return;
+        }
+
         // Accept both 'chat' and 'message' types for compatibility
         if ((data.type === 'chat' || data.type === 'message') && data.content) {
           // Process through WebChat channel
@@ -1417,9 +1521,31 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
     ws.on('close', () => {
       wsClients.delete(ws);
+      if (voicePipeline) voicePipeline.cleanup(ws);
+      if (wsClients.size === 0 && voicePipeline) {
+        voicePipeline = null;
+        voicePipelinePromise = null;
+        logger.info(COMPONENT, 'Voice pipeline released (no clients)');
+      }
       logger.debug(COMPONENT, `WebSocket client disconnected (${wsClients.size} total)`);
     });
+   } catch (err) {
+      logger.error(COMPONENT, `WebSocket connection handler error: ${(err as Error).message}`);
+      try { ws.close(1011, 'Internal error'); } catch { /* connection already closed */ }
+   }
   });
+
+  // Initialize voice pipeline (lazy-loaded when enabled)
+  const voiceCfg = loadConfig();
+  if (voiceCfg.voice?.enabled) {
+    try {
+      const { createVoicePipeline } = await import('../voice/pipeline.js');
+      voicePipeline = await createVoicePipeline();
+      if (voicePipeline) logger.info(COMPONENT, 'Voice pipeline initialized');
+    } catch (err) {
+      logger.error(COMPONENT, `Voice pipeline init failed: ${(err as Error).message}`);
+    }
+  }
 
   // Initialize channels
   webChatChannel = new WebChatChannel();
@@ -1440,10 +1566,10 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   ];
 
   for (const [name, adapter] of channelAdapters) {
-    channels.set(name, adapter);
     adapter.on('message', handleInboundMessage);
     try {
       await adapter.connect();
+      channels.set(name, adapter);
     } catch (error) {
       logger.debug(COMPONENT, `Channel ${name} not available: ${(error as Error).message}`);
     }

@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
 **Last Updated:** 2026-03-09
-**Current Version:** 2026.7.0
+**Current Version:** 2026.8.0
 
 ---
 
@@ -84,21 +84,35 @@
   - **Adaptive Teaching** — first-run wizard, progressive skill reveal, teach mode detection, user skill profiles with correction learning, contextual dashboard hints, 30 tests
   - 3,463 total tests across 101 files, 106 tools registered
 
+### Phase 9: Bleeding Edge (v2026.8.0)
+- **v2026.8.0**: Six features in parallel via agent teams:
+  - **ContextEngine Plugin System** — lifecycle hooks (bootstrap/ingest/assemble/compact/afterTurn), config-driven registry, error-isolated runners, 19 tests
+  - **Prometheus Metrics** — zero-dep Counter/Histogram/Gauge, GET /metrics endpoint, Telemetry dashboard panel, 19 tests
+  - **Provider Expansion** — 30 OpenAI-compatible presets (13 new: HuggingFace, AI21, Cohere v2, Reka, Zhipu, 01.AI, Inflection, Novita, Replicate, Lepton, Anyscale, OctoAI, Nous)
+  - **6 New Channels** — IRC, Mattermost, Lark/Feishu, Email (IMAP), LINE, Zulip (15 total)
+  - **Fallback Model Chains** — auto-cascade on failure, configurable chain, dashboard indicator, 10 tests
+  - **Deep Research Agent** — researcher sub-agent template, iterative search-read-synthesize, citation tracking, 23 tests
+  - 3,534 total tests across 105 files, ~112 tools, 34 providers, 15 channels
+
 ---
 
-## Current State (v2026.7.0)
+## Current State (v2026.8.0)
 
 | Metric | Value |
 |--------|-------|
-| Providers | 21 (4 native + 17 OpenAI-compat) |
-| Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
-| Built-in Skills | 37 files |
-| Tools | 106 registered |
-| Tests | 3,463 across 101 files |
+| Providers | 34 (4 native + 30 OpenAI-compat) |
+| Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
+| Built-in Skills | 39 files |
+| Tools | ~112 registered |
+| Tests | 3,534 across 105 files |
 | Line Coverage | ~82% |
 | RAG/Vector Search | Yes (FTS5 + embeddings) |
 | Token Streaming | Yes (SSE + WebSocket) |
 | Adaptive Teaching | Yes (wizard, skill reveal, hints) |
+| Plugin System | Yes (ContextEngine lifecycle hooks) |
+| Metrics | Yes (Prometheus /metrics endpoint) |
+| Fallback Chains | Yes (auto-cascade on model failure) |
+| Deep Research | Yes (multi-step with citations) |
 
 ---
 

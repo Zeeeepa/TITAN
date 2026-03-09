@@ -702,6 +702,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ---
 
+## Sponsor
+
+TITAN is built by [Tony Elliott](https://github.com/Djtony707) — a solo developer, college student studying AI Software Engineering, and open-source believer. I was laid off from my IT technician job in October 2025 and have been building TITAN in my free time between classes. Every contribution helps me keep this project alive and growing.
+
+<a href="https://github.com/sponsors/Djtony707"><img src="https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-Sponsor-ea4aaa?style=for-the-badge&logo=github" alt="Sponsor on GitHub"/></a>
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.

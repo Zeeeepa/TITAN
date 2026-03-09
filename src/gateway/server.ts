@@ -41,7 +41,6 @@ import { initMcpServers } from '../mcp/registry.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes } from '../recipes/store.js';
 import { parseSlashCommand, runRecipe } from '../recipes/runner.js';
-import { initModelSwitchTool } from '../skills/builtin/model_switch.js';
 import { getCostStatus } from '../agent/costOptimizer.js';
 import { initLearning, getLearningStats } from '../memory/learning.js';
 import { initGraph, getGraphData, getGraphStats, clearGraph } from '../memory/graph.js';
@@ -1577,7 +1576,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
   // ── Phase 3: Boot MCP servers, monitors, recipes, model switch, slash commands ──
   initSlashCommands();
-  initModelSwitchTool();
   seedBuiltinRecipes();
   initMcpServers().catch((e) => logger.warn(COMPONENT, `MCP init error: ${e.message}`));
 

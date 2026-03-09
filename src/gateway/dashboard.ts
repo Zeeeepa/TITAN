@@ -192,7 +192,19 @@ tr:hover{background:rgba(6,182,212,.03)}
   --border:#dee2e6;--glow:0 0 20px rgba(6,182,212,.08);
 }
 [data-theme="light"] .msg.user{color:#fff}
+[data-theme="light"] .msg.assistant{background:#fff;border-color:#dee2e6;color:#1a1a2e}
+[data-theme="light"] .msg.assistant code{background:rgba(6,182,212,.1);color:#0e7490}
+[data-theme="light"] .msg.assistant pre{background:#f8f9fa;border-color:#dee2e6;color:#1a1a2e}
+[data-theme="light"] .nav-item.active{background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2)}
+[data-theme="light"] .chat-input-area input{background:#fff;border-color:#dee2e6;color:#1a1a2e}
+[data-theme="light"] .badge.active{background:rgba(16,185,129,.1);color:#059669}
+[data-theme="light"] .badge.error{background:rgba(239,68,68,.1);color:#dc2626}
 [data-theme="light"] .ob-header h2{background:linear-gradient(135deg,#1a1a2e,var(--text-dim));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+[data-theme="light"] table td{color:#1a1a2e}
+[data-theme="light"] #logs-container{background:#fff;color:#1a1a2e}
+[data-theme="light"] .sidebar{background:#fff;border-color:#dee2e6}
+[data-theme="light"] .topbar{background:#fff;border-color:#dee2e6}
+[data-theme="light"] .footer-bar{background:#fff;border-color:#dee2e6;color:#6c757d}
 
 /* Glassmorphism cards */
 .card{background:rgba(17,24,39,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
@@ -427,6 +439,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     </div>
     <div class="ob-footer">
       <button class="ob-btn ob-btn-secondary" id="ob-btn-back" data-action="ob-prev" style="visibility:hidden">Back</button>
+      <button class="ob-btn ob-btn-secondary" data-action="ob-skip" style="font-size:12px;padding:8px 16px">Skip for now</button>
       <button class="ob-btn ob-btn-primary" id="ob-btn-next" data-action="ob-next">Continue ⚡</button>
     </div>
   </div>
@@ -491,10 +504,23 @@ tr:hover{background:rgba(6,182,212,.03)}
           <input type="text" id="chat-input" placeholder="Type a message and press Enter…"/>
           <button id="send-btn" data-action="send-chat">Send ⚡</button>
         </div>
+        <!-- Voice Controls -->
+        <div id="voice-panel" style="padding:8px 16px;border-top:1px solid var(--border);background:var(--bg2);display:none;flex-shrink:0">
+          <div style="display:flex;align-items:center;gap:10px">
+            <button id="voice-ptt-btn" class="btn" style="padding:8px 16px;font-size:13px;background:#1e293b;border:2px solid #06b6d4;cursor:pointer;user-select:none">🎙️ Hold to Talk</button>
+            <select id="voice-mode" style="font-size:11px;padding:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+              <option value="push-to-talk">Push-to-Talk</option>
+              <option value="hands-free">Hands-Free (VAD)</option>
+            </select>
+            <canvas id="voice-waveform" width="120" height="32" style="border-radius:4px;background:#0f172a"></canvas>
+            <span id="voice-status" style="font-size:11px;color:var(--text-dim)">Ready</span>
+          </div>
+        </div>
         <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg2);display:flex;gap:8px;flex-shrink:0">
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-status">📊 Status</button>
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-reset">🔄 Reset Session</button>
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-compact">📦 Compact Context</button>
+          <button id="voice-toggle-btn" class="btn" style="font-size:11px;padding:4px 8px" data-action="voice-toggle">🎤 Voice</button>
         </div>
       </div>
     </div>
@@ -960,11 +986,13 @@ function logout() {
   location.href = '/login';
 }
 
+let toastTimer;
 function toast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'show ' + type;
-  setTimeout(() => el.className = '', 3000);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3000);
 }
 
 // ── Theme toggle ──────────────────────────────────────────────
@@ -993,11 +1021,30 @@ function renderMarkdown(text) {
   s = s.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre>$1</pre>');
   // Inline code
   s = s.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
-  // Bold
+  // Headers
+  s = s.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  s = s.replace(/^### (.+)$/gm, '<h3 style="font-size:15px;margin:12px 0 6px">$1</h3>');
+  s = s.replace(/^## (.+)$/gm, '<h2 style="font-size:17px;margin:14px 0 8px">$1</h2>');
+  s = s.replace(/^# (.+)$/gm, '<h1 style="font-size:20px;margin:16px 0 10px">$1</h1>');
+  // Horizontal rule
+  s = s.replace(/^---$/gm, '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0"/>');
+  // Bold and italic
+  s = s.replace(/\\*\\*\\*(.+?)\\*\\*\\*/g, '<strong><em>$1</em></strong>');
   s = s.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+  s = s.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+  // Links
+  s = s.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:underline">$1</a>');
   // Lists
   s = s.replace(/^- (.+)$/gm, '<li>$1</li>');
   s = s.replace(new RegExp('(<li>.*</li>[\\n]?)+', 'g'), '<ul>$&</ul>');
+  // Numbered lists
+  s = s.replace(/^\\d+\\. (.+)$/gm, '<li>$1</li>');
+  // Simple table support (| col | col |)
+  s = s.replace(/^\\|(.+)\\|$/gm, function(match, inner) {
+    const cells = inner.split('|').map(c => c.trim());
+    return '<tr>' + cells.map(c => '<td style="padding:4px 8px;border:1px solid var(--border)">' + c + '</td>').join('') + '</tr>';
+  });
+  s = s.replace(/(<tr>.*<\\/tr>[\\n]?)+/g, '<table style="border-collapse:collapse;margin:8px 0;font-size:13px">$&</table>');
   return s;
 }
 
@@ -1070,6 +1117,7 @@ document.addEventListener('click', (e) => {
     if (a === 'save-channel') saveChannelSettings(action.dataset.channel);
     if (a === 'ob-prev') obPrevStep();
     if (a === 'ob-next') obNextStep();
+    if (a === 'ob-skip') { document.getElementById('onboarding-modal').classList.remove('show'); fetch('/api/profile',{method:'POST',headers:authHeaders(),body:JSON.stringify({name:'User'})}); }
     if (a === 'select-provider') {
       const radioId = action.dataset.radio;
       if (radioId) document.getElementById(radioId).checked = true;
@@ -1124,6 +1172,7 @@ let ws;
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
   ws = new WebSocket(proto + location.host + '?token=' + encodeURIComponent(token || ''));
+  ws.binaryType = 'arraybuffer';
   ws.onopen = () => {
     document.getElementById('ws-dot').className = 'status-dot';
     document.getElementById('ws-label').textContent = '🟢 Connected';
@@ -1133,20 +1182,45 @@ function connectWS() {
     document.getElementById('ws-label').textContent = '🔴 Disconnected';
     setTimeout(connectWS, 3000);
   };
-  ws.onerror = () => {};
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    toast('WebSocket error — check console', 'error');
+  };
   ws.onmessage = (e) => {
+    // Handle binary audio frames from voice pipeline
+    if (e.data instanceof ArrayBuffer) {
+      handleVoiceBinary(new Uint8Array(e.data));
+      return;
+    }
     removeTyping();
     try {
       const data = JSON.parse(e.data);
+      // Voice transcript messages
+      if (data.type === 'voice_transcript') {
+        const prefix = data.direction === 'inbound' ? '🎤 ' : '🔊 ';
+        appendMsg(data.direction === 'inbound' ? 'user' : 'assistant', prefix + data.text, data.meta);
+        if (data.direction === 'outbound') {
+          updateVoiceStatus('Speaking...');
+        }
+        return;
+      }
       // Assistant response from the agent
       if (data.type === 'message' && data.direction === 'outbound') {
         appendMsg('assistant', data.content, data);
         document.getElementById('send-btn').disabled = false;
+        if (voiceEnabled && data.content) voiceSpeak(data.content);
       }
       // Legacy response type
       if (data.type === 'response') {
         appendMsg('assistant', data.content, data);
         document.getElementById('send-btn').disabled = false;
+        if (voiceEnabled && data.content) voiceSpeak(data.content);
+      }
+      // Voice error — server TTS failed, fall back to browser immediately
+      if (data.type === 'voice_error') {
+        if (window._voiceFallbackTimer) { clearTimeout(window._voiceFallbackTimer); window._voiceFallbackTimer = null; }
+        voiceSpeakBrowser(data.originalText || '');
+        return;
       }
       // Mesh events — auto-refresh the mesh panel
       if (data.type === 'mesh_peer_discovered') {
@@ -2202,48 +2276,198 @@ function initGraphInteraction(canvas) {
   canvas.style.cursor = 'grab';
 }
 
+let graphSelectedNode = null;
+let graphPulsePhase = 0;
+let graphAnimRunning = false;
+
+const graphTypeColors = {
+  person:'#06b6d4', topic:'#8b5cf6', project:'#10b981', place:'#f59e0b', fact:'#94a3b8',
+  Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
+};
+
+// Build edge connection count per node for sizing
+function getNodeDegrees(nodes, edges) {
+  const degrees = {};
+  nodes.forEach(n => degrees[n.id] = 0);
+  edges.forEach(e => {
+    if (degrees[e.from] !== undefined) degrees[e.from]++;
+    if (degrees[e.to] !== undefined) degrees[e.to]++;
+  });
+  return degrees;
+}
+
+// Get connected node IDs for a given node
+function getConnectedNodes(nodeId, edges) {
+  const connected = new Set();
+  connected.add(nodeId);
+  edges.forEach(e => {
+    if (e.from === nodeId) connected.add(e.to);
+    if (e.to === nodeId) connected.add(e.from);
+  });
+  return connected;
+}
+
+// Parse hex color to RGB array (cached)
+const hexToRgbCache = {};
+function hexToRgb(hex) {
+  if (hexToRgbCache[hex]) return hexToRgbCache[hex];
+  const rgb = [parseInt(hex.slice(1,3), 16), parseInt(hex.slice(3,5), 16), parseInt(hex.slice(5,7), 16)];
+  hexToRgbCache[hex] = rgb;
+  return rgb;
+}
+
+// Concatenate ArrayBuffer/Uint8Array chunks into a single Uint8Array
+function concatChunks(chunks) {
+  let totalLen = 0;
+  for (const c of chunks) totalLen += c.byteLength;
+  const merged = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const c of chunks) { merged.set(new Uint8Array(c), offset); offset += c.byteLength; }
+  return merged;
+}
+
+// Convert Float32Array to Int16Array (PCM16)
+function float32ToPcm16(float32) {
+  const pcm16 = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i++)
+    pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
+  return pcm16;
+}
+
 function drawGraphitiGraph(canvas, nodes, edges) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
+  // Responsive canvas sizing
+  const container = canvas.parentElement;
+  if (container) {
+    const cw = container.clientWidth - 2;
+    const ch = container.clientHeight - 2;
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = Math.max(400, cw);
+      canvas.height = Math.max(300, ch);
+    }
+  }
 
-  if (nodes.length === 0) return;
+  const W = canvas.width, H = canvas.height;
+
+  if (nodes.length === 0) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, W, H);
+    return;
+  }
 
   graphLastNodes = nodes;
   graphLastEdges = edges;
   initGraphInteraction(canvas);
 
-  const typeColors = {
-    person:'#06b6d4', topic:'#8b5cf6', project:'#10b981', place:'#f59e0b', fact:'#94a3b8',
-    Episode:'#06b6d4', Entity:'#8b5cf6', Fact:'#10b981', Community:'#f59e0b'
-  };
+  if (!canvas._resizeObserver) {
+    canvas._resizeObserver = new ResizeObserver(() => {
+      const c = canvas.parentElement;
+      if (c) {
+        canvas.width = Math.max(400, c.clientWidth - 2);
+        canvas.height = Math.max(300, c.clientHeight - 2);
+      }
+    });
+    canvas._resizeObserver.observe(canvas.parentElement);
+  }
 
-  // Use force-directed layout (only recalculate if nodes changed)
+  // Compute force-directed layout (only recalculate if nodes changed)
   if (!canvas._positions || canvas._posNodeCount !== nodes.length) {
-    canvas._positions = initForceLayout(nodes, W, H);
+    canvas._positions = initForceLayout(nodes, edges, W, H, canvas);
     canvas._posNodeCount = nodes.length;
   }
+
+  // Render first frame immediately
+  renderGraph(canvas);
+
+  // Start animation loop if not running
+  if (!graphAnimRunning) startGraphAnimation(canvas);
+}
+
+// Lightweight render — called by animation loop, skips init/layout
+function renderGraph(canvas) {
+  if (!graphLastNodes || !graphLastEdges) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const nodes = graphLastNodes, edges = graphLastEdges;
+  const W = canvas.width, H = canvas.height;
   const positions = canvas._positions;
+  if (!positions) return;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Dot grid background
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(51,65,85,0.3)';
+  const gridSpacing = 20;
+  for (let gx = (graphPanX % (gridSpacing * graphZoom)); gx < W; gx += gridSpacing * graphZoom) {
+    for (let gy = (graphPanY % (gridSpacing * graphZoom)); gy < H; gy += gridSpacing * graphZoom) {
+      ctx.fillRect(gx, gy, 1, 1);
+    }
+  }
+
+  if (nodes.length === 0) return;
+
+  // Build node lookup map (avoids O(E*N) in edge rendering)
+  if (!canvas._nodeMap || canvas._nodeMapCount !== nodes.length) {
+    canvas._nodeMap = {};
+    nodes.forEach(n => canvas._nodeMap[n.id] = n);
+    canvas._nodeMapCount = nodes.length;
+  }
+  const nodeMap = canvas._nodeMap;
+
+  // Cache degrees (only recompute when graph data changes)
+  if (!canvas._degrees || canvas._degreesCount !== nodes.length + edges.length) {
+    canvas._degrees = getNodeDegrees(nodes, edges);
+    canvas._degreesCount = nodes.length + edges.length;
+  }
+  const degrees = canvas._degrees;
+  const connectedToSelected = graphSelectedNode ? getConnectedNodes(graphSelectedNode, edges) : null;
+  const pulseGlow = 0.15 + 0.1 * Math.sin(graphPulsePhase);
 
   ctx.save();
 
   // Draw edges
-  ctx.strokeStyle = 'rgba(100,116,139,0.4)';
-  ctx.lineWidth = 1;
   edges.forEach(e => {
     const a = positions[e.from], b = positions[e.to];
     if (!a || !b) return;
+    const ax = a.x * graphZoom + graphPanX, ay = a.y * graphZoom + graphPanY;
+    const bx = b.x * graphZoom + graphPanX, by = b.y * graphZoom + graphPanY;
+    let edgeAlpha = 0.5;
+    if (connectedToSelected) {
+      edgeAlpha = (connectedToSelected.has(e.from) && connectedToSelected.has(e.to)) ? 0.7 : 0.08;
+    }
+    const fromNode = nodeMap[e.from];
+    const toNode = nodeMap[e.to];
+    const fromColor = graphTypeColors[fromNode?.type] || '#64748b';
+    const toColor = graphTypeColors[toNode?.type] || '#64748b';
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const dx = bx - ax, dy = by - ay;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const offset = Math.min(30, len * 0.15);
+    const cx2 = mx + (len > 0 ? (-dy / len) * offset : 0);
+    const cy2 = my + (len > 0 ? (dx / len) * offset : 0);
+    const [fr, fg, fb] = hexToRgb(fromColor);
+    const [tr, tg, tb] = hexToRgb(toColor);
+    const grad = ctx.createLinearGradient(ax, ay, bx, by);
+    grad.addColorStop(0, 'rgba(' + fr + ',' + fg + ',' + fb + ',' + edgeAlpha + ')');
+    grad.addColorStop(1, 'rgba(' + tr + ',' + tg + ',' + tb + ',' + edgeAlpha + ')');
     ctx.beginPath();
-    ctx.moveTo(a.x * graphZoom + graphPanX, a.y * graphZoom + graphPanY);
-    ctx.lineTo(b.x * graphZoom + graphPanX, b.y * graphZoom + graphPanY);
+    ctx.moveTo(ax, ay);
+    ctx.quadraticCurveTo(cx2, cy2, bx, by);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = (graphHoverNode === e.from || graphHoverNode === e.to) ? 2.5 : 1.5;
     ctx.stroke();
-    if (e.label) {
+    if (e.label && (graphHoverNode === e.from || graphHoverNode === e.to)) {
       ctx.save();
-      ctx.font = Math.max(7, 9 * graphZoom) + 'px sans-serif';
-      ctx.fillStyle = 'rgba(148,163,184,0.8)';
-      ctx.fillText(e.label, (a.x+b.x)/2 * graphZoom + graphPanX, (a.y+b.y)/2 * graphZoom + graphPanY);
+      ctx.font = Math.max(8, 10 * graphZoom) + 'px sans-serif';
+      ctx.fillStyle = 'rgba(226,232,240,0.9)';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
+      ctx.fillText(e.label, cx2, cy2);
       ctx.restore();
     }
   });
@@ -2252,45 +2476,125 @@ function drawGraphitiGraph(canvas, nodes, edges) {
   nodes.forEach(n => {
     const pos = positions[n.id];
     if (!pos) return;
-    const color = typeColors[n.type] || '#64748b';
-    const radius = (n.size || 18) * graphZoom;
+    const color = graphTypeColors[n.type] || '#64748b';
+    const [cr, cg, cb] = hexToRgb(color);
+    const deg = degrees[n.id] || 0;
+    const baseRadius = Math.max(14, Math.min(30, 14 + deg * 3));
+    const radius = baseRadius * graphZoom;
     const tx = pos.x * graphZoom + graphPanX;
     const ty = pos.y * graphZoom + graphPanY;
+    let nodeAlpha = 1.0;
+    if (connectedToSelected && !connectedToSelected.has(n.id)) nodeAlpha = 0.15;
 
-    // Hover glow
-    if (graphHoverNode === n.id) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(tx, ty, radius + 6, 0, Math.PI * 2);
-      ctx.fillStyle = color + '44';
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 16;
-      ctx.fill();
-      ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = nodeAlpha;
+    ctx.beginPath();
+    ctx.arc(tx, ty, radius + 8, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (graphHoverNode === n.id ? 0.35 : pulseGlow) + ')';
+    if (graphHoverNode === n.id || graphSelectedNode === n.id) {
+      ctx.shadowColor = color; ctx.shadowBlur = 24;
     }
+    ctx.fill();
+    ctx.restore();
 
+    ctx.save();
+    ctx.globalAlpha = nodeAlpha;
+    const grad = ctx.createRadialGradient(tx - radius * 0.2, ty - radius * 0.2, radius * 0.1, tx, ty, radius);
+    grad.addColorStop(0, 'rgba(' + cr + ',' + cg + ',' + cb + ',0.9)');
+    grad.addColorStop(0.6, 'rgba(' + cr + ',' + cg + ',' + cb + ',0.4)');
+    grad.addColorStop(1, 'rgba(' + cr + ',' + cg + ',' + cb + ',0.1)');
     ctx.beginPath();
     ctx.arc(tx, ty, radius, 0, Math.PI * 2);
-    ctx.fillStyle = color + '33';
+    ctx.fillStyle = grad;
     ctx.fill();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = graphHoverNode === n.id ? 3 : 2;
+    ctx.strokeStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',' + (graphHoverNode === n.id ? 1 : 0.7) + ')';
+    ctx.lineWidth = graphHoverNode === n.id ? 3 : (graphSelectedNode === n.id ? 3 : 1.5);
     ctx.stroke();
-    ctx.save();
-    ctx.font = 'bold ' + Math.max(7, 10 * graphZoom) + 'px sans-serif';
+
+    const maxChars = graphZoom > 1.2 ? 16 : 12;
+    const label = n.label.length > maxChars ? n.label.slice(0, maxChars - 1) + '…' : n.label;
+    ctx.font = 'bold ' + Math.max(8, 11 * graphZoom) + 'px sans-serif';
     ctx.fillStyle = '#f1f5f9';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const label = n.label.length > 10 ? n.label.slice(0,9)+'…' : n.label;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
     ctx.fillText(label, tx, ty);
+    ctx.font = Math.max(6, 8 * graphZoom) + 'px sans-serif';
+    ctx.fillStyle = 'rgba(' + cr + ',' + cg + ',' + cb + ',0.8)';
+    ctx.shadowBlur = 0;
+    ctx.fillText(n.type, tx, ty + radius * 0.65);
     ctx.restore();
   });
+
+  // Legend
+  ctx.save();
+  const legendX = W - 110, legendY = 12;
+  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.strokeStyle = 'rgba(51,65,85,0.6)';
+  ctx.lineWidth = 1;
+  const seenTypes = new Set();
+  let typeCount = 0;
+  for (const [type, color] of Object.entries(graphTypeColors)) {
+    if (!seenTypes.has(color + type.toLowerCase())) { seenTypes.add(color + type.toLowerCase()); typeCount++; }
+  }
+  ctx.beginPath();
+  ctx.rect(legendX - 8, legendY - 4, 108, typeCount * 16 + 8);
+  ctx.fill(); ctx.stroke();
+  let ly = legendY + 8;
+  seenTypes.clear();
+  for (const [type, color] of Object.entries(graphTypeColors)) {
+    if (seenTypes.has(color + type.toLowerCase())) continue;
+    seenTypes.add(color + type.toLowerCase());
+    ctx.beginPath();
+    ctx.arc(legendX + 4, ly, 4, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.font = '9px sans-serif'; ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(type, legendX + 14, ly);
+    ly += 16;
+  }
+  ctx.restore();
 
   ctx.restore();
 }
 
+// Graph animation loop — 30fps glow pulse
+let graphAnimId = null;
+function startGraphAnimation(canvas) {
+  if (graphAnimId) cancelAnimationFrame(graphAnimId);
+  graphAnimRunning = true;
+  let lastFrame = 0;
+  function animate(ts) {
+    const panel = document.getElementById('panel-graphiti');
+    if (!panel || !panel.classList.contains('active')) {
+      graphAnimRunning = false;
+      graphAnimId = null;
+      return;
+    }
+    if (ts - lastFrame < 33) {
+      graphAnimId = requestAnimationFrame(animate);
+      return;
+    }
+    lastFrame = ts;
+    graphPulsePhase += 0.05;
+    if (canvas._forceState && canvas._forceState.remainingIterations > 0) {
+      const fs = canvas._forceState;
+      const itersThisFrame = Math.min(3, fs.remainingIterations);
+      for (let i = 0; i < itersThisFrame; i++) {
+        fs.runIteration();
+      }
+      fs.remainingIterations -= itersThisFrame;
+      if (fs.remainingIterations <= 0) {
+        canvas._forceState = null;
+      }
+    }
+    renderGraph(canvas);
+    graphAnimId = requestAnimationFrame(animate);
+  }
+  graphAnimId = requestAnimationFrame(animate);
+}
+
 // ── Force-directed graph layout init ─────────────────────────────
-function initForceLayout(nodes, W, H) {
+function initForceLayout(nodes, edges, W, H, canvas) {
   const positions = {};
   const cx = W / 2, cy = H / 2;
   const r = Math.min(W, H) * 0.38;
@@ -2302,9 +2606,11 @@ function initForceLayout(nodes, W, H) {
       vx: 0, vy: 0
     };
   });
-  // Run force simulation (200 iterations)
-  const k = 80, spring = 0.05, damping = 0.8;
-  for (let iter = 0; iter < 200; iter++) {
+
+  const k = 80, springK = 0.05, damping = 0.8;
+  const idealEdgeLen = Math.min(W, H) * 0.2;
+
+  function runForceIteration() {
     // Repulsion between all nodes
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
@@ -2316,14 +2622,44 @@ function initForceLayout(nodes, W, H) {
         pj.vx -= (dx / dist) * force; pj.vy -= (dy / dist) * force;
       }
     }
+    // Edge spring attraction
+    edges.forEach(e => {
+      const pa = positions[e.from], pb = positions[e.to];
+      if (!pa || !pb) return;
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const force = (dist - idealEdgeLen) * springK;
+      const fx = (dx / dist) * force, fy = (dy / dist) * force;
+      pa.vx += fx; pa.vy += fy;
+      pb.vx -= fx; pb.vy -= fy;
+    });
+    // Center gravity — pull nodes toward canvas center
+    for (const n of nodes) {
+      const p = positions[n.id];
+      p.vx += (cx - p.x) * 0.001;
+      p.vy += (cy - p.y) * 0.001;
+    }
     // Apply velocities
     for (const n of nodes) {
       const p = positions[n.id];
       p.vx *= damping; p.vy *= damping;
-      p.x = Math.max(30, Math.min(W - 30, p.x + p.vx * 0.1));
-      p.y = Math.max(30, Math.min(H - 30, p.y + p.vy * 0.1));
+      p.x = Math.max(40, Math.min(W - 40, p.x + p.vx * 0.1));
+      p.y = Math.max(40, Math.min(H - 40, p.y + p.vy * 0.1));
     }
   }
+
+  // Run 50 iterations synchronously for a reasonable starting layout
+  for (let iter = 0; iter < 50; iter++) {
+    runForceIteration();
+  }
+
+  // Store remaining animation state on canvas for animated settling
+  // ~150 more iterations at 2-3 per frame ≈ 50-75 frames ≈ ~2 seconds at 30fps
+  canvas._forceState = {
+    remainingIterations: 150,
+    runIteration: runForceIteration
+  };
+
   return positions;
 }
 
@@ -2334,16 +2670,19 @@ function showEntityDetail(nodes, edges, canvas, evt) {
   const mx = (evt.clientX - rect.left) * scaleX;
   const my = (evt.clientY - rect.top) * scaleX;
   const detail = document.getElementById('graph-entity-detail');
-  // Check if click is near a node (positions stored on canvas element)
   const positions = canvas._positions;
   if (!positions) return;
+  const degrees = getNodeDegrees(nodes, edges);
   for (const n of nodes) {
     const p = positions[n.id];
     if (!p) continue;
-    const r = (n.size || 18) * graphZoom;
+    const deg = degrees[n.id] || 0;
+    const r = Math.max(14, Math.min(30, 14 + deg * 3)) * graphZoom;
     const tx = p.x * graphZoom + graphPanX;
     const ty = p.y * graphZoom + graphPanY;
     if (Math.sqrt((mx - tx) ** 2 + (my - ty) ** 2) <= r + 4) {
+      // Toggle selection — click same node to deselect
+      graphSelectedNode = (graphSelectedNode === n.id) ? null : n.id;
       document.getElementById('ged-name').textContent = n.label;
       document.getElementById('ged-type').textContent = n.type;
       document.getElementById('ged-aliases').textContent = '';
@@ -2352,10 +2691,13 @@ function showEntityDetail(nodes, edges, canvas, evt) {
         ? n.facts.map(f => '<li>' + escHtml(f) + '</li>').join('')
         : '<li style="color:var(--text-dim)">No facts recorded yet</li>';
       detail.style.display = 'block';
+      if (graphLastNodes && graphLastEdges) drawGraphitiGraph(canvas, graphLastNodes, graphLastEdges);
       return;
     }
   }
+  graphSelectedNode = null;
   detail.style.display = 'none';
+  if (graphLastNodes && graphLastEdges) drawGraphitiGraph(canvas, graphLastNodes, graphLastEdges);
 }
 
 // ── Logs panel ───────────────────────────────────────────────────
@@ -2388,7 +2730,11 @@ function renderLogs() {
   container.scrollTop = container.scrollHeight;
 }
 
-function filterLogs() { renderLogs(); }
+let filterTimeout;
+function filterLogs() {
+  clearTimeout(filterTimeout);
+  filterTimeout = setTimeout(() => { renderLogs(); }, 200);
+}
 
 function startLogs() {
   loadLogs();
@@ -2398,6 +2744,407 @@ function startLogs() {
 
 function stopLogs() {
   if (logsInterval) { clearInterval(logsInterval); logsInterval = null; }
+}
+
+// ── Voice Pipeline (client-side) ──────────────────────────────────
+let voiceEnabled = false;
+let voiceAudioCtx = null;
+let voiceMicStream = null;
+let voiceWorklet = null;
+let voiceRecording = false;
+let voiceChunks = [];
+let voicePlayQueue = [];
+let voicePlayingSource = null;
+let voiceAnalyser = null;
+let voiceWaveAnimId = null;
+
+function updateVoiceStatus(text) {
+  const el = document.getElementById('voice-status');
+  if (el) el.textContent = text;
+}
+
+// Toggle voice panel visibility
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.dataset && e.target.dataset.action === 'voice-toggle') {
+    voiceEnabled = !voiceEnabled;
+    const panel = document.getElementById('voice-panel');
+    if (panel) panel.style.display = voiceEnabled ? 'block' : 'none';
+    if (voiceEnabled) initVoice();
+    else stopVoice();
+  }
+});
+
+async function initVoice() {
+  try {
+    voiceAudioCtx = new AudioContext({ sampleRate: 16000 });
+
+    // Check for secure context — getUserMedia requires HTTPS (or localhost)
+    const hasMic = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+    if (hasMic) {
+      try {
+        voiceMicStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+
+        // Set up analyser for waveform
+        const source = voiceAudioCtx.createMediaStreamSource(voiceMicStream);
+        voiceAnalyser = voiceAudioCtx.createAnalyser();
+        voiceAnalyser.fftSize = 256;
+        source.connect(voiceAnalyser);
+
+        // AudioWorklet for PCM capture (replaces deprecated ScriptProcessor)
+        const workletCode = 'class P extends AudioWorkletProcessor{process(inputs){const i=inputs[0][0];if(i)this.port.postMessage(i);return true}}registerProcessor("pcm-cap",P);';
+        const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(workletBlob);
+        await voiceAudioCtx.audioWorklet.addModule(workletUrl);
+        URL.revokeObjectURL(workletUrl);
+        const workletNode = new AudioWorkletNode(voiceAudioCtx, 'pcm-cap');
+        source.connect(workletNode);
+        workletNode.connect(voiceAudioCtx.destination);
+        workletNode.port.onmessage = (ev) => {
+          if (!voiceRecording) return;
+          const pcm16 = float32ToPcm16(ev.data);
+          voiceChunks.push(pcm16.buffer);
+          if (voiceChunks.length > 500) voiceChunks = voiceChunks.slice(-500);
+        };
+
+        // Set up PTT button
+        const pttBtn = document.getElementById('voice-ptt-btn');
+        if (pttBtn) {
+          pttBtn.addEventListener('mousedown', startVoiceRecording);
+          pttBtn.addEventListener('mouseup', stopVoiceRecording);
+          pttBtn.addEventListener('mouseleave', stopVoiceRecording);
+          pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startVoiceRecording(); });
+          pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
+        }
+
+        drawVoiceWaveform();
+        updateVoiceStatus('Ready');
+        toast('Voice enabled — hold PTT button to speak', 'success');
+      } catch (micErr) {
+        // Mic denied but TTS output still works
+        const pttBtn = document.getElementById('voice-ptt-btn');
+        if (pttBtn) { pttBtn.style.display = 'none'; }
+        updateVoiceStatus('Listen-only (no mic)');
+        toast('Mic unavailable — voice output enabled, type to hear TITAN speak', 'success');
+      }
+    } else {
+      // No mic API (HTTP on LAN) — listen-only mode, TTS still works
+      const pttBtn = document.getElementById('voice-ptt-btn');
+      if (pttBtn) { pttBtn.style.display = 'none'; }
+      const modeSelect = document.getElementById('voice-mode');
+      if (modeSelect) { modeSelect.style.display = 'none'; }
+      updateVoiceStatus('Listen-only (HTTPS required for mic)');
+      toast('Voice output enabled — type messages and TITAN will speak. For mic input, use HTTPS (enable Tunnel in Settings).', 'success');
+    }
+
+    // Pre-warm browser speechSynthesis to avoid autoplay restrictions later
+    if (window.speechSynthesis) {
+      const warmup = new SpeechSynthesisUtterance('');
+      warmup.volume = 0;
+      window.speechSynthesis.speak(warmup);
+      window.speechSynthesis.addEventListener('voiceschanged', () => {
+        window._availableVoices = window.speechSynthesis.getVoices();
+      });
+      window._availableVoices = window.speechSynthesis.getVoices();
+    }
+  } catch (err) {
+    toast('Voice init failed: ' + err.message, 'error');
+    voiceEnabled = false;
+    const panel = document.getElementById('voice-panel');
+    if (panel) panel.style.display = 'none';
+  }
+}
+
+function stopVoice() {
+  if (voiceMicStream) {
+    voiceMicStream.getTracks().forEach(t => t.stop());
+    voiceMicStream = null;
+  }
+  if (voiceAudioCtx) {
+    voiceAudioCtx.close();
+    voiceAudioCtx = null;
+  }
+  if (voiceWaveAnimId) {
+    cancelAnimationFrame(voiceWaveAnimId);
+    voiceWaveAnimId = null;
+  }
+  voiceRecording = false;
+  voiceChunks = [];
+  updateVoiceStatus('Disabled');
+}
+
+function startVoiceRecording() {
+  if (!voiceAudioCtx || voiceRecording) return;
+  // Interrupt AI if it's speaking
+  if (voicePlayingSource) {
+    interruptVoicePlayback();
+  }
+  voiceRecording = true;
+  voiceChunks = [];
+  updateVoiceStatus('Listening...');
+  const pttBtn = document.getElementById('voice-ptt-btn');
+  if (pttBtn) pttBtn.style.borderColor = '#ef4444';
+}
+
+function stopVoiceRecording() {
+  if (!voiceRecording) return;
+  voiceRecording = false;
+  const pttBtn = document.getElementById('voice-ptt-btn');
+  if (pttBtn) pttBtn.style.borderColor = '#06b6d4';
+
+  if (voiceChunks.length === 0) {
+    updateVoiceStatus('Ready');
+    return;
+  }
+
+  // Concatenate all PCM chunks and send as binary
+  const merged = concatChunks(voiceChunks);
+  voiceChunks = [];
+
+  updateVoiceStatus('Processing...');
+  if (ws && ws.readyState === 1) {
+    ws.send(merged.buffer);
+  }
+}
+
+// Handle binary audio frames from server
+function handleVoiceBinary(data) {
+  if (data.length === 0) return;
+  const header = data[0];
+  if (header === 0x01) {
+    // Audio chunk from server TTS — cancel browser fallback
+    window._voiceSpokeServer = true;
+    if (window._voiceFallbackTimer) { clearTimeout(window._voiceFallbackTimer); window._voiceFallbackTimer = null; }
+    // Accumulate audio data
+    const audioData = data.slice(1);
+    voicePlayQueue.push(audioData);
+    updateVoiceStatus('Receiving audio...');
+  } else if (header === 0x02) {
+    // End of stream — play the complete audio
+    playAccumulatedAudio();
+  } else if (header === 0x03) {
+    // Interrupt acknowledged
+    flushVoicePlayback();
+    updateVoiceStatus('Ready');
+  }
+}
+
+async function playAccumulatedAudio() {
+  if (voicePlayQueue.length === 0) {
+    updateVoiceStatus('Ready');
+    return;
+  }
+  // Combine all chunks into a single buffer
+  const combined = concatChunks(voicePlayQueue);
+  voicePlayQueue = [];
+
+  // Reuse a single playback AudioContext (browsers limit to ~6 concurrent)
+  if (!window._playbackCtx || window._playbackCtx.state === 'closed') {
+    window._playbackCtx = new AudioContext();
+  }
+  const playbackCtx = window._playbackCtx;
+  if (playbackCtx.state === 'suspended') await playbackCtx.resume();
+
+  try {
+    const audioBuffer = await playbackCtx.decodeAudioData(combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength));
+    const source = playbackCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(playbackCtx.destination);
+    source.onended = () => { voicePlayingSource = null; updateVoiceStatus('Ready'); };
+    voicePlayingSource = source;
+    updateVoiceStatus('Speaking...');
+    source.start();
+  } catch (err) {
+    console.error('Audio decode failed:', err);
+    updateVoiceStatus('Ready');
+    voicePlayingSource = null;
+  }
+}
+
+function interruptVoicePlayback() {
+  flushVoicePlayback();
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'voice_control', action: 'interrupt' }));
+  }
+}
+
+function flushVoicePlayback() {
+  voicePlayQueue = [];
+  if (voicePlayingSource) {
+    try { voicePlayingSource.stop(); } catch(e) {}
+    voicePlayingSource = null;
+  }
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+// Speak text — tries server TTS first, falls back to browser speechSynthesis
+let voiceSpeakSeq = 0;
+function voiceSpeak(text) {
+  if (!text) return;
+  const seq = ++voiceSpeakSeq;
+  updateVoiceStatus('Speaking...');
+
+  // Try server-side TTS via WebSocket
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'voice_speak', text: text }));
+
+    // Set a timeout — if no audio arrives within 3s, fall back to browser TTS
+    if (window._voiceFallbackTimer) clearTimeout(window._voiceFallbackTimer);
+    window._voiceSpokeServer = false;
+    window._voiceFallbackTimer = setTimeout(() => {
+      if (seq === voiceSpeakSeq && !window._voiceSpokeServer) {
+        voiceSpeakBrowser(text);
+      }
+    }, 3000);
+  } else {
+    // No WebSocket — use browser TTS directly
+    voiceSpeakBrowser(text);
+  }
+}
+
+// Browser-native speechSynthesis fallback (works everywhere, no server needed)
+function voiceSpeakBrowser(text) {
+  if (!window.speechSynthesis) {
+    updateVoiceStatus('No TTS available');
+    return;
+  }
+  // Cancel any ongoing speech
+  window.speechSynthesis.cancel();
+
+  // Strip markdown formatting for cleaner speech
+  const cleanText = text.replace(/[#*_~()>|]/g, '').replace(/\x5b/g, '').replace(/\x5d/g, '').replace(/\x60/g, '').replace(/\\n+/g, '. ').replace(/\n+/g, '. ').trim();
+  if (!cleanText) return;
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
+  utterance.rate = 1.0;
+  utterance.pitch = 1.0;
+
+  // Try to pick a good voice
+  const voices = window._availableVoices || window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Google US English'));
+  if (preferred) utterance.voice = preferred;
+
+  utterance.onstart = () => updateVoiceStatus('Speaking...');
+  utterance.onend = () => updateVoiceStatus('Ready');
+  utterance.onerror = () => updateVoiceStatus('Ready');
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Waveform visualization
+function drawVoiceWaveform() {
+  const canvas = document.getElementById('voice-waveform');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  function draw() {
+    voiceWaveAnimId = requestAnimationFrame(draw);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, W, H);
+
+    if (!voiceAnalyser) return;
+    const bufLen = voiceAnalyser.frequencyBinCount;
+    const dataArr = new Uint8Array(bufLen);
+    voiceAnalyser.getByteTimeDomainData(dataArr);
+
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = voiceRecording ? '#22c55e' : (voicePlayingSource ? '#06b6d4' : '#475569');
+    ctx.beginPath();
+    const sliceW = W / bufLen;
+    let x = 0;
+    for (let i = 0; i < bufLen; i++) {
+      const v = dataArr[i] / 128.0;
+      const y = (v * H) / 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      x += sliceW;
+    }
+    ctx.lineTo(W, H / 2);
+    ctx.stroke();
+  }
+  draw();
+}
+
+// ── VAD Hands-Free Mode ──────────────────────────────────────────
+let vadInstance = null;
+let vadLoaded = false;
+
+async function loadVadLibrary() {
+  if (vadLoaded) return;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.19/dist/bundle.min.js';
+    script.onload = () => { vadLoaded = true; resolve(); };
+    script.onerror = () => reject(new Error('Failed to load VAD library'));
+    document.head.appendChild(script);
+  });
+}
+
+async function startVAD() {
+  try {
+    await loadVadLibrary();
+    if (!voiceAudioCtx) {
+      toast('Voice not initialized — enable voice first', 'error');
+      return;
+    }
+    vadInstance = await vad.MicVAD.new({
+      positiveSpeechThreshold: 0.8,
+      minSpeechFrames: 3,
+      onSpeechStart: () => {
+        // Interrupt AI playback if speaking
+        if (voicePlayingSource) {
+          interruptVoicePlayback();
+        }
+        voiceRecording = true;
+        voiceChunks = [];
+        updateVoiceStatus('Listening...');
+      },
+      onSpeechEnd: (audio) => {
+        // audio is Float32Array at mic sample rate — convert to Int16 PCM
+        const pcm16 = float32ToPcm16(audio);
+        voiceRecording = false;
+        updateVoiceStatus('Processing...');
+        if (ws && ws.readyState === 1) {
+          ws.send(pcm16.buffer);
+        }
+      }
+    });
+    vadInstance.start();
+    updateVoiceStatus('Hands-free active');
+    toast('Hands-free mode active — speak naturally', 'success');
+  } catch (err) {
+    toast('VAD init failed: ' + err.message, 'error');
+    // Fall back to PTT
+    const modeSelect = document.getElementById('voice-mode');
+    if (modeSelect) modeSelect.value = 'push-to-talk';
+    const pttBtn = document.getElementById('voice-ptt-btn');
+    if (pttBtn) pttBtn.style.display = '';
+  }
+}
+
+function stopVAD() {
+  if (vadInstance) {
+    vadInstance.pause();
+    vadInstance = null;
+  }
+  voiceRecording = false;
+  updateVoiceStatus('Ready');
+}
+
+// Voice mode select handler
+const voiceModeSelect = document.getElementById('voice-mode');
+if (voiceModeSelect) {
+  voiceModeSelect.addEventListener('change', (e) => {
+    const mode = e.target.value;
+    const pttBtn = document.getElementById('voice-ptt-btn');
+    if (mode === 'hands-free') {
+      if (pttBtn) pttBtn.style.display = 'none';
+      if (voiceEnabled) startVAD();
+    } else {
+      stopVAD();
+      if (pttBtn) pttBtn.style.display = '';
+    }
+  });
 }
 
 // Check for Google OAuth callback redirect

@@ -139,9 +139,18 @@
   - 14 API endpoints (CRUD + members + invites + permissions)
   - 32 tests
 
+### Phase 14: Cloud Deploy + One-Line Install (v2026.9.4)
+- **One-line installer**: `curl -fsSL .../install.sh | bash` — detects OS/arch, installs Node.js via nvm if needed, `npm install -g titan-agent`, runs onboard wizard
+  - Supports `TITAN_SKIP_ONBOARD=1` and `TITAN_VERSION=x.y.z` env overrides
+- **Deploy buttons**: Railway, Render, Replit — one-click cloud deployment
+  - `railway.json`, `render.yaml`, `.replit` configs with healthcheck, persistent disk, env var templates
+- **Dockerfile optimization**: multi-stage build with Alpine runtime (smaller image), 0.0.0.0 binding, .dockerignore
+- **README badges**: updated to current stats (34 providers, 112 tools, 15 channels, 3,549 tests)
+- 32 deploy config tests
+
 ---
 
-## Current State (v2026.9.2)
+## Current State (v2026.9.4)
 
 | Metric | Value |
 |--------|-------|
@@ -149,7 +158,7 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | ~3,517 across 106 files |
+| Tests | ~3,549 across 107 files |
 | Line Coverage | ~82% |
 | MCP | Client + Server (expose tools to other agents) |
 | Voice | LiveKit WebRTC (replaced custom pipeline) |
@@ -162,6 +171,7 @@
 | Deep Research | Yes (multi-step with citations) |
 | Team Mode RBAC | Yes (owner/admin/operator/viewer, invites, per-role tool permissions) |
 | Plugin SDK | Yes (skill scaffolding CLI for JS/TS/YAML) |
+| Cloud Deploy | Yes (one-line install, Railway/Render/Replit, optimized Docker) |
 
 ---
 

@@ -1,19 +1,19 @@
+# ─── Stage 1: Build ──────────────────────────────────────────
 FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY scripts ./scripts
-RUN npm ci
 COPY tsconfig.json ./
+RUN npm ci
 COPY src ./src
 RUN npm run build
 
-FROM node:22-slim
+# ─── Stage 2: Production ─────────────────────────────────────
+FROM node:22-alpine
 WORKDIR /app
 
-# Install system tools needed at runtime
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl bash git sudo openssh-client python3 wget \
-    && rm -rf /var/lib/apt/lists/*
+# Install minimal runtime tools
+RUN apk add --no-cache curl bash git wget
 
 # Install only production dependencies
 COPY package*.json ./
@@ -23,10 +23,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built application
 COPY --from=builder /app/dist ./dist
 COPY assets ./assets
+COPY .env.example ./.env.example
 
-# Create titan user with sudo access
-RUN groupadd -g 1001 titan && useradd -u 1001 -g titan -m titan && \
-    echo 'titan ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+# Create non-root titan user
+RUN addgroup -g 1001 titan && adduser -u 1001 -G titan -D titan
 USER titan
 
 # Create TITAN home directory
@@ -34,6 +34,8 @@ RUN mkdir -p /home/titan/.titan
 
 ENV NODE_ENV=production
 ENV TITAN_HOME=/home/titan/.titan
+# Bind to 0.0.0.0 for container networking
+ENV TITAN_GATEWAY_HOST=0.0.0.0
 
 EXPOSE 48420
 

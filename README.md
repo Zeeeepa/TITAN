@@ -13,8 +13,16 @@
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
-  <a href="#channels"><img src="https://img.shields.io/badge/channels-9-blue" alt="9 Channels"/></a>
-  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C323-brightgreen" alt="3,323 Tests"/></a>
+  <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
+  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C517-brightgreen" alt="3,517 Tests"/></a>
+</p>
+
+<p align="center">
+  <a href="https://railway.app/template/titan-agent"><img src="https://railway.app/button.svg" alt="Deploy on Railway" height="32"/></a>
+  &nbsp;
+  <a href="https://render.com/deploy?repo=https://github.com/Djtony707/TITAN"><img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="32"/></a>
+  &nbsp;
+  <a href="https://replit.com/github/Djtony707/TITAN"><img src="https://replit.com/badge/github/Djtony707/TITAN" alt="Run on Replit" height="32"/></a>
 </p>
 
 <p align="center">
@@ -42,13 +50,40 @@
 
 **Requirements:** Node.js >= 20, an API key, and a healthy sense of adventure.
 
+### One-Line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Djtony707/TITAN/main/install.sh | bash
+```
+
+This detects your OS, installs Node.js if needed (via nvm), installs `titan-agent` globally, and launches the onboarding wizard.
+
+### Manual Install
+
 ```bash
 npm install -g titan-agent
 titan onboard             # Interactive setup — pick a provider, paste your API key, give TITAN a soul
 titan gateway             # Launch Mission Control at http://localhost:48420
 ```
 
-That's it. Three commands from zero to a running autonomous agent with a dashboard.
+### Docker
+
+```bash
+docker run -d -p 48420:48420 --name titan \
+  -e ANTHROPIC_API_KEY=your-key \
+  -v titan-data:/home/titan/.titan \
+  ghcr.io/djtony707/titan:latest
+```
+
+Or with docker-compose:
+
+```bash
+git clone https://github.com/Djtony707/TITAN.git && cd TITAN
+cp .env.example .env     # Edit with your API keys
+docker compose up -d
+```
+
+That's it. From zero to a running autonomous agent with a dashboard.
 
 ### From Source
 

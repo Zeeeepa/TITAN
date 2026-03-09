@@ -4,6 +4,20 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.9.4] — 2026-03-09
+
+### Added
+- **One-Line Install** — `curl -fsSL .../install.sh | bash` with OS detection, Node.js auto-install via nvm
+- **Cloud Deploy Configs** — Railway, Render, Replit one-click deployment with healthchecks and persistent storage
+- **Deploy Buttons** — Railway/Render/Replit buttons in README header
+
+### Changed
+- **Dockerfile** — switched to Alpine runtime (smaller image), added 0.0.0.0 binding, .dockerignore
+- **README badges** — updated to current stats (34 providers, 112 tools, 15 channels, 3,549 tests)
+- Reorganized Quick Start with install script, Docker, and manual install sections
+
+---
+
 ## [2026.9.2] — 2026-03-09
 
 ### Added

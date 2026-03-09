@@ -1,0 +1,29 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: titan-gateway
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TITAN_HOME
+        value: /home/titan/.titan
+      - key: TITAN_GATEWAY_HOST
+        value: "0.0.0.0"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: TELEGRAM_TOKEN
+        sync: false
+    disk:
+      name: titan-data
+      mountPath: /home/titan/.titan
+      sizeGB: 1

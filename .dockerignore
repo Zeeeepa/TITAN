@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.github
+.claude
+.env
+*.md
+!README.md
+tests
+coverage
+.eslintrc*
+.prettierrc*
+vitest.config.ts
+tsconfig.json
+*.test.ts
+*.spec.ts
+.DS_Store

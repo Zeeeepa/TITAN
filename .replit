@@ -1,0 +1,18 @@
+run = "npm start -- gateway"
+entrypoint = "dist/cli/index.js"
+modules = ["nodejs-22"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm start -- gateway"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 48420
+externalPort = 80
+
+[env]
+NODE_ENV = "production"
+TITAN_GATEWAY_HOST = "0.0.0.0"

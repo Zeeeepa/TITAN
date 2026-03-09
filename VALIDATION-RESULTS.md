@@ -1,4 +1,68 @@
-# TITAN v2026.5.9 — Mini PC Validation Results
+# TITAN Validation Results
+
+---
+
+# v2026.6.7 — Autonomy Overhaul Validation
+
+**Hardware:** GMKtec M5 PLUS (Mini PC) + Powerhouse PC (RTX 5090, 32GB VRAM)
+**TITAN Version:** 2026.6.7
+**Date:** 2026-03-08
+**Tester:** Claude Opus 4.6 (automated)
+
+---
+
+## Test Suite Results
+
+| Metric | Value |
+|--------|-------|
+| Total Tests | 3,323 |
+| Test Files | 94 |
+| Passing | 3,323 (100%) |
+| Failing | 0 |
+| TypeScript | Clean build (0 new errors) |
+
+### New Test Files (v2026.6.7)
+
+| Test File | Tests | Module |
+|-----------|-------|--------|
+| reflection.test.ts | 16 | Agent self-assessment |
+| subAgent.test.ts | 10 | Sub-agent spawning |
+| orchestrator.test.ts | 10 | Task delegation |
+| goals.test.ts | 17 | Goal management |
+| initiative.test.ts | 5 | Self-initiative |
+| goals-skill.test.ts | 12 | Goal skill handlers |
+| x-poster.test.ts | 14 | X/Twitter posting |
+| browser-pool.test.ts | 7 | Shared browser pool |
+| stagehand.test.ts | 7 | Stagehand automation |
+| **Total New** | **98** | |
+
+---
+
+## Code Changes Validated
+
+### Orphaned Code Wiring
+| Change | Status | Notes |
+|--------|--------|-------|
+| Initiative → Autopilot | PASS | `checkInitiative()` called after successful goal subtask completion |
+| Browser Pool → web_browser.ts | PASS | Replaced local browser mgmt with shared pool |
+| Browser Pool → web_browse_llm.ts | PASS | Replaced local browser mgmt with shared pool |
+| Deliberation fallback fix | PASS | Uses configured model instead of hardcoded o3-mini |
+
+### Mini PC Deployment
+| Check | Status | Notes |
+|-------|--------|-------|
+| Docker build | PASS | Clean build, no cached layers |
+| Health endpoint | PASS | Reports v2026.6.7 |
+| Tool calling (qwen3.5:35b on RTX 5090) | PASS | Tools used in responses |
+| Response speed | PASS | "Super fast" — browser pool eliminates duplicate Chromium |
+
+---
+
+## Previous Validation Results
+
+---
+
+# v2026.5.9 — Mini PC Validation Results
 
 **Hardware:** GMKtec M5 PLUS — Ryzen 7 5825U (8C/16T), 12 GB RAM, CPU-only inference
 **TITAN Version:** 2026.5.9

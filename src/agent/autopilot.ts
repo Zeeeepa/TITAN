@@ -18,6 +18,7 @@ import { getDailyTotal } from './costOptimizer.js';
 import { AUTOPILOT_MD, AUTOPILOT_RUNS_PATH } from '../utils/constants.js';
 import { getReadyTasks, completeSubtask, failSubtask, getGoalsSummary } from './goals.js';
 import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
+import { checkInitiative } from './initiative.js';
 import logger from '../utils/logger.js';
 import type { TitanConfig } from '../config/schema.js';
 
@@ -410,6 +411,20 @@ async function runGoalBasedAutopilot(config: TitanConfig, startTime: number): Pr
         let delivered = false;
         if (classification !== 'ok') {
             delivered = await deliverResult(config, run);
+        }
+
+        // After successful subtask, check if initiative has a natural next step
+        if (result.success) {
+            try {
+                const initiative = await checkInitiative();
+                if (initiative.acted) {
+                    logger.info(COMPONENT, `Initiative chained: ${initiative.result?.slice(0, 100)}`);
+                } else if (initiative.proposed) {
+                    logger.info(COMPONENT, `Initiative proposed: ${initiative.proposed.slice(0, 100)}`);
+                }
+            } catch (e) {
+                logger.warn(COMPONENT, `Initiative check failed: ${(e as Error).message}`);
+            }
         }
 
         return { run, delivered };

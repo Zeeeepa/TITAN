@@ -22,15 +22,16 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
       Router (1-5)       Adapters (9)      Sandbox+Pairing
             |                                Shield+Vault
       Agent Core
-      Session Mgmt
-      Tool Runner
+      Session Mgmt | Reflection
+      Tool Runner  | Sub-Agents
+      Orchestrator | Goals
             |
-       +----+----+
-       |         |
-    Skills    LLM Providers
-    31 files  21 providers
-    86 tools  (4 native + 17 compat)
-       |
+       +----+----+--------+
+       |         |         |
+    Skills    LLM Providers  Browsing
+    33 files  21 providers   Browser Pool
+    95 tools  (4 native +   Stagehand
+       |       17 compat)
     Memory + Learning
     Graph + Relationship
     Briefings
@@ -42,10 +43,13 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
 2. **Routing** -- Multi-agent router resolves which agent handles the message
 3. **Context** -- Agent builds system prompt with workspace files, learning context, memories
 4. **Deliberation** -- Complex requests trigger multi-stage reasoning (analyze, plan, approve, execute)
-5. **LLM** -- Provider router sends to best available LLM (with failover + retry)
-6. **Tools** -- Multi-round tool execution loop (up to 10 rounds)
-7. **Learning** -- Tool results tracked, knowledge base updated
-8. **Response** -- Final response routed back to originating channel
+5. **Orchestration** -- Multi-step tasks analyzed and delegated to sub-agents (parallel or sequential)
+6. **LLM** -- Provider router sends to best available LLM (with failover + retry)
+7. **Tools** -- Multi-round tool execution loop (up to 10 rounds)
+8. **Reflection** -- Agent self-assesses quality every N rounds (confidence, completeness, next steps)
+9. **Learning** -- Tool results tracked, knowledge base updated
+10. **Goals** -- Persistent goal tracking drives autopilot subtask execution + initiative chaining
+11. **Response** -- Final response routed back to originating channel
 
 ## Security Model
 
@@ -69,17 +73,25 @@ src/
 |   +-- contextManager.ts   # Context window management + compaction
 |   +-- costOptimizer.ts    # Token cost tracking + optimization
 |   +-- deliberation.ts     # Multi-stage reasoning for complex requests
+|   +-- goals.ts            # Persistent goal & subtask tracking
 |   +-- generator.ts        # Auto-generate skills from natural language
+|   +-- initiative.ts       # Self-initiative: auto-chain next subtasks
 |   +-- loopDetection.ts    # Detect infinite tool-call loops
 |   +-- monitor.ts          # File/process monitoring
 |   +-- multiAgent.ts       # Multi-agent router (max 5 agents)
+|   +-- orchestrator.ts     # Multi-step task delegation to sub-agents
 |   +-- parallelTools.ts    # Parallel tool execution
 |   +-- planner.ts          # Task planning + execution
+|   +-- reflection.ts       # Self-assessment during tool loops
 |   +-- responseCache.ts    # LRU response cache
 |   +-- session.ts          # Per-user/per-channel session management
 |   +-- stallDetector.ts    # Detect stalled LLM inference
+|   +-- subAgent.ts         # Isolated sub-agent spawning (explorer/coder/browser/analyst)
 |   +-- swarm.ts            # Agent swarm coordination
 |   +-- toolRunner.ts       # Tool execution engine with sandboxing
++-- browsing/
+|   +-- browserPool.ts      # Shared Chromium pool (max 5 pages, 30-min TTL)
+|   +-- stagehand.ts        # Natural language browser automation (Playwright fallback)
 +-- auth/
 |   +-- google.ts           # Google OAuth
 +-- channels/
@@ -135,7 +147,7 @@ src/
 +-- skills/
 |   +-- registry.ts         # Skill discovery, loading, toggle
 |   +-- marketplace.ts      # GitHub-hosted skills marketplace
-|   +-- builtin/            # 31 built-in skill files (86 tools)
+|   +-- builtin/            # 33 built-in skill files (95 tools)
 |       +-- shell.ts        # Shell execution
 |       +-- filesystem.ts   # File operations
 |       +-- browser.ts      # CDP browser control
@@ -156,7 +168,9 @@ src/
 |       +-- income_tracker.ts    # Financial ledger (4 tools)
 |       +-- freelance_monitor.ts # Job search + matching (4 tools)
 |       +-- content_publisher.ts # SEO content pipeline (4 tools)
+|       +-- goals.ts        # Goal management (4 tools)
 |       +-- lead_scorer.ts      # Lead gen + scoring (4 tools)
+|       +-- x_poster.ts     # X/Twitter posting + review queue (4 tools)
 |       +-- cron.ts         # Scheduled tasks
 |       +-- webhook.ts      # HTTP webhooks
 |       +-- memory_skill.ts # Persistent memory ops

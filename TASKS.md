@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-07
-**Current Version:** 2026.5.17
+**Last Updated:** 2026-03-08
+**Current Version:** 2026.6.7
 
 ---
 
@@ -62,18 +62,32 @@
 - **v2026.5.17**: GitHub-hosted Skills Marketplace (12 curated skills on Djtony707/titan-skills), dynamic model dropdown (all 21 providers), marketplace API endpoints, removed stale Rust-era docs
 - **v2026.5.18**: Mesh networking fully operational — router integration (mesh fallback in chat/chatStream), peer approval system (pending→approve→connect), maxPeers=5, auto-approve toggle, dynamic heartbeat, allowRemoteModels/maxRemoteTasks enforcement, CLI commands (--pending/--approve/--reject/--revoke/--auto-approve), dashboard notifications, persisted approved-peers.json
 
+### Phase 7: Autonomy Overhaul (v2026.6.x)
+- **v2026.6.0–6.6**: Tool Search (compact tool mode), Sandbox Code Execution (Docker), Deliberative Reasoning
+- **v2026.6.7**: Full autonomy overhaul:
+  - **Agent Reflection** — self-assessment every N rounds (confidence, completeness, next steps)
+  - **Sub-Agent Spawning** — isolated agents with constrained toolsets (explorer/coder/browser/analyst templates)
+  - **Orchestrator** — parallel/sequential multi-step task delegation with dependency-aware execution
+  - **Goal Management** — persistent goals with subtasks, budget tracking, auto-completion
+  - **Self-Initiative** — auto-chains goal subtasks after completion via autopilot
+  - **Shared Browser Pool** — single Chromium instance, max 5 pages, 30-min TTL, cookie persistence
+  - **Stagehand Integration** — natural language browser automation with Playwright fallback
+  - **X/Twitter Posting** — OAuth 1.0a, review queue, draft/approve/post/list tools
+  - **Deliberation Fix** — model-aware thinking parameter, configurable fallback chain
+  - 98 new tests across 9 test files, 3,323 total tests across 94 files
+
 ---
 
-## Current State (v2026.5.17)
+## Current State (v2026.6.7)
 
 | Metric | Value |
 |--------|-------|
 | Providers | 21 (4 native + 17 OpenAI-compat) |
 | Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
-| Built-in Skills | 31 files |
-| Tools | 86 registered |
-| Tests | 3,171 across 81 files |
-| Line Coverage | ~80.7% |
+| Built-in Skills | 33 files |
+| Tools | 95 registered |
+| Tests | 3,323 across 94 files |
+| Line Coverage | ~82% |
 
 ---
 
@@ -143,7 +157,7 @@ Only after the above is solid:
 - [ ] Voice-First Mode — always-on voice assistant (wake word detection)
 - [ ] Agent-to-Agent Protocol — standardized inter-agent communication
 - [ ] Visual workflow builder (drag-and-drop recipe editor)
-- [ ] Self-reflection loop (agent evaluates own responses)
+- [x] Self-reflection loop (agent evaluates own responses) — shipped in v2026.6.7
 - [ ] Evaluation framework (benchmark agent quality)
 - [ ] WASM runtime / edge deployment
 - [ ] Hardware peripherals (Arduino, RPi GPIO)
@@ -159,7 +173,8 @@ Only after the above is solid:
 | Phase 2 | 99 | 10 | ~27% |
 | Phase 4.5 | 1,160+ | 37 | 56.6% |
 | Phase 5 | 2,856 | 69 | ~72% |
-| Phase 6 (current) | 3,171 | 81 | ~80.7% |
+| Phase 6 | 3,171 | 81 | ~80.7% |
+| Phase 7 (current) | 3,323 | 94 | ~82% |
 
 ---
 

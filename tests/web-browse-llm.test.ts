@@ -17,8 +17,8 @@ vi.mock('../src/skills/registry.js', () => ({
     }),
 }));
 
-// Mock playwright to prevent real browser launches
-const mockPage = {
+// Mock playwright to prevent real browser launches — hoisted so vi.mock can reference them
+const mockPage = vi.hoisted(() => ({
     goto: vi.fn(),
     title: vi.fn().mockResolvedValue('Test Page'),
     evaluate: vi.fn().mockResolvedValue([]),
@@ -34,16 +34,22 @@ const mockPage = {
     mouse: { wheel: vi.fn() },
     locator: vi.fn(),
     $eval: vi.fn(),
-};
+    isClosed: vi.fn().mockReturnValue(false),
+}));
 
-const mockContext = {
-    newPage: vi.fn().mockResolvedValue(mockPage),
+const mockContext = vi.hoisted(() => ({
+    newPage: vi.fn(),
     close: vi.fn(),
-};
+}));
 
-// Mock web_browser.ts getOrCreateBrowser
-vi.mock('../src/skills/builtin/web_browser.js', () => ({
-    getOrCreateBrowser: vi.fn().mockResolvedValue(mockContext),
+// Initialize mockContext.newPage after mockPage is defined
+mockContext.newPage.mockResolvedValue(mockPage);
+
+// Mock browserPool to prevent real browser launches
+vi.mock('../src/browsing/browserPool.js', () => ({
+    getPage: vi.fn().mockResolvedValue(mockPage),
+    releasePage: vi.fn().mockResolvedValue(undefined),
+    getDefaultContext: vi.fn().mockResolvedValue(mockContext),
 }));
 
 // Mock jsdom + readability + turndown
@@ -211,7 +217,7 @@ describe('Web Browse LLM Tools', () => {
 
             expect(result).toContain('Source:');
             expect(mockPage.goto).toHaveBeenCalled();
-            expect(mockPage.close).toHaveBeenCalled();
+            // Page is released via releasePage() from browserPool, not page.close() directly
         });
 
         it('falls back to Playwright when fetch fails', async () => {

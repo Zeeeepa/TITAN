@@ -7,6 +7,7 @@
  */
 import { registerSkill } from '../registry.js';
 import logger from '../../utils/logger.js';
+import { getPage, releasePage, getDefaultContext } from '../../browsing/browserPool.js';
 
 const COMPONENT = 'WebBrowseLLM';
 
@@ -30,53 +31,6 @@ interface PwPage {
     $eval(sel: string, fn: (el: unknown) => unknown): Promise<unknown>;
 }
 interface PwContext { newPage(): Promise<PwPage>; close(): Promise<void> }
-interface PwBrowser { newContext(opts?: unknown): Promise<PwContext>; isConnected(): boolean; close(): Promise<void> }
-interface PwChromium { launch(opts?: unknown): Promise<PwBrowser> }
-
-// ─── Persistent browser (reuse from web_browser.ts if available) ──
-let playwrightBrowser: PwBrowser | null = null;
-let playwrightContext: PwContext | null = null;
-let launchPromise: Promise<PwContext> | null = null;
-
-async function getOrCreateBrowser(): Promise<PwContext> {
-    // Try to reuse from web_browser.ts first
-    try {
-        const wb = await import('./web_browser.js');
-        if (typeof (wb as Record<string, unknown>).getOrCreateBrowser === 'function') {
-            return (wb as unknown as { getOrCreateBrowser: () => Promise<PwContext> }).getOrCreateBrowser();
-        }
-    } catch { /* not exported yet or not available */ }
-
-    // Fallback: own browser instance
-    if (playwrightBrowser && playwrightBrowser.isConnected()) {
-        return playwrightContext!;
-    }
-    if (!launchPromise) {
-        launchPromise = (async () => {
-            let chromium: PwChromium;
-            try {
-                const pw = await import('playwright' as string);
-                chromium = pw.chromium as PwChromium;
-            } catch {
-                const { execSync } = await import('child_process');
-                logger.info(COMPONENT, 'Installing Playwright Chromium...');
-                execSync('npx playwright install chromium --with-deps 2>&1', { stdio: 'pipe', timeout: 120_000 });
-                const pw = await import('playwright' as string);
-                chromium = pw.chromium as PwChromium;
-            }
-            playwrightBrowser = await chromium.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-            });
-            playwrightContext = await playwrightBrowser!.newContext({
-                userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                viewport: { width: 1280, height: 800 },
-            });
-            return playwrightContext!;
-        })().finally(() => { launchPromise = null; });
-    }
-    return launchPromise;
-}
 
 // ─── Token estimation (rough: 1 token ≈ 4 chars) ─────────────────
 function truncateToTokens(text: string, maxTokens: number): string {
@@ -107,14 +61,13 @@ async function webRead(url: string, maxTokens: number): Promise<string> {
     } catch {
         // Fallback to Playwright for JS-heavy pages
         logger.info(COMPONENT, `Using Playwright for: ${url}`);
-        const ctx = await getOrCreateBrowser();
-        const page = await ctx.newPage();
+        const page = await getPage() as unknown as PwPage;
         try {
             await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
             html = await page.content();
             finalUrl = page.url();
         } finally {
-            await page.close();
+            await releasePage(page as unknown as import('playwright').Page);
         }
     }
 
@@ -213,8 +166,7 @@ async function getOrCreateSession(sessionId: string): Promise<WebActSession> {
         return session;
     }
 
-    const ctx = await getOrCreateBrowser();
-    const page = await ctx.newPage();
+    const page = await getPage() as unknown as PwPage;
     session = {
         page,
         lastUsed: Date.now(),

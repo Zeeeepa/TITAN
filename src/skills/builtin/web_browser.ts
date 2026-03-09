@@ -27,6 +27,7 @@ import { registerSkill } from '../registry.js';
 import { z } from 'zod';
 import logger from '../../utils/logger.js';
 import { TITAN_VERSION } from '../../utils/constants.js';
+import { getPage, releasePage, closeBrowser as closePoolBrowser } from '../../browsing/browserPool.js';
 
 const COMPONENT = 'WebBrowser';
 
@@ -41,69 +42,6 @@ interface BrowseResult {
 }
 
 interface DomElement { tag: string; id: string; name: string; cls: string; text: string; type?: string }
-
-/** Minimal Playwright shape so we can type dynamic imports without depending on @playwright/test */
-interface PwLocator { first(): PwLocator; waitFor(opts: unknown): Promise<unknown>; catch(fn: () => void): Promise<unknown> }
-interface PwPage {
-    goto(url: string, opts?: unknown): Promise<unknown>;
-    title(): Promise<string>;
-    evaluate(fn: unknown, ...args: unknown[]): Promise<unknown>;
-    screenshot(opts?: unknown): Promise<Buffer>;
-    close(): Promise<void>;
-    url(): string;
-    click(sel: string): Promise<void>;
-    fill(sel: string, val: string): Promise<void>;
-    waitForTimeout(ms: number): Promise<void>;
-    locator(sel: string): PwLocator;
-    innerText(sel: string): Promise<string>;
-    focus(sel: string): Promise<void>;
-    type(sel: string, text: string, opts?: unknown): Promise<void>;
-    keyboard: { type(text: string, opts?: unknown): Promise<void>; press(key: string): Promise<void> };
-}
-interface PwContext { newPage(): Promise<PwPage>; close(): Promise<void> }
-interface PwBrowser { newContext(opts?: unknown): Promise<PwContext>; isConnected(): boolean; close(): Promise<void> }
-interface PwChromium { launch(opts?: unknown): Promise<PwBrowser> }
-
-// ─── Persistent browser session ───────────────────────────────────
-let playwrightBrowser: PwBrowser | null = null;
-let playwrightContext: PwContext | null = null;
-let launchPromise: Promise<PwContext> | null = null;
-
-async function doLaunchBrowser(): Promise<PwContext> {
-    let chromium: PwChromium;
-    try {
-        const pw = await import('playwright' as string);
-        chromium = pw.chromium as PwChromium;
-    } catch {
-        const { execSync } = await import('child_process');
-        logger.info(COMPONENT, 'Installing Playwright Chromium (first time only, may take ~1 min)...');
-        execSync('npx playwright install chromium --with-deps 2>&1', { stdio: 'pipe', timeout: 120_000 });
-        const pw = await import('playwright' as string);
-        chromium = pw.chromium as PwChromium;
-    }
-
-    playwrightBrowser = await chromium.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-    playwrightContext = await playwrightBrowser.newContext({
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 800 },
-    });
-    logger.info(COMPONENT, 'Playwright browser started');
-    return playwrightContext;
-}
-
-export async function getOrCreateBrowser(): Promise<PwContext> {
-    if (playwrightBrowser && playwrightBrowser.isConnected()) {
-        return playwrightContext!;
-    }
-    // Singleton launch — prevents thundering herd (concurrent requests launching multiple browsers)
-    if (!launchPromise) {
-        launchPromise = doLaunchBrowser().finally(() => { launchPromise = null; });
-    }
-    return launchPromise;
-}
 
 /** Extract clean readable text from HTML */
 function extractText(html: string, maxChars = 8000): string {
@@ -145,10 +83,9 @@ async function fetchSimple(url: string): Promise<BrowseResult | null> {
     } catch { return null; }
 }
 
-/** Full browser render with Playwright */
+/** Full browser render with Playwright (uses shared browser pool) */
 async function fetchWithBrowser(url: string, screenshot: boolean): Promise<BrowseResult> {
-    const ctx = await getOrCreateBrowser();
-    const page = await ctx.newPage();
+    const page = await getPage();
     try {
         await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
 
@@ -185,7 +122,7 @@ async function fetchWithBrowser(url: string, screenshot: boolean): Promise<Brows
 
         return { url, title, content: bodyText, loadedWithJs: true, extractedLinks: links, screenshot: screenshotData };
     } finally {
-        await page.close();
+        await releasePage(page);
     }
 }
 
@@ -328,8 +265,7 @@ export function initWebBrowserTool(): void {
         },
         execute: async (args: Record<string, unknown>) => {
             const { url, actions, returnType = 'smart_dom' } = args as { url: string; actions: Record<string, unknown>[]; returnType?: string };
-            const ctx = await getOrCreateBrowser();
-            const page = await ctx.newPage();
+            const page = await getPage();
 
             try {
                 // Check if we are already on this URL (saves navigation time)
@@ -352,7 +288,7 @@ export function initWebBrowserTool(): void {
                             await page.waitForTimeout(step.delayMs as number);
                             results.push(`✅ Waited: ${step.delayMs}ms`);
                         } else if (step.action === 'evaluate' && step.script) {
-                            await page.evaluate(step.script);
+                            await page.evaluate(step.script as string & (() => unknown));
                             results.push(`✅ Evaluated custom script`);
                         }
                     } catch (e: unknown) {
@@ -420,7 +356,7 @@ export function initWebBrowserTool(): void {
 
                 return output;
             } finally {
-                await page.close();
+                await releasePage(page);
             }
         },
     });
@@ -430,9 +366,5 @@ export function initWebBrowserTool(): void {
 
 /** Gracefully close the browser session on gateway shutdown */
 export async function closeBrowser(): Promise<void> {
-    if (playwrightBrowser) {
-        await playwrightBrowser.close();
-        playwrightBrowser = null;
-        playwrightContext = null;
-    }
+    await closePoolBrowser();
 }

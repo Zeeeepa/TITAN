@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>A fully autonomous AI agent framework with Sandbox Code Execution, Deliberative Reasoning, and Gmail OAuth. 21 providers. 89 tools. 3,225 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
+  <strong>A fully autonomous AI agent framework with Sub-Agent Orchestration, Goal-Driven Autopilot, Deliberative Reasoning, Sandbox Code Execution, and Gmail OAuth. 21 providers. 95 tools. 3,323 tests. Pure JavaScript — no native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-88-orange" alt="88 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-95-orange" alt="95 Tools"/></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ npm run dev:gateway        # Start in dev mode
 | **Security** | Prompt injection shield, DM pairing, E2E encryption, encrypted vault, audit log, tool sandboxing | "We'll add auth later" |
 | **Memory** | 4 systems (episodic, learning, relationship, temporal graph) | Basic chat history |
 | **Multi-computer** | Built-in mesh with mDNS + Tailscale auto-discovery | Manual config or unsupported |
-| **Skills** | 89 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
+| **Skills** | 95 built-in + drop-in YAML/JS creation (toggleable per-skill) | Fixed tool set |
 | **Email** | Gmail OAuth + SMTP with zero extra dependencies | Not included |
 | **Cost control** | Smart routing, tool search, daily budgets, context summarization | Uncapped token spend (surprise!) |
 | **GUI** | 12-panel Mission Control dashboard with soul editor | CLI only or basic web UI |
@@ -111,7 +111,20 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 > **Running locally?** See [docs/MODELS.md](docs/MODELS.md) for GPU-tiered Ollama model recommendations.
 
-### 89 Built-in Tools
+### Autonomy Overhaul (v2026.6.7)
+
+TITAN now operates with true agency — not just tool calling, but self-directed goal pursuit with reflection and delegation.
+
+- **Agent Reflection** — Every N rounds, TITAN pauses to assess: "Am I making progress? Should I continue, stop, or adjust?" Uses the fast model alias for cheap, quick self-checks.
+- **Sub-Agent Spawning** — `spawn_agent` delegates tasks to isolated sub-agents with constrained toolsets. Templates: `explorer` (web research), `coder` (file/code), `browser` (interactive web), `analyst` (analysis/memory). Max depth = 1 (no sub-sub-agents).
+- **Orchestrator** — Analyzes tasks for delegation potential, breaks them into parallel assignments, spawns sub-agents, and synthesizes results. Independent tasks run in parallel; dependent tasks run sequentially with context injection.
+- **Goal Management** — Persistent goals with subtasks, scheduling, budget tracking, and progress monitoring. Goals drive the autopilot system — each cycle picks the next actionable subtask. Tools: `goal_create`, `goal_list`, `goal_update`, `goal_delete`.
+- **Self-Initiative** — After completing a goal subtask, TITAN checks for the next ready task. In autonomous mode, it starts working immediately. In supervised mode, it proposes the next action. Rate-limited to prevent runaway execution.
+- **Shared Browser Pool** — One Chromium process shared across all browsing tools (browse_url, browser_search, browser_auto_nav, web_read, web_act). Max 5 concurrent pages, 30-min session TTL, anti-detection, cookie persistence.
+- **Stagehand Integration** — Natural language browser automation via `@browserbasehq/stagehand`. Falls back to raw Playwright when Stagehand is unavailable. Supports `act()`, `extract()`, and `observe()`.
+- **X/Twitter Integration** — Post, reply, search, and read timeline via the X v2 API with OAuth 1.0a signing. Includes a human review gate — posts are queued for approval before publishing. Tools: `x_post`, `x_reply`, `x_search`, `x_review`.
+
+### 95 Built-in Tools
 
 | Category | Tools |
 |----------|-------|
@@ -135,17 +148,20 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 | **Freelance** | `freelance_search`, `freelance_match`, `freelance_draft`, `freelance_track` |
 | **Content** | `content_research`, `content_outline`, `content_publish`, `content_schedule` |
 | **Lead Gen** | `lead_scan`, `lead_score`, `lead_queue`, `lead_report` |
+| **Goals** | `goal_create`, `goal_list`, `goal_update`, `goal_delete` |
+| **X/Twitter** | `x_post`, `x_reply`, `x_search`, `x_review` |
+| **Sub-Agents** | `spawn_agent` (delegate tasks to isolated sub-agents with constrained toolsets) |
 
 All skills can be individually enabled/disabled from the Mission Control dashboard.
 
 ### Tool Search — Intelligent Tool Discovery
 
-TITAN doesn't dump all 88 tool schemas into every LLM call. Instead, it sends only 8 core tools plus a `tool_search` meta-tool. When the LLM needs a capability it doesn't see, it calls `tool_search("email")` and gets the relevant tools added dynamically. This saves **60-80% of input tokens** on every request.
+TITAN doesn't dump all 95 tool schemas into every LLM call. Instead, it sends only 8 core tools plus a `tool_search` meta-tool. When the LLM needs a capability it doesn't see, it calls `tool_search("email")` and gets the relevant tools added dynamically. This saves **60-80% of input tokens** on every request.
 
 ```
 # What the LLM sees on a typical request:
-Before: 89 tools × ~50 tokens each = ~4,450 input tokens
-After:  10 core tools + tool_search = ~700 input tokens (84% reduction)
+Before: 95 tools × ~50 tokens each = ~4,750 input tokens
+After:  10 core tools + tool_search = ~700 input tokens (85% reduction)
 ```
 
 Inspired by Anthropic's tool search pattern, but works with **all 21 providers** — not just Claude. Configure which tools are always available:
@@ -787,7 +803,7 @@ All state lives in `~/.titan/`:
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (3,171 tests, 81 files)
+npm run test           # vitest (3,323 tests, 94 files)
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
 npm run dev:gateway    # Dev mode with tsx
@@ -798,12 +814,14 @@ npm run test:coverage  # Coverage report (78%+ with 55% threshold)
 
 ```
 src/
-  agent/        Core agent loop, multi-agent, swarm, planner, autonomy, deliberation, cost optimizer
+  agent/        Core agent loop, multi-agent, swarm, planner, autonomy, deliberation, cost optimizer,
+                reflection, sub-agents, orchestrator, goals, initiative
   auth/         OAuth token managers (Google)
+  browsing/     Shared browser pool, Stagehand natural language automation
   channels/     Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, Teams, WebChat
   providers/    Anthropic, OpenAI, Google, Ollama + 16 OpenAI-compatible
   memory/       Episodic, learning, relationship, temporal graph
-  skills/       86 built-in tools + user skill loader
+  skills/       95 built-in tools + user skill loader (goals, x_poster, content, lead gen, etc.)
   security/     Shield, sandbox, encryption, pairing, vault, audit log
   gateway/      HTTP/WS server + Mission Control dashboard + OAuth endpoints
   mesh/         mDNS + Tailscale peer discovery, WebSocket transport
@@ -820,9 +838,11 @@ src/
 
 | Mode | Behavior |
 |------|----------|
-| `autonomous` | Full auto — TITAN executes all tools without asking |
-| `supervised` | Asks before dangerous operations (default) |
+| `autonomous` | Full auto — TITAN executes all tools without asking, auto-triggers deliberation, self-initiates goal subtasks |
+| `supervised` | Asks before dangerous operations, proposes next steps instead of executing (default) |
 | `locked` | Asks permission for every tool call |
+
+In **autonomous mode**, TITAN goes further: deliberation plans skip the approval gate, initiative auto-chains goal subtasks, and the reflection loop runs every 3 rounds to self-assess progress.
 
 Email tools are classified by risk: `email_search`, `email_read`, `email_list` are safe; `email_send` is moderate (because sending emails on someone's behalf without asking is how you lose friends).
 
@@ -834,7 +854,10 @@ Configure via `titan config set autonomy.mode supervised` or Mission Control Set
 
 See [TASKS.md](TASKS.md) for the full development roadmap.
 
-### Recently Shipped (v2026.5.x)
+### Recently Shipped (v2026.6.x)
+- **v2026.6.7**: **Autonomy Overhaul** — Agent reflection (self-assessment every N rounds), sub-agent spawning with 4 templates (explorer/coder/browser/analyst), orchestrator for parallel task delegation, persistent goal management with autopilot integration, self-initiative engine, shared browser pool (replaces duplicate Chromium processes), Stagehand natural language browser automation, X/Twitter integration (post/reply/search with human review gate), deliberation fallback fix (uses configured model instead of hardcoded o3-mini). 9 new test files, 3,323 tests across 94 files.
+
+### Previously Shipped (v2026.5.x)
 - **v2026.5.17**: GitHub-hosted Skills Marketplace ([Djtony707/titan-skills](https://github.com/Djtony707/titan-skills) — 12 curated skills), dynamic model dropdown showing all 21 providers, marketplace REST API, stale docs cleanup, 3,171 tests
 - **v2026.5.14**: Income Automation Skills (income_tracker, freelance_monitor, content_publisher, lead_scorer — 16 new tools), Autopilot Playbook templates, per-skill enable/disable toggle in Mission Control, skill-to-tool mapping
 - **v2026.5.13**: Kimi K2.5 provider, memory flush hook, web_read + web_act tools for local-LLM browsing

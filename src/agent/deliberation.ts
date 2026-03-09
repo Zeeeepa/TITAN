@@ -44,10 +44,11 @@ export function shouldDeliberate(message: string, config: TitanConfig): boolean 
     return complexity === 'ambitious';
 }
 
-/** Get the reasoning model to use */
+/** Get the reasoning model to use — always falls back to the agent's configured model */
 function getReasoningModel(config: TitanConfig): string {
     return config.deliberation.reasoningModel
         || config.agent.modelAliases?.reasoning
+        || config.agent.modelAliases?.fast
         || config.agent.model;
 }
 
@@ -65,6 +66,9 @@ export async function analyze(message: string, sessionId: string, config: TitanC
     const reasoningModel = getReasoningModel(config);
     logger.info(COMPONENT, `Analyzing request with ${reasoningModel}: "${message.slice(0, 80)}..."`);
 
+    // Only enable thinking for models known to support it (e.g., o3, Claude)
+    const supportsThinking = /\b(o[1-9]|claude)/i.test(reasoningModel);
+
     try {
         const response = await chat({
             model: reasoningModel,
@@ -77,8 +81,7 @@ export async function analyze(message: string, sessionId: string, config: TitanC
             ],
             maxTokens: 2000,
             temperature: 0.3,
-            thinking: true,
-            thinkingLevel: 'high',
+            ...(supportsThinking ? { thinking: true, thinkingLevel: 'high' as const } : {}),
         });
 
         state.analysis = response.content;

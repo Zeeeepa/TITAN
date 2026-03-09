@@ -589,6 +589,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // Agent message endpoint (uses multi-agent routing)
+  // Supports SSE streaming when Accept: text/event-stream header is present
   app.post('/api/message', rateLimit(60000, 30), async (req, res) => {
     const { content, channel = 'api', userId = 'api-user' } = req.body;
     if (!content) {
@@ -596,11 +597,23 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       return;
     }
 
+    const wantsSSE = req.headers.accept === 'text/event-stream';
+
     // Check slash commands first (same as handleInboundMessage)
     try {
       const slashResult = await handleSlashCommand(content, channel, userId);
       if (slashResult) {
-        res.json({ content: slashResult.response, sessionId: null, toolsUsed: [], model: 'system' });
+        if (wantsSSE) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('X-Accel-Buffering', 'no');
+          res.flushHeaders();
+          res.write(`event: done\ndata: ${JSON.stringify({ content: slashResult.response, sessionId: null, durationMs: 0 })}\n\n`);
+          res.end();
+        } else {
+          res.json({ content: slashResult.response, sessionId: null, toolsUsed: [], model: 'system' });
+        }
         return;
       }
     } catch { /* fall through to routeMessage */ }
@@ -608,15 +621,46 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     // Concurrent LLM request limit (auto-tuned to 2 on CPU-only systems)
     const maxConcurrent = maxConcurrentOverride ?? (loadConfig().security.maxConcurrentTasks || 5);
     if (activeLlmRequests >= maxConcurrent) {
-      res.status(503).json({ error: 'Server busy — too many concurrent requests. Try again shortly.' });
+      if (wantsSSE) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.flushHeaders();
+        res.write(`event: done\ndata: ${JSON.stringify({ error: 'Server busy' })}\n\n`);
+        res.end();
+      } else {
+        res.status(503).json({ error: 'Server busy — too many concurrent requests. Try again shortly.' });
+      }
       return;
     }
     activeLlmRequests++;
     try {
-      const response = await routeMessage(content, channel, userId);
-      res.json(response);
+      if (wantsSSE) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders();
+
+        const response = await routeMessage(content, channel, userId, {
+          onToken: (token) => {
+            res.write(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
+          },
+          onToolCall: (name, args) => {
+            res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
+          },
+        });
+        res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
+        res.end();
+      } else {
+        const response = await routeMessage(content, channel, userId);
+        res.json(response);
+      }
     } catch (error) {
-      res.status(500).json({ error: (error as Error).message });
+      if (wantsSSE) {
+        res.write(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({ error: (error as Error).message });
+      }
     } finally {
       activeLlmRequests--;
     }
@@ -1508,8 +1552,50 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
         // Accept both 'chat' and 'message' types for compatibility
         if ((data.type === 'chat' || data.type === 'message') && data.content) {
-          // Process through WebChat channel
-          if (webChatChannel) {
+          // Stream-enabled chat: send tokens as they arrive, then final message
+          if (data.stream !== false && webChatChannel) {
+            const chatUserId = data.userId || 'webchat-user';
+            // Broadcast inbound message to all clients (for multi-tab visibility)
+            broadcast({
+              type: 'message', direction: 'inbound', channel: 'webchat',
+              userId: chatUserId, content: data.content,
+              timestamp: new Date().toISOString(),
+            });
+
+            try {
+              const response = await routeMessage(data.content, 'webchat', chatUserId, {
+                onToken: (token) => {
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'token', data: token }));
+                  }
+                },
+                onToolCall: (name, args) => {
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'tool_call', name, args }));
+                  }
+                },
+              });
+              // Send done event to the originating client
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'done', content: response.content, model: response.model, durationMs: response.durationMs, tokenUsage: response.tokenUsage }));
+              }
+              // Broadcast final message to all other clients (non-streaming)
+              for (const client of wsClients) {
+                if (client !== ws && client.readyState === WebSocket.OPEN) {
+                  client.send(JSON.stringify({
+                    type: 'message', direction: 'outbound', channel: 'webchat',
+                    userId: chatUserId, content: response.content,
+                    model: response.model, durationMs: response.durationMs,
+                    timestamp: new Date().toISOString(),
+                  }));
+                }
+              }
+            } catch (err) {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'done', content: `Error: ${(err as Error).message}` }));
+              }
+            }
+          } else if (webChatChannel) {
             webChatChannel.handleWebSocketMessage(data.userId || 'webchat-user', data.content);
           }
         }

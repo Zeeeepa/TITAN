@@ -5,7 +5,7 @@
  */
 import { v4 as uuid } from 'uuid';
 import { loadConfig } from '../config/config.js';
-import { processMessage, type AgentResponse } from './agent.js';
+import { processMessage, type AgentResponse, type StreamCallbacks } from './agent.js';
 import { checkPromptInjection } from '../security/shield.js';
 import logger from '../utils/logger.js';
 
@@ -133,6 +133,7 @@ export async function routeMessage(
     message: string,
     channel: string,
     userId: string,
+    streamCallbacks?: StreamCallbacks,
 ): Promise<AgentResponse & { agentId: string; agentName: string }> {
     const agent = resolveAgent(channel, userId);
 
@@ -163,7 +164,7 @@ export async function routeMessage(
     const response = await processMessage(message, channel, userId, {
         model: effectiveModel,
         systemPrompt: agent.systemPrompt,
-    });
+    }, streamCallbacks);
 
     return {
         ...response,

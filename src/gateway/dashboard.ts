@@ -240,6 +240,13 @@ tr:hover{background:rgba(6,182,212,.03)}
 .badge.error{animation:badgeError 1.5s ease-in-out infinite}
 @keyframes badgeError{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.3)}50%{box-shadow:0 0 0 4px rgba(239,68,68,0)}}
 
+/* Hint banner */
+.hint-banner{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);border-radius:var(--radius-sm);padding:10px 16px;margin-bottom:16px;font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:8px;cursor:pointer;transition:opacity .3s}
+.hint-banner:hover{opacity:.7}
+.hint-banner .hint-icon{font-size:14px;flex-shrink:0}
+.hint-banner .hint-dismiss{margin-left:auto;opacity:.5;font-size:16px}
+[data-theme="light"] .hint-banner{background:rgba(6,182,212,.05);border-color:rgba(6,182,212,.15)}
+
 /* Skeleton loading */
 @keyframes skeleton{0%{background-position:-200px 0}100%{background-position:calc(200px + 100%) 0}}
 .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200px 100%;animation:skeleton 1.5s ease-in-out infinite;border-radius:var(--radius-sm);height:20px;margin-bottom:8px}
@@ -254,6 +261,7 @@ tr:hover{background:rgba(6,182,212,.03)}
 .typing-dots span:nth-child(2){animation-delay:.15s}
 .typing-dots span:nth-child(3){animation-delay:.3s}
 @keyframes typingBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 
 /* Chat markdown */
 .msg.assistant code{background:rgba(6,182,212,.15);padding:1px 5px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:12px}
@@ -456,6 +464,11 @@ tr:hover{background:rgba(6,182,212,.03)}
   </header>
 
   <div class="content">
+    <div id="hint-banner" class="hint-banner" style="display:none" onclick="dismissHint()">
+      <span class="hint-icon">💡</span>
+      <span id="hint-text"></span>
+      <span class="hint-dismiss">&times;</span>
+    </div>
     <!-- Overview Panel -->
     <div id="panel-overview" class="panel active">
       <div class="card-grid">
@@ -1157,6 +1170,42 @@ const panelTitles = {
   logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot'
 };
 
+// ── Contextual Hints ────────────────────────────────────────────────
+const panelHints = {
+  overview: 'Tip: Click any stat card to see detailed breakdowns and history.',
+  chat: 'Tip: Use /model to switch models mid-conversation, or /help for all commands.',
+  skills: "Tip: You can disable skills you don't need to reduce token usage and improve response speed.",
+  config: 'Tip: Changes are saved instantly. Use the JSON editor tab for advanced configuration.',
+  channels: 'Tip: Each channel can have its own allowlist — restrict who can talk to TITAN per channel.',
+  security: 'Tip: Enable Shield strict mode for maximum prompt injection protection.',
+  logs: 'Tip: Logs auto-scroll. Click a log entry to see the full payload.',
+  sessions: 'Tip: Idle sessions are cleaned up after 30 minutes. Use /clear to reset a session.',
+  learning: 'Tip: TITAN learns from corrections — say "no, do X instead" to teach preferences.',
+  autopilot: 'Tip: Autopilot runs on a schedule. Add tasks to AUTOPILOT.md or use goal mode.',
+  agents: 'Tip: Each agent runs independently with its own session and tool access.',
+  graphiti: 'Tip: The memory graph stores relationships between entities for richer context.',
+};
+let hintDismissed = false;
+
+function showHint(panelName) {
+  if (hintDismissed) return;
+  const hint = panelHints[panelName];
+  const banner = document.getElementById('hint-banner');
+  const text = document.getElementById('hint-text');
+  if (hint && banner && text) {
+    text.textContent = hint;
+    banner.style.display = 'flex';
+  } else if (banner) {
+    banner.style.display = 'none';
+  }
+}
+
+function dismissHint() {
+  const banner = document.getElementById('hint-banner');
+  if (banner) banner.style.display = 'none';
+  hintDismissed = true;
+}
+
 function showPanel(name, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1165,6 +1214,7 @@ function showPanel(name, el) {
   if (el) el.closest('.nav-item').classList.add('active');
   document.getElementById('panel-title').textContent = panelTitles[name] || name;
   if (name !== 'logs') stopLogs();
+  showHint(name);
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────
@@ -1202,6 +1252,62 @@ function connectWS() {
         if (data.direction === 'outbound') {
           updateVoiceStatus('Speaking...');
         }
+        return;
+      }
+      // Streaming token — accumulate in a streaming message bubble
+      if (data.type === 'token' && data.data) {
+        let streamDiv = document.getElementById('streaming-msg');
+        if (!streamDiv) {
+          removeTyping();
+          streamDiv = document.createElement('div');
+          streamDiv.className = 'msg assistant';
+          streamDiv.id = 'streaming-msg';
+          streamDiv.innerHTML = '<span class="stream-content"></span><span class="stream-cursor" style="display:inline-block;width:2px;height:1em;background:#60a5fa;margin-left:2px;animation:blink 0.7s step-end infinite;vertical-align:text-bottom"></span>';
+          document.getElementById('chat-messages').appendChild(streamDiv);
+        }
+        const span = streamDiv.querySelector('.stream-content');
+        if (span) span.textContent += data.data;
+        document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+        return;
+      }
+      // Streaming done — finalize the message
+      if (data.type === 'done') {
+        removeTyping();
+        const streamDiv = document.getElementById('streaming-msg');
+        if (streamDiv) {
+          streamDiv.removeAttribute('id');
+          const cursor = streamDiv.querySelector('.stream-cursor');
+          if (cursor) cursor.remove();
+          const span = streamDiv.querySelector('.stream-content');
+          if (span && data.content) {
+            streamDiv.innerHTML = renderMarkdown(data.content);
+          }
+          if (data.durationMs || data.model) {
+            const m = document.createElement('div');
+            m.className = 'meta';
+            m.textContent = (data.model || '') + ' \u00b7 ' + (data.durationMs || 0) + 'ms' + (data.tokenUsage ? ' \u00b7 ' + (data.tokenUsage.total || 0) + ' tokens' : '');
+            streamDiv.appendChild(m);
+          }
+        } else if (data.content) {
+          appendMsg('assistant', data.content, data);
+        }
+        document.getElementById('send-btn').disabled = false;
+        if (voiceEnabled && data.content) voiceSpeak(data.content);
+        return;
+      }
+      // Tool call event during streaming
+      if (data.type === 'tool_call' && data.name) {
+        let streamDiv = document.getElementById('streaming-msg');
+        if (!streamDiv) {
+          removeTyping();
+          streamDiv = document.createElement('div');
+          streamDiv.className = 'msg assistant';
+          streamDiv.id = 'streaming-msg';
+          streamDiv.innerHTML = '<span class="stream-content"></span><span class="stream-cursor" style="display:inline-block;width:2px;height:1em;background:#60a5fa;margin-left:2px;animation:blink 0.7s step-end infinite;vertical-align:text-bottom"></span>';
+          document.getElementById('chat-messages').appendChild(streamDiv);
+        }
+        const span = streamDiv.querySelector('.stream-content');
+        if (span) span.textContent += '\\n[Using tool: ' + data.name + ']\\n';
         return;
       }
       // Assistant response from the agent

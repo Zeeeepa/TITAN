@@ -3,7 +3,7 @@
  * The main agent: receives messages, builds context, calls LLM, handles tools, responds.
  */
 import { existsSync, readFileSync } from 'fs';
-import { chat } from '../providers/router.js';
+import { chat, chatStream } from '../providers/router.js';
 import { loadConfig } from '../config/config.js';
 import { getOrCreateSession, addMessage, getContextMessages } from './session.js';
 import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.js';
@@ -17,7 +17,7 @@ import { getCachedResponse, setCachedResponse } from './responseCache.js';
 import { buildSmartContext } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanResults } from './deliberation.js';
-import type { ChatMessage, ChatResponse } from '../providers/base.js';
+import type { ChatMessage, ChatResponse, ToolCall } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
 import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
@@ -186,12 +186,19 @@ You have access to a knowledge graph (temporal memory). Use these tools actively
 Use graph_remember when you learn something important about the user, their projects, or their preferences. This persists across sessions.`;
 }
 
+/** Streaming callbacks for real-time token delivery */
+export interface StreamCallbacks {
+    onToken?: (token: string) => void;
+    onToolCall?: (name: string, args: Record<string, unknown>) => void;
+}
+
 /** Process a user message through the agent loop */
 export async function processMessage(
     message: string,
     channel: string = 'cli',
     userId: string = 'default',
     overrides?: { model?: string; systemPrompt?: string },
+    streamCallbacks?: StreamCallbacks,
 ): Promise<AgentResponse> {
     const startTime = Date.now();
     const config = loadConfig();
@@ -487,7 +494,7 @@ export async function processMessage(
         }
 
         const thinkingMode = session.thinkingOverride || config.agent.thinkingMode || 'off';
-        const response: ChatResponse = await chat({
+        const chatOptions = {
             model: activeModel,
             messages: smartMessages,
             tools: activeTools.length > 0 ? activeTools : undefined,
@@ -495,7 +502,35 @@ export async function processMessage(
             temperature: config.agent.temperature,
             thinking: thinkingMode !== 'off',
             thinkingLevel: thinkingMode,
-        });
+        };
+
+        let response: ChatResponse;
+        if (streamCallbacks?.onToken) {
+            // Stream tokens in real-time, reassemble into ChatResponse
+            let streamContent = '';
+            const streamToolCalls: ToolCall[] = [];
+            for await (const chunk of chatStream(chatOptions)) {
+                if (chunk.type === 'text' && chunk.content) {
+                    streamContent += chunk.content;
+                    streamCallbacks.onToken(chunk.content);
+                } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+                    streamToolCalls.push(chunk.toolCall);
+                    streamCallbacks.onToolCall?.(chunk.toolCall.function.name, JSON.parse(chunk.toolCall.function.arguments || '{}'));
+                } else if (chunk.type === 'error') {
+                    logger.error(COMPONENT, `Stream error: ${chunk.error}`);
+                }
+            }
+            response = {
+                id: `stream-${Date.now()}`,
+                content: streamContent,
+                toolCalls: streamToolCalls.length > 0 ? streamToolCalls : undefined,
+                usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+                finishReason: streamToolCalls.length > 0 ? 'tool_calls' : 'stop',
+                model: activeModel,
+            };
+        } else {
+            response = await chat(chatOptions);
+        }
 
         modelUsed = response.model;
         const promptTokens = response.usage?.promptTokens || 0;

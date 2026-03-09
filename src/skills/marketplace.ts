@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, writeFileSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { TITAN_HOME, TITAN_VERSION } from '../utils/constants.js';
-import { scanSkillCode, formatScanResult, type ScanResult } from './scanner.js';
+import { scanSkillCode, type ScanResult } from './scanner.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Marketplace';

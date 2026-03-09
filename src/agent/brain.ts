@@ -46,9 +46,10 @@ const MODELS: Record<string, ModelInfo> = {
 };
 
 // ─── State ───────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any -- node-llama-cpp is optional, types unavailable */
 let llamaModule: any = null;
 let llamaInstance: any = null;
+/* eslint-enable @typescript-eslint/no-explicit-any */
 let model: unknown = null;
 let loaded = false;
 let loading = false;
@@ -135,6 +136,7 @@ export async function ensureLoaded(): Promise<boolean> {
         if (!llamaModule) {
             // Dynamic import avoids hard dependency — uses Function constructor to bypass
             // TypeScript's static module resolution for optional dependencies
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic optional dep
             const importFn = new Function('specifier', 'return import(specifier)') as (s: string) => Promise<any>;
             llamaModule = await importFn('node-llama-cpp');
         }
@@ -151,6 +153,7 @@ export async function ensureLoaded(): Promise<boolean> {
 
         // Load model
         const startLoad = Date.now();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
         llamaInstance = await (llamaModule as any).getLlama();
         model = await llamaInstance.loadModel({ modelPath });
         loaded = true;
@@ -237,13 +240,16 @@ async function runInference(prompt: string): Promise<string> {
 
     try {
         // Create a fresh context for each inference to avoid "no sequences left"
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic optional dep
         const ctx = await (model as any).createContext({ contextSize: 512 });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic optional dep
         const session = new (llamaModule as any).LlamaChatSession({
             contextSequence: ctx.getSequence(),
         });
 
         // Use GBNF grammar to constrain output to a single category letter
         // Must use the same llama instance that loaded the model
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic optional dep
         const grammar = new (llamaModule as any).LlamaGrammar(llamaInstance, {
             grammar: CATEGORY_GRAMMAR,
         });
@@ -310,7 +316,9 @@ async function downloadModel(modelId: string): Promise<void> {
 
 /** Unload the model and free memory */
 export async function unload(): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
     if (model && typeof (model as any).dispose === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
         await (model as any).dispose();
     }
     model = null;

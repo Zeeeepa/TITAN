@@ -7,7 +7,7 @@
  */
 import { registerSkill } from '../registry.js';
 import logger from '../../utils/logger.js';
-import { getPage, releasePage, getDefaultContext } from '../../browsing/browserPool.js';
+import { getPage, releasePage } from '../../browsing/browserPool.js';
 
 const COMPONENT = 'WebBrowseLLM';
 
@@ -30,7 +30,6 @@ interface PwPage {
     mouse: { wheel(dx: number, dy: number): Promise<void> };
     $eval(sel: string, fn: (el: unknown) => unknown): Promise<unknown>;
 }
-interface PwContext { newPage(): Promise<PwPage>; close(): Promise<void> }
 
 // ─── Token estimation (rough: 1 token ≈ 4 chars) ─────────────────
 function truncateToTokens(text: string, maxTokens: number): string {
@@ -67,7 +66,7 @@ async function webRead(url: string, maxTokens: number): Promise<string> {
             html = await page.content();
             finalUrl = page.url();
         } finally {
-            await releasePage(page as unknown as import('playwright').Page);
+            await releasePage(page as unknown as Parameters<typeof releasePage>[0]);
         }
     }
 

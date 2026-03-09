@@ -185,7 +185,6 @@ async function extractEntities(content: string): Promise<Array<{ name: string; t
             let recovered = jsonStr.replace(/,\s*\{[^}]*$/, '');
             // Close any unclosed brackets
             const opens = (recovered.match(/\[/g) || []).length;
-            const closes = (recovered.match(/\]/g) || []).length;
             const openBraces = (recovered.match(/\{/g) || []).length;
             const closeBraces = (recovered.match(/\}/g) || []).length;
             recovered += '}'.repeat(Math.max(0, openBraces - closeBraces));

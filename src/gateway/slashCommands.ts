@@ -10,7 +10,7 @@ import { getContextMessages } from '../agent/session.js';
 import { forceCompactContext } from '../agent/contextManager.js';
 import { resolveModel, getModelAliases } from '../providers/router.js';
 import { isModelAllowed } from '../providers/router.js';
-import { getDeliberation, cancelDeliberation, analyze, generatePlan, formatPlanForApproval } from '../agent/deliberation.js';
+import { getDeliberation, cancelDeliberation, analyze, generatePlan } from '../agent/deliberation.js';
 import logger from '../utils/logger.js';
 import { TITAN_VERSION } from '../utils/constants.js';
 

@@ -10,12 +10,13 @@
  * - Action caching: repeated actions execute faster
  * - Works with any LLM provider
  */
-import { getSharedBrowser, getPage, releasePage } from './browserPool.js';
+import { getPage, releasePage } from './browserPool.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Stagehand';
 
 /** Stagehand instance type (lazy-loaded) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
 let StagehandClass: any = null;
 let stagehandAvailable: boolean | null = null;
 
@@ -89,6 +90,7 @@ async function actWithStagehand(
     action: string,
     timeout: number,
 ): Promise<{ success: boolean; content: string; screenshot?: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
     let stagehand: any = null;
     try {
         stagehand = new StagehandClass({
@@ -100,7 +102,7 @@ async function actWithStagehand(
         await stagehand.init();
         await stagehand.page.goto(url, { waitUntil: 'domcontentloaded', timeout });
 
-        const result = await stagehand.act({ action });
+        await stagehand.act({ action });
         const content = await stagehand.page.content();
         const title = await stagehand.page.title();
 
@@ -122,6 +124,7 @@ async function extractWithStagehand(
     instruction: string,
     options?: { schema?: Record<string, unknown> },
 ): Promise<{ success: boolean; data: unknown; content: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
     let stagehand: any = null;
     try {
         stagehand = new StagehandClass({
@@ -156,6 +159,7 @@ async function observeWithStagehand(
     url: string,
     instruction?: string,
 ): Promise<{ success: boolean; elements: Array<{ description: string; selector: string }> }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
     let stagehand: any = null;
     try {
         stagehand = new StagehandClass({
@@ -169,6 +173,7 @@ async function observeWithStagehand(
 
         const observations = await stagehand.observe(instruction ? { instruction } : undefined);
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- optional dynamic dep
         const elements = (observations || []).map((obs: any) => ({
             description: obs.description || obs.text || '',
             selector: obs.selector || '',
@@ -234,7 +239,7 @@ async function actWithPlaywright(
 
 async function extractWithPlaywright(
     url: string,
-    instruction: string,
+    _instruction: string,
 ): Promise<{ success: boolean; data: unknown; content: string }> {
     const page = await getPage();
     try {
@@ -274,7 +279,7 @@ async function observeWithPlaywright(
         });
 
         return { success: true, elements };
-    } catch (err) {
+    } catch {
         return { success: false, elements: [] };
     } finally {
         await releasePage(page);

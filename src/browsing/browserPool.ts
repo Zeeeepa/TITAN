@@ -14,6 +14,8 @@
 import { join } from 'path';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
+import type { Browser, BrowserContext, Page } from 'playwright';
+import type * as PlaywrightModule from 'playwright';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'BrowserPool';
@@ -29,16 +31,16 @@ const USER_AGENTS = [
 ];
 
 /** Lazy-loaded Playwright types */
-let pw: typeof import('playwright') | null = null;
-let browser: import('playwright').Browser | null = null;
-let defaultContext: import('playwright').BrowserContext | null = null;
+let pw: typeof PlaywrightModule | null = null;
+let browser: Browser | null = null;
+let defaultContext: BrowserContext | null = null;
 let launchPromise: Promise<void> | null = null;
 let lastActivityMs = 0;
 let pageCount = 0;
 let sessionTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Ensure Playwright is available */
-async function ensurePlaywright(): Promise<typeof import('playwright')> {
+async function ensurePlaywright(): Promise<typeof PlaywrightModule> {
     if (pw) return pw;
     try {
         pw = await import('playwright');
@@ -49,7 +51,7 @@ async function ensurePlaywright(): Promise<typeof import('playwright')> {
 }
 
 /** Get or create the shared browser instance */
-export async function getSharedBrowser(): Promise<import('playwright').Browser> {
+export async function getSharedBrowser(): Promise<Browser> {
     if (browser?.isConnected()) {
         resetSessionTimer();
         return browser;
@@ -87,7 +89,7 @@ export async function getSharedBrowser(): Promise<import('playwright').Browser> 
 }
 
 /** Get or create the default persistent context */
-export async function getDefaultContext(): Promise<import('playwright').BrowserContext> {
+export async function getDefaultContext(): Promise<BrowserContext> {
     if (defaultContext) {
         resetSessionTimer();
         return defaultContext;
@@ -109,7 +111,7 @@ export async function getDefaultContext(): Promise<import('playwright').BrowserC
 }
 
 /** Get a new page from the pool (max 5 concurrent) */
-export async function getPage(): Promise<import('playwright').Page> {
+export async function getPage(): Promise<Page> {
     if (pageCount >= MAX_PAGES) {
         throw new Error(`Browser pool full: ${pageCount}/${MAX_PAGES} pages in use. Close a page first.`);
     }
@@ -124,7 +126,7 @@ export async function getPage(): Promise<import('playwright').Page> {
 }
 
 /** Release a page back to the pool */
-export async function releasePage(page: import('playwright').Page): Promise<void> {
+export async function releasePage(page: Page): Promise<void> {
     try {
         if (!page.isClosed()) {
             await page.close();

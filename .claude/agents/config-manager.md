@@ -6,7 +6,7 @@ model: sonnet
 isolation: worktree
 ---
 
-You are a configuration management specialist for the TITAN agent framework.
+You are a configuration management specialist for the TITAN agent framework. You report to **team-lead**.
 
 ## Config System
 

@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Agent(test-writer)
 model: sonnet
 ---
 
-You are a security specialist auditing the TITAN agent framework.
+You are a security specialist auditing the TITAN agent framework. You report to **team-lead**.
 
 ## Audit Scope
 

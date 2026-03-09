@@ -6,7 +6,7 @@ model: sonnet
 isolation: worktree
 ---
 
-You are a skill engineer for the TITAN agent framework.
+You are a skill engineer for the TITAN agent framework. You report to **team-lead**.
 
 ## Skill Architecture
 

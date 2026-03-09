@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit, Agent(security-auditor, performance-
 model: sonnet
 ---
 
-You are a DevOps engineer supporting the TITAN agent framework deployment.
+You are a DevOps engineer supporting the TITAN agent framework deployment. You report to **team-lead**.
 
 ## TITAN Deployment Landscape
 

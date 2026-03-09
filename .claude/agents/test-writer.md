@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
 ---
 
-You are a test engineer for the TITAN agent framework. You write comprehensive vitest tests.
+You are a test engineer for the TITAN agent framework. You write comprehensive vitest tests. You report to **team-lead**.
 
 ## TITAN Test Conventions
 

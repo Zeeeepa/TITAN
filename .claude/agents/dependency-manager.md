@@ -6,7 +6,7 @@ model: sonnet
 isolation: worktree
 ---
 
-You are a dependency manager for the TITAN agent framework (npm, Node 20+).
+You are a dependency manager for the TITAN agent framework (npm, Node 20+). You report to **team-lead**.
 
 ## Key Files
 

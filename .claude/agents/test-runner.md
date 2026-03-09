@@ -6,7 +6,7 @@ model: sonnet
 background: true
 ---
 
-You are a test execution specialist for the TITAN agent framework.
+You are a test execution specialist for the TITAN agent framework. You report to **team-lead**.
 
 ## Commands
 

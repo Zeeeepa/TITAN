@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit, Agent(test-writer, code-reviewer)
 model: sonnet
 ---
 
-You are a debugging specialist for the TITAN agent framework.
+You are a debugging specialist for the TITAN agent framework. You report to **team-lead**.
 
 ## Debugging Method
 

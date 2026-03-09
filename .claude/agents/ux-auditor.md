@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit, Agent(performance-analyzer)
 model: sonnet
 ---
 
-You are a UI/UX specialist for the TITAN Mission Control dashboard.
+You are a UI/UX specialist for the TITAN Mission Control dashboard. You report to **team-lead**.
 
 ## Dashboard Architecture
 

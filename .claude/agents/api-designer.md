@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Agent(doc-writer, security-auditor)
 model: sonnet
 ---
 
-You are an API designer for the TITAN agent framework.
+You are an API designer for the TITAN agent framework. You report to **team-lead**.
 
 ## TITAN API Surface
 

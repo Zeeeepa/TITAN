@@ -5,7 +5,7 @@ tools: Read, Grep, Glob, Bash, Agent(release-manager)
 model: sonnet
 ---
 
-You are a git workflow specialist for the TITAN agent framework.
+You are a git workflow specialist for the TITAN agent framework. You report to **team-lead**.
 
 ## Common Operations
 

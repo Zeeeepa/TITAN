@@ -84,9 +84,9 @@
 |--------|-------|
 | Providers | 21 (4 native + 17 OpenAI-compat) |
 | Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
-| Built-in Skills | 33 files |
-| Tools | 95 registered |
-| Tests | 3,323 across 94 files |
+| Built-in Skills | 36 files |
+| Tools | ~102 registered |
+| Tests | 3,407 across 98 files |
 | Line Coverage | ~82% |
 
 ---

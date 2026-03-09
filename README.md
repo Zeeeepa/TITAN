@@ -34,6 +34,10 @@
 </p>
 
 <p align="center">
+  <a href="SUPPORTERS.md">View all supporters</a>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#what-titan-does">What It Does</a> &bull;
   <a href="#architecture">Architecture</a> &bull;

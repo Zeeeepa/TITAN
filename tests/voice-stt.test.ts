@@ -86,7 +86,7 @@ describe('LocalWhisperSTTProvider', () => {
     const provider = new LocalWhisperSTTProvider();
     await provider.transcribe(Buffer.alloc(100), 'pcm16');
 
-    expect(capturedUrl).toBe('http://192.168.1.11:8080/asr?encode=true&task=transcribe&output=json');
+    expect(capturedUrl).toBe('http://localhost:48421/asr?encode=true&task=transcribe&output=json');
   });
 
   it('should send FormData with file and parameters', async () => {

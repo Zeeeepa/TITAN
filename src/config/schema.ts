@@ -226,6 +226,17 @@ export const VoiceConfigSchema = z.object({
     maxRecordingSeconds: z.number().default(60),
 });
 
+export const TeachingConfigSchema = z.object({
+    /** Enable adaptive teaching system */
+    enabled: z.boolean().default(true),
+    /** Tool uses before suggesting related tools */
+    revealThreshold: z.number().default(5),
+    /** Show contextual hints in dashboard and responses */
+    showHints: z.boolean().default(true),
+    /** Show first-run wizard for new users */
+    firstRunWizard: z.boolean().default(true),
+});
+
 export const OAuthConfigSchema = z.object({
     google: z.object({
         clientId: z.string().optional(),
@@ -339,6 +350,7 @@ export const TitanConfigSchema = z.object({
     deliberation: DeliberationConfigSchema.default({}),
     voice: VoiceConfigSchema.default({}),
     oauth: OAuthConfigSchema.default({}),
+    teaching: TeachingConfigSchema.default({}),
     autonomy: z.object({
         /** autonomous = full auto, supervised = asks for dangerous ops, locked = asks for everything */
         mode: z.enum(['autonomous', 'supervised', 'locked']).default('supervised'),
@@ -385,3 +397,4 @@ export type MeshConfig = z.infer<typeof MeshConfigSchema>;
 export type AutopilotConfig = TitanConfig['autopilot'];
 export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
+export type TeachingConfig = z.infer<typeof TeachingConfigSchema>;

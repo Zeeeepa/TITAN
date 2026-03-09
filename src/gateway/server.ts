@@ -61,10 +61,7 @@ import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getR
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
 import { TITAN_WORKSPACE } from '../utils/constants.js';
-import type { VoicePipeline } from '../voice/pipeline.js';
-
 const COMPONENT = 'Gateway';
-let voicePipeline: VoicePipeline | null = null;
 
 /** Get normalized CPU load (0.0–1.0) using 1-minute load average */
 function getCpuLoad(): number {
@@ -924,6 +921,46 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(state || { active: null });
   });
 
+  // ── LiveKit Voice Token Endpoint ──────────────────────────────────
+  app.post('/api/livekit/token', async (req, res) => {
+    try {
+      const voiceCfg = loadConfig().voice;
+      if (!voiceCfg.enabled) {
+        res.status(400).json({ error: 'Voice is not enabled in config' });
+        return;
+      }
+      const url = voiceCfg.livekit.url || process.env.LIVEKIT_URL || '';
+      const apiKey = voiceCfg.livekit.apiKey || process.env.LIVEKIT_API_KEY || '';
+      const apiSecret = voiceCfg.livekit.apiSecret || process.env.LIVEKIT_API_SECRET || '';
+      if (!url || !apiKey || !apiSecret) {
+        res.status(400).json({ error: 'LiveKit credentials not configured (url, apiKey, apiSecret)' });
+        return;
+      }
+      const lkMod = 'livekit-server-sdk';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const livekitSdk: any = await import(lkMod);
+      const { AccessToken } = livekitSdk;
+      const { shortId } = await import('../utils/helpers.js');
+      const roomName = `titan-voice-${shortId()}`;
+      const participantName = `user-${shortId()}`;
+      const at = new AccessToken(apiKey, apiSecret, {
+        identity: participantName,
+        ttl: '15m',
+      });
+      at.addGrant({
+        roomJoin: true,
+        room: roomName,
+        canPublish: true,
+        canSubscribe: true,
+      });
+      const token = await at.toJwt();
+      res.json({ token, serverUrl: url, roomName, participantName });
+    } catch (err) {
+      logger.error(COMPONENT, `LiveKit token error: ${(err as Error).message}`);
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   app.post('/api/model/switch', (req, res) => {
     try {
       const { model } = req.body as { model?: string };
@@ -1468,30 +1505,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer });
 
-  let voicePipelinePromise: Promise<VoicePipeline | null> | null = null;
-
-  async function getOrInitVoicePipeline(): Promise<VoicePipeline | null> {
-    if (voicePipeline) return voicePipeline;
-    if (!voicePipelinePromise) {
-      voicePipelinePromise = (async () => {
-        try {
-          const { createVoicePipeline } = await import('../voice/pipeline.js');
-          const pipeline = await createVoicePipeline();
-          if (pipeline) {
-            voicePipeline = pipeline;
-            logger.info(COMPONENT, 'Voice pipeline initialized on-demand');
-          }
-          return pipeline;
-        } catch (err) {
-          logger.error(COMPONENT, `Voice pipeline init failed: ${(err as Error).message}`);
-          voicePipelinePromise = null; // Allow retry on failure
-          return null;
-        }
-      })();
-    }
-    return voicePipelinePromise;
-  }
-
   wss.on('connection', async (ws, req) => {
    try {
     const cfg = loadConfig();
@@ -1552,29 +1565,8 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
     ws.on('message', async (rawData, isBinary) => {
       try {
-        // Binary frames = raw PCM audio from voice pipeline
-        if (isBinary) {
-          // Lazy-init voice pipeline on first audio if not already running
-          if (!voicePipeline) {
-            await getOrInitVoicePipeline();
-          }
-          if (voicePipeline) {
-            const audioBuffer = Buffer.from(rawData as ArrayBuffer);
-            voicePipeline.handleAudioInput(audioBuffer, ws, 'dashboard').catch(err => {
-              logger.error(COMPONENT, `Voice pipeline error: ${(err as Error).message}`);
-            });
-          } else {
-            // No pipeline available — send error transcript back to client
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({
-                type: 'voice_transcript',
-                text: 'Voice services unavailable. Enable voice in config or check STT/TTS server connections.',
-                direction: 'outbound',
-              }));
-            }
-          }
-          return;
-        }
+        // Ignore binary frames (legacy voice pipeline removed — use LiveKit WebRTC)
+        if (isBinary) return;
 
         let data;
         try {
@@ -1583,38 +1575,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
           logger.warn(COMPONENT, `Invalid WebSocket JSON: ${(parseErr as Error).message}`);
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON message' }));
-          }
-          return;
-        }
-
-        // Voice control messages
-        if (data.type === 'voice_control') {
-          if (voicePipeline) {
-            if (data.action === 'interrupt') {
-              voicePipeline.interrupt(ws);
-            }
-          }
-          return;
-        }
-
-        // Voice speak — TTS a text response (auto-speak when voice is enabled)
-        if (data.type === 'voice_speak' && data.text) {
-          if (!voicePipeline) {
-            await getOrInitVoicePipeline();
-          }
-          if (voicePipeline) {
-            voicePipeline.speakText(data.text, ws, data.userId || 'dashboard').catch(err => {
-              logger.error(COMPONENT, `Voice speak error: ${(err as Error).message}`);
-              // Notify client so it can use browser TTS fallback
-              if (ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: 'voice_error', message: (err as Error).message, originalText: data.text }));
-              }
-            });
-          } else {
-            logger.warn(COMPONENT, 'Voice pipeline unavailable, notifying client for browser TTS fallback');
-            if (ws.readyState === 1) {
-              ws.send(JSON.stringify({ type: 'voice_error', message: 'Voice pipeline unavailable', originalText: data.text }));
-            }
           }
           return;
         }
@@ -1675,12 +1635,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
     ws.on('close', () => {
       wsClients.delete(ws);
-      if (voicePipeline) voicePipeline.cleanup(ws);
-      if (wsClients.size === 0 && voicePipeline) {
-        voicePipeline = null;
-        voicePipelinePromise = null;
-        logger.info(COMPONENT, 'Voice pipeline released (no clients)');
-      }
       logger.debug(COMPONENT, `WebSocket client disconnected (${wsClients.size} total)`);
     });
    } catch (err) {
@@ -1688,18 +1642,6 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       try { ws.close(1011, 'Internal error'); } catch { /* connection already closed */ }
    }
   });
-
-  // Initialize voice pipeline (lazy-loaded when enabled)
-  const voiceCfg = loadConfig();
-  if (voiceCfg.voice?.enabled) {
-    try {
-      const { createVoicePipeline } = await import('../voice/pipeline.js');
-      voicePipeline = await createVoicePipeline();
-      if (voicePipeline) logger.info(COMPONENT, 'Voice pipeline initialized');
-    } catch (err) {
-      logger.error(COMPONENT, `Voice pipeline init failed: ${(err as Error).message}`);
-    }
-  }
 
   // Initialize channels
   webChatChannel = new WebChatChannel();

@@ -518,15 +518,16 @@ tr:hover{background:rgba(6,182,212,.03)}
           <input type="text" id="chat-input" placeholder="Type a message and press Enter…"/>
           <button id="send-btn" data-action="send-chat">Send ⚡</button>
         </div>
-        <!-- Voice Controls -->
+        <!-- LiveKit Voice Panel -->
         <div id="voice-panel" style="padding:8px 16px;border-top:1px solid var(--border);background:var(--bg2);display:none;flex-shrink:0">
           <div style="display:flex;align-items:center;gap:10px">
-            <button id="voice-ptt-btn" class="btn" style="padding:8px 16px;font-size:13px;background:#1e293b;border:2px solid #06b6d4;cursor:pointer;user-select:none">🎙️ Hold to Talk</button>
-            <select id="voice-mode" style="font-size:11px;padding:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
-              <option value="push-to-talk">Push-to-Talk</option>
-              <option value="hands-free">Hands-Free (VAD)</option>
-            </select>
-            <canvas id="voice-waveform" width="120" height="32" style="border-radius:4px;background:#0f172a"></canvas>
+            <button id="lk-connect-btn" class="btn" style="padding:8px 16px;font-size:13px;background:#1e293b;border:2px solid #06b6d4;cursor:pointer">🎙️ Start Voice</button>
+            <button id="lk-mute-btn" class="btn" style="padding:6px 12px;font-size:13px;display:none">🔇 Mute</button>
+            <button id="lk-disconnect-btn" class="btn" style="padding:6px 12px;font-size:13px;display:none;border-color:#ef4444">⏹ End</button>
+            <div id="lk-visualizer" style="display:none;width:120px;height:32px;border-radius:4px;background:#0f172a;overflow:hidden">
+              <canvas id="lk-viz-canvas" width="120" height="32"></canvas>
+            </div>
+            <span id="lk-agent-state" style="font-size:11px;color:var(--text-dim);display:none"></span>
             <span id="voice-status" style="font-size:11px;color:var(--text-dim)">Ready</span>
           </div>
         </div>
@@ -1283,23 +1284,12 @@ function connectWS() {
     toast('WebSocket error — check console', 'error');
   };
   ws.onmessage = (e) => {
-    // Handle binary audio frames from voice pipeline
-    if (e.data instanceof ArrayBuffer) {
-      handleVoiceBinary(new Uint8Array(e.data));
-      return;
-    }
+    // Binary frames ignored (voice uses LiveKit WebRTC)
+    if (e.data instanceof ArrayBuffer) return;
     removeTyping();
     try {
       const data = JSON.parse(e.data);
-      // Voice transcript messages
-      if (data.type === 'voice_transcript') {
-        const prefix = data.direction === 'inbound' ? '🎤 ' : '🔊 ';
-        appendMsg(data.direction === 'inbound' ? 'user' : 'assistant', prefix + data.text, data.meta);
-        if (data.direction === 'outbound') {
-          updateVoiceStatus('Speaking...');
-        }
-        return;
-      }
+      // Voice transcripts handled by LiveKit UI (no longer via WebSocket)
       // Streaming token — accumulate in a streaming message bubble
       if (data.type === 'token' && data.data) {
         let streamDiv = document.getElementById('streaming-msg');
@@ -1338,7 +1328,6 @@ function connectWS() {
           appendMsg('assistant', data.content, data);
         }
         document.getElementById('send-btn').disabled = false;
-        if (voiceEnabled && data.content) voiceSpeak(data.content);
         return;
       }
       // Tool call event during streaming
@@ -1360,19 +1349,11 @@ function connectWS() {
       if (data.type === 'message' && data.direction === 'outbound') {
         appendMsg('assistant', data.content, data);
         document.getElementById('send-btn').disabled = false;
-        if (voiceEnabled && data.content) voiceSpeak(data.content);
       }
       // Legacy response type
       if (data.type === 'response') {
         appendMsg('assistant', data.content, data);
         document.getElementById('send-btn').disabled = false;
-        if (voiceEnabled && data.content) voiceSpeak(data.content);
-      }
-      // Voice error — server TTS failed, fall back to browser immediately
-      if (data.type === 'voice_error') {
-        if (window._voiceFallbackTimer) { clearTimeout(window._voiceFallbackTimer); window._voiceFallbackTimer = null; }
-        voiceSpeakBrowser(data.originalText || '');
-        return;
       }
       // Mesh events — auto-refresh the mesh panel
       if (data.type === 'mesh_peer_discovered') {
@@ -2525,24 +2506,6 @@ function hexToRgb(hex) {
   return rgb;
 }
 
-// Concatenate ArrayBuffer/Uint8Array chunks into a single Uint8Array
-function concatChunks(chunks) {
-  let totalLen = 0;
-  for (const c of chunks) totalLen += c.byteLength;
-  const merged = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const c of chunks) { merged.set(new Uint8Array(c), offset); offset += c.byteLength; }
-  return merged;
-}
-
-// Convert Float32Array to Int16Array (PCM16)
-function float32ToPcm16(float32) {
-  const pcm16 = new Int16Array(float32.length);
-  for (let i = 0; i < float32.length; i++)
-    pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)));
-  return pcm16;
-}
-
 function drawGraphitiGraph(canvas, nodes, edges) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -2955,17 +2918,13 @@ function stopLogs() {
   if (logsInterval) { clearInterval(logsInterval); logsInterval = null; }
 }
 
-// ── Voice Pipeline (client-side) ──────────────────────────────────
-let voiceEnabled = false;
-let voiceAudioCtx = null;
-let voiceMicStream = null;
-let voiceWorklet = null;
-let voiceRecording = false;
-let voiceChunks = [];
-let voicePlayQueue = [];
-let voicePlayingSource = null;
-let voiceAnalyser = null;
-let voiceWaveAnimId = null;
+// ── LiveKit Voice (WebRTC) ──────────────────────────────────────
+let lkVoiceEnabled = false;
+let lkRoom = null;
+let lkMuted = false;
+let lkVizAnimId = null;
+let lkAudioCtx = null;
+let lkAnalyser = null;
 
 function updateVoiceStatus(text) {
   const el = document.getElementById('voice-status');
@@ -2975,385 +2934,170 @@ function updateVoiceStatus(text) {
 // Toggle voice panel visibility
 document.addEventListener('click', (e) => {
   if (e.target && e.target.dataset && e.target.dataset.action === 'voice-toggle') {
-    voiceEnabled = !voiceEnabled;
+    lkVoiceEnabled = !lkVoiceEnabled;
     const panel = document.getElementById('voice-panel');
-    if (panel) panel.style.display = voiceEnabled ? 'block' : 'none';
-    if (voiceEnabled) initVoice();
-    else stopVoice();
+    if (panel) panel.style.display = lkVoiceEnabled ? 'block' : 'none';
+    if (!lkVoiceEnabled && lkRoom) lkDisconnect();
   }
 });
 
-async function initVoice() {
-  try {
-    voiceAudioCtx = new AudioContext({ sampleRate: 16000 });
-
-    // Check for secure context — getUserMedia requires HTTPS (or localhost)
-    const hasMic = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
-    if (hasMic) {
-      try {
-        voiceMicStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-
-        // Set up analyser for waveform
-        const source = voiceAudioCtx.createMediaStreamSource(voiceMicStream);
-        voiceAnalyser = voiceAudioCtx.createAnalyser();
-        voiceAnalyser.fftSize = 256;
-        source.connect(voiceAnalyser);
-
-        // AudioWorklet for PCM capture (replaces deprecated ScriptProcessor)
-        const workletCode = 'class P extends AudioWorkletProcessor{process(inputs){const i=inputs[0][0];if(i)this.port.postMessage(i);return true}}registerProcessor("pcm-cap",P);';
-        const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
-        const workletUrl = URL.createObjectURL(workletBlob);
-        await voiceAudioCtx.audioWorklet.addModule(workletUrl);
-        URL.revokeObjectURL(workletUrl);
-        const workletNode = new AudioWorkletNode(voiceAudioCtx, 'pcm-cap');
-        source.connect(workletNode);
-        workletNode.connect(voiceAudioCtx.destination);
-        workletNode.port.onmessage = (ev) => {
-          if (!voiceRecording) return;
-          const pcm16 = float32ToPcm16(ev.data);
-          voiceChunks.push(pcm16.buffer);
-          if (voiceChunks.length > 500) voiceChunks = voiceChunks.slice(-500);
-        };
-
-        // Set up PTT button
-        const pttBtn = document.getElementById('voice-ptt-btn');
-        if (pttBtn) {
-          pttBtn.addEventListener('mousedown', startVoiceRecording);
-          pttBtn.addEventListener('mouseup', stopVoiceRecording);
-          pttBtn.addEventListener('mouseleave', stopVoiceRecording);
-          pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startVoiceRecording(); });
-          pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopVoiceRecording(); });
-        }
-
-        drawVoiceWaveform();
-        updateVoiceStatus('Ready');
-        toast('Voice enabled — hold PTT button to speak', 'success');
-      } catch (micErr) {
-        // Mic denied but TTS output still works
-        const pttBtn = document.getElementById('voice-ptt-btn');
-        if (pttBtn) { pttBtn.style.display = 'none'; }
-        updateVoiceStatus('Listen-only (no mic)');
-        toast('Mic unavailable — voice output enabled, type to hear TITAN speak', 'success');
+// Connect to LiveKit room
+const lkConnectBtn = document.getElementById('lk-connect-btn');
+if (lkConnectBtn) {
+  lkConnectBtn.addEventListener('click', async () => {
+    if (lkRoom) { lkDisconnect(); return; }
+    updateVoiceStatus('Connecting...');
+    lkConnectBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/livekit/token', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error || 'Token request failed');
       }
-    } else {
-      // No mic API (HTTP on LAN) — listen-only mode, TTS still works
-      const pttBtn = document.getElementById('voice-ptt-btn');
-      if (pttBtn) { pttBtn.style.display = 'none'; }
-      const modeSelect = document.getElementById('voice-mode');
-      if (modeSelect) { modeSelect.style.display = 'none'; }
-      updateVoiceStatus('Listen-only (HTTPS required for mic)');
-      toast('Voice output enabled — type messages and TITAN will speak. For mic input, use HTTPS (enable Tunnel in Settings).', 'success');
-    }
+      const { token, serverUrl, roomName } = await resp.json();
 
-    // Pre-warm browser speechSynthesis to avoid autoplay restrictions later
-    if (window.speechSynthesis) {
-      const warmup = new SpeechSynthesisUtterance('');
-      warmup.volume = 0;
-      window.speechSynthesis.speak(warmup);
-      window.speechSynthesis.addEventListener('voiceschanged', () => {
-        window._availableVoices = window.speechSynthesis.getVoices();
+      // Load LiveKit client from CDN if not already loaded
+      if (!window.LivekitClient) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/livekit-client@2.17.2/dist/livekit-client.umd.js';
+          s.onload = resolve;
+          s.onerror = () => reject(new Error('Failed to load LiveKit client'));
+          document.head.appendChild(s);
+        });
+      }
+
+      const room = new window.LivekitClient.Room({
+        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        adaptiveStream: true,
+        dynacast: true,
       });
-      window._availableVoices = window.speechSynthesis.getVoices();
+
+      // Track agent state changes
+      room.on('participantAttributesChanged', (changed, participant) => {
+        if (participant.isAgent) {
+          const stateEl = document.getElementById('lk-agent-state');
+          const agentState = participant.attributes?.['lk.agent.state'] || '';
+          if (stateEl) {
+            stateEl.style.display = 'inline';
+            const labels = { listening: '👂 Listening', thinking: '🤔 Thinking', speaking: '🔊 Speaking' };
+            stateEl.textContent = labels[agentState] || agentState;
+          }
+        }
+      });
+
+      // Handle remote audio tracks (agent voice)
+      room.on('trackSubscribed', (track, pub, participant) => {
+        if (track.kind === 'audio') {
+          const audioEl = track.attach();
+          audioEl.id = 'lk-agent-audio';
+          document.body.appendChild(audioEl);
+          // Set up analyser for visualization
+          if (!lkAudioCtx) lkAudioCtx = new AudioContext();
+          const source = lkAudioCtx.createMediaElementSource(audioEl);
+          lkAnalyser = lkAudioCtx.createAnalyser();
+          lkAnalyser.fftSize = 64;
+          source.connect(lkAnalyser);
+          lkAnalyser.connect(lkAudioCtx.destination);
+          drawLkVisualizer();
+        }
+      });
+
+      room.on('trackUnsubscribed', (track) => {
+        track.detach().forEach(el => el.remove());
+      });
+
+      room.on('disconnected', () => {
+        lkRoom = null;
+        lkUpdateUI(false);
+        updateVoiceStatus('Disconnected');
+      });
+
+      await room.connect(serverUrl, token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+
+      lkRoom = room;
+      lkMuted = false;
+      lkUpdateUI(true);
+      updateVoiceStatus('Connected to ' + roomName);
+      toast('Voice connected via LiveKit WebRTC', 'success');
+    } catch (err) {
+      toast('Voice connection failed: ' + err.message, 'error');
+      updateVoiceStatus('Failed');
     }
-  } catch (err) {
-    toast('Voice init failed: ' + err.message, 'error');
-    voiceEnabled = false;
-    const panel = document.getElementById('voice-panel');
-    if (panel) panel.style.display = 'none';
-  }
-}
-
-function stopVoice() {
-  if (voiceMicStream) {
-    voiceMicStream.getTracks().forEach(t => t.stop());
-    voiceMicStream = null;
-  }
-  if (voiceAudioCtx) {
-    voiceAudioCtx.close();
-    voiceAudioCtx = null;
-  }
-  if (voiceWaveAnimId) {
-    cancelAnimationFrame(voiceWaveAnimId);
-    voiceWaveAnimId = null;
-  }
-  voiceRecording = false;
-  voiceChunks = [];
-  updateVoiceStatus('Disabled');
-}
-
-function startVoiceRecording() {
-  if (!voiceAudioCtx || voiceRecording) return;
-  // Interrupt AI if it's speaking
-  if (voicePlayingSource) {
-    interruptVoicePlayback();
-  }
-  voiceRecording = true;
-  voiceChunks = [];
-  updateVoiceStatus('Listening...');
-  const pttBtn = document.getElementById('voice-ptt-btn');
-  if (pttBtn) pttBtn.style.borderColor = '#ef4444';
-}
-
-function stopVoiceRecording() {
-  if (!voiceRecording) return;
-  voiceRecording = false;
-  const pttBtn = document.getElementById('voice-ptt-btn');
-  if (pttBtn) pttBtn.style.borderColor = '#06b6d4';
-
-  if (voiceChunks.length === 0) {
-    updateVoiceStatus('Ready');
-    return;
-  }
-
-  // Concatenate all PCM chunks and send as binary
-  const merged = concatChunks(voiceChunks);
-  voiceChunks = [];
-
-  updateVoiceStatus('Processing...');
-  if (ws && ws.readyState === 1) {
-    ws.send(merged.buffer);
-  }
-}
-
-// Handle binary audio frames from server
-function handleVoiceBinary(data) {
-  if (data.length === 0) return;
-  const header = data[0];
-  if (header === 0x01) {
-    // Audio chunk from server TTS — cancel browser fallback
-    window._voiceSpokeServer = true;
-    if (window._voiceFallbackTimer) { clearTimeout(window._voiceFallbackTimer); window._voiceFallbackTimer = null; }
-    // Accumulate audio data
-    const audioData = data.slice(1);
-    voicePlayQueue.push(audioData);
-    updateVoiceStatus('Receiving audio...');
-  } else if (header === 0x02) {
-    // End of stream — play the complete audio
-    playAccumulatedAudio();
-  } else if (header === 0x03) {
-    // Interrupt acknowledged
-    flushVoicePlayback();
-    updateVoiceStatus('Ready');
-  }
-}
-
-async function playAccumulatedAudio() {
-  if (voicePlayQueue.length === 0) {
-    updateVoiceStatus('Ready');
-    return;
-  }
-  // Combine all chunks into a single buffer
-  const combined = concatChunks(voicePlayQueue);
-  voicePlayQueue = [];
-
-  // Reuse a single playback AudioContext (browsers limit to ~6 concurrent)
-  if (!window._playbackCtx || window._playbackCtx.state === 'closed') {
-    window._playbackCtx = new AudioContext();
-  }
-  const playbackCtx = window._playbackCtx;
-  if (playbackCtx.state === 'suspended') await playbackCtx.resume();
-
-  try {
-    const audioBuffer = await playbackCtx.decodeAudioData(combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength));
-    const source = playbackCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(playbackCtx.destination);
-    source.onended = () => { voicePlayingSource = null; updateVoiceStatus('Ready'); };
-    voicePlayingSource = source;
-    updateVoiceStatus('Speaking...');
-    source.start();
-  } catch (err) {
-    console.error('Audio decode failed:', err);
-    updateVoiceStatus('Ready');
-    voicePlayingSource = null;
-  }
-}
-
-function interruptVoicePlayback() {
-  flushVoicePlayback();
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type: 'voice_control', action: 'interrupt' }));
-  }
-}
-
-function flushVoicePlayback() {
-  voicePlayQueue = [];
-  if (voicePlayingSource) {
-    try { voicePlayingSource.stop(); } catch(e) {}
-    voicePlayingSource = null;
-  }
-  if (window.speechSynthesis) window.speechSynthesis.cancel();
-}
-
-// Speak text — tries server TTS first, falls back to browser speechSynthesis
-let voiceSpeakSeq = 0;
-function voiceSpeak(text) {
-  if (!text) return;
-  const seq = ++voiceSpeakSeq;
-  updateVoiceStatus('Speaking...');
-
-  // Try server-side TTS via WebSocket
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type: 'voice_speak', text: text }));
-
-    // Set a timeout — if no audio arrives within 3s, fall back to browser TTS
-    if (window._voiceFallbackTimer) clearTimeout(window._voiceFallbackTimer);
-    window._voiceSpokeServer = false;
-    window._voiceFallbackTimer = setTimeout(() => {
-      if (seq === voiceSpeakSeq && !window._voiceSpokeServer) {
-        voiceSpeakBrowser(text);
-      }
-    }, 3000);
-  } else {
-    // No WebSocket — use browser TTS directly
-    voiceSpeakBrowser(text);
-  }
-}
-
-// Browser-native speechSynthesis fallback (works everywhere, no server needed)
-function voiceSpeakBrowser(text) {
-  if (!window.speechSynthesis) {
-    updateVoiceStatus('No TTS available');
-    return;
-  }
-  // Cancel any ongoing speech
-  window.speechSynthesis.cancel();
-
-  // Strip markdown formatting for cleaner speech
-  const cleanText = text.replace(/[#*_~()>|]/g, '').replace(/\x5b/g, '').replace(/\x5d/g, '').replace(/\x60/g, '').replace(/\\n+/g, '. ').replace(/\n+/g, '. ').trim();
-  if (!cleanText) return;
-
-  const utterance = new SpeechSynthesisUtterance(cleanText);
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
-
-  // Try to pick a good voice
-  const voices = window._availableVoices || window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Daniel') || v.name.includes('Alex') || v.name.includes('Google US English'));
-  if (preferred) utterance.voice = preferred;
-
-  utterance.onstart = () => updateVoiceStatus('Speaking...');
-  utterance.onend = () => updateVoiceStatus('Ready');
-  utterance.onerror = () => updateVoiceStatus('Ready');
-
-  window.speechSynthesis.speak(utterance);
-}
-
-// Waveform visualization
-function drawVoiceWaveform() {
-  const canvas = document.getElementById('voice-waveform');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-
-  function draw() {
-    voiceWaveAnimId = requestAnimationFrame(draw);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, W, H);
-
-    if (!voiceAnalyser) return;
-    const bufLen = voiceAnalyser.frequencyBinCount;
-    const dataArr = new Uint8Array(bufLen);
-    voiceAnalyser.getByteTimeDomainData(dataArr);
-
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = voiceRecording ? '#22c55e' : (voicePlayingSource ? '#06b6d4' : '#475569');
-    ctx.beginPath();
-    const sliceW = W / bufLen;
-    let x = 0;
-    for (let i = 0; i < bufLen; i++) {
-      const v = dataArr[i] / 128.0;
-      const y = (v * H) / 2;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-      x += sliceW;
-    }
-    ctx.lineTo(W, H / 2);
-    ctx.stroke();
-  }
-  draw();
-}
-
-// ── VAD Hands-Free Mode ──────────────────────────────────────────
-let vadInstance = null;
-let vadLoaded = false;
-
-async function loadVadLibrary() {
-  if (vadLoaded) return;
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.19/dist/bundle.min.js';
-    script.onload = () => { vadLoaded = true; resolve(); };
-    script.onerror = () => reject(new Error('Failed to load VAD library'));
-    document.head.appendChild(script);
+    lkConnectBtn.disabled = false;
   });
 }
 
-async function startVAD() {
-  try {
-    await loadVadLibrary();
-    if (!voiceAudioCtx) {
-      toast('Voice not initialized — enable voice first', 'error');
-      return;
-    }
-    vadInstance = await vad.MicVAD.new({
-      positiveSpeechThreshold: 0.8,
-      minSpeechFrames: 3,
-      onSpeechStart: () => {
-        // Interrupt AI playback if speaking
-        if (voicePlayingSource) {
-          interruptVoicePlayback();
-        }
-        voiceRecording = true;
-        voiceChunks = [];
-        updateVoiceStatus('Listening...');
-      },
-      onSpeechEnd: (audio) => {
-        // audio is Float32Array at mic sample rate — convert to Int16 PCM
-        const pcm16 = float32ToPcm16(audio);
-        voiceRecording = false;
-        updateVoiceStatus('Processing...');
-        if (ws && ws.readyState === 1) {
-          ws.send(pcm16.buffer);
-        }
-      }
-    });
-    vadInstance.start();
-    updateVoiceStatus('Hands-free active');
-    toast('Hands-free mode active — speak naturally', 'success');
-  } catch (err) {
-    toast('VAD init failed: ' + err.message, 'error');
-    // Fall back to PTT
-    const modeSelect = document.getElementById('voice-mode');
-    if (modeSelect) modeSelect.value = 'push-to-talk';
-    const pttBtn = document.getElementById('voice-ptt-btn');
-    if (pttBtn) pttBtn.style.display = '';
-  }
+// Mute/unmute
+const lkMuteBtn = document.getElementById('lk-mute-btn');
+if (lkMuteBtn) {
+  lkMuteBtn.addEventListener('click', async () => {
+    if (!lkRoom) return;
+    lkMuted = !lkMuted;
+    await lkRoom.localParticipant.setMicrophoneEnabled(!lkMuted);
+    lkMuteBtn.textContent = lkMuted ? '🔈 Unmute' : '🔇 Mute';
+    updateVoiceStatus(lkMuted ? 'Muted' : 'Connected');
+  });
 }
 
-function stopVAD() {
-  if (vadInstance) {
-    vadInstance.pause();
-    vadInstance = null;
+// Disconnect
+const lkDisconnectBtn = document.getElementById('lk-disconnect-btn');
+if (lkDisconnectBtn) {
+  lkDisconnectBtn.addEventListener('click', lkDisconnect);
+}
+
+function lkDisconnect() {
+  if (lkRoom) {
+    lkRoom.disconnect();
+    lkRoom = null;
   }
-  voiceRecording = false;
+  if (lkVizAnimId) { cancelAnimationFrame(lkVizAnimId); lkVizAnimId = null; }
+  if (lkAudioCtx) { lkAudioCtx.close(); lkAudioCtx = null; lkAnalyser = null; }
+  const agentAudio = document.getElementById('lk-agent-audio');
+  if (agentAudio) agentAudio.remove();
+  lkUpdateUI(false);
   updateVoiceStatus('Ready');
 }
 
-// Voice mode select handler
-const voiceModeSelect = document.getElementById('voice-mode');
-if (voiceModeSelect) {
-  voiceModeSelect.addEventListener('change', (e) => {
-    const mode = e.target.value;
-    const pttBtn = document.getElementById('voice-ptt-btn');
-    if (mode === 'hands-free') {
-      if (pttBtn) pttBtn.style.display = 'none';
-      if (voiceEnabled) startVAD();
-    } else {
-      stopVAD();
-      if (pttBtn) pttBtn.style.display = '';
+function lkUpdateUI(connected) {
+  const connectBtn = document.getElementById('lk-connect-btn');
+  const muteBtn = document.getElementById('lk-mute-btn');
+  const disconnectBtn = document.getElementById('lk-disconnect-btn');
+  const viz = document.getElementById('lk-visualizer');
+  const agentState = document.getElementById('lk-agent-state');
+  if (connectBtn) connectBtn.textContent = connected ? '🎙️ Connected' : '🎙️ Start Voice';
+  if (muteBtn) muteBtn.style.display = connected ? 'inline-block' : 'none';
+  if (disconnectBtn) disconnectBtn.style.display = connected ? 'inline-block' : 'none';
+  if (viz) viz.style.display = connected ? 'inline-block' : 'none';
+  if (agentState) agentState.style.display = connected ? 'inline' : 'none';
+}
+
+// Simple bar visualizer for agent audio
+function drawLkVisualizer() {
+  const canvas = document.getElementById('lk-viz-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const barCount = 16;
+  const barW = W / barCount;
+
+  function draw() {
+    lkVizAnimId = requestAnimationFrame(draw);
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, W, H);
+    if (!lkAnalyser) return;
+    const data = new Uint8Array(lkAnalyser.frequencyBinCount);
+    lkAnalyser.getByteFrequencyData(data);
+    const step = Math.floor(data.length / barCount);
+    for (let i = 0; i < barCount; i++) {
+      const val = data[i * step] / 255;
+      const barH = val * H;
+      ctx.fillStyle = val > 0.5 ? '#06b6d4' : '#334155';
+      ctx.fillRect(i * barW + 1, H - barH, barW - 2, barH);
     }
-  });
+  }
+  draw();
 }
 
 // Check for Google OAuth callback redirect

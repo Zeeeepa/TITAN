@@ -136,38 +136,33 @@ The v2026.6.7 autonomy system introduces a layered execution model:
 - **Secrets vault**: AES-256-GCM encrypted credential store
 - **Audit log**: HMAC-SHA256 chained tamper-evident event trail
 
-## Voice Pipeline Architecture
+## Voice Architecture (LiveKit WebRTC)
 
-TITAN's voice capabilities operate through the `voice` skill, with two execution paths:
+Real-time voice uses [LiveKit](https://livekit.io/) for production-grade WebRTC:
 
 ```
-  Text-to-Speech (TTS)
-  generate_speech tool
+  Browser (Mission Control)
+        |
+  WebRTC (audio tracks)
+        |
+  LiveKit Server (cloud or self-hosted)
+        |
+  LiveKit Agent Worker (src/voice/livekitAgent.ts)
         |
   +-----+-----+
   |           |
-  Local       Cloud
-  Chatterbox  Provider TTS API
-  (GPU)       (fallback)
+  STT         TTS
+  (Deepgram/  (Cartesia/
+   Whisper)    OpenAI)
         |
-  Audio Output (.wav / stream)
-
-
-  Speech-to-Text (STT)
-  transcribe_audio tool
-        |
-  +-----+-----+
-  |           |
-  Local       Cloud
-  Whisper     Provider STT API
-  (GPU)       (fallback)
-        |
-  Text Output -> Agent Message Loop
+  TITAN processMessage()
+  (agent brain)
 ```
 
-- **Chatterbox TTS**: Open-source voice cloning from 5-second audio samples. Runs on local GPU (RTX 5090 / 32GB VRAM for real-time inference).
-- **Whisper STT**: OpenAI's Whisper model running locally. No cloud calls, no transcription costs.
-- Both local models are optional — TITAN falls back to cloud provider APIs when local inference is unavailable.
+- **Token endpoint**: `POST /api/livekit/token` — issues scoped JWT (15-min TTL) secured by gateway auth
+- **Agent bridge**: LiveKit dispatches a worker when a user joins a room; the worker routes transcribed speech through `processMessage()` and speaks the response via TTS
+- **File-based tools**: `generate_speech` and `transcribe_audio` still available via OpenAI API for offline/file-based use cases (independent of WebRTC pipeline)
+- LiveKit is an optional dependency — TITAN runs fine without voice enabled
 
 ## File Layout
 

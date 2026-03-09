@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 9 channels, 21 providers, 95 tools, 3,323 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,450 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
-  <a href="#providers"><img src="https://img.shields.io/badge/providers-21-purple" alt="21 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-95-orange" alt="95 Tools"/></a>
+  <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-9-blue" alt="9 Channels"/></a>
   <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C323-brightgreen" alt="3,323 Tests"/></a>
 </p>
@@ -118,9 +118,9 @@ No custom code required for any of the above. TITAN ships with 36 built-in skill
        +----+----+--------+                 Peer Discovery
        |         |         |                WS Transport
     Skills    LLM Providers  Voice
-    36 files  21 providers   Chatterbox TTS
-    95 tools  (4 native +    Whisper STT
-       |       17 compat)
+    39 files  34 providers   LiveKit WebRTC
+    ~112 tools (4 native +   (STT + TTS)
+       |       30 compat)
     Memory + Learning
     Graph + Relationship
     Briefings
@@ -298,21 +298,22 @@ Built-in aliases: `fast`, `smart`, `cheap`, `reasoning`, `local` — fully confi
 
 ---
 
-## Voice Pipeline
+## Voice (LiveKit WebRTC)
 
-TITAN supports text-to-speech and speech-to-text through the `voice` skill. The real story is what happens when you point it at dedicated hardware.
+TITAN's real-time voice uses [LiveKit](https://livekit.io/) — a production-grade WebRTC platform that handles echo cancellation, NAT traversal, codec negotiation, and jitter buffering. No custom audio pipelines, no PCM-over-WebSocket hacks.
 
-The current setup runs on a machine with an RTX 5090 (32GB VRAM):
+**How it works:**
+1. Click "Start Voice" in Mission Control
+2. TITAN fetches a scoped JWT token (`POST /api/livekit/token`)
+3. Browser connects to a LiveKit room via WebRTC
+4. LiveKit's agent worker bridges STT → TITAN's agent brain → TTS
+5. You talk, TITAN responds — sub-second latency, full duplex
 
-- **Chatterbox TTS** — An open-source text-to-speech model that clones voices from a 5-second audio sample. TITAN's default voice is a Robin Williams clone. Yes, really. A 5-second clip of Robin Williams doing improv, fed into Chatterbox, produces eerily convincing speech synthesis. The ethical implications are left as an exercise for the reader.
-- **Whisper STT** — OpenAI's Whisper model running locally for speech-to-text. No cloud API calls, no transcription costs, no audio leaving your network.
+**Deployment options:**
+- **LiveKit Cloud** — zero infrastructure, set `LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
+- **Self-hosted** — run `livekit-server` on your own hardware
 
-The voice tools (`generate_speech`, `transcribe_audio`) work with any provider, but local inference on a GPU means sub-second response times and zero per-request costs.
-
-```bash
-titan agent -m "Read me the latest news headlines"  # TTS output
-titan agent --voice                                   # Voice input mode
-```
+The file-based voice tools (`generate_speech`, `transcribe_audio`) still work independently via the OpenAI API for offline use cases.
 
 ---
 
@@ -411,7 +412,7 @@ print(f"Found {len(results)} results")
 
 ## Built-in Tools
 
-36 skills exposing 95 tools. All individually toggleable from Mission Control.
+39 skills exposing ~112 tools. All individually toggleable from Mission Control.
 
 | Category | Tools |
 |----------|-------|
@@ -635,6 +636,10 @@ We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
 ### Temporal Knowledge Graph
 
 - **[Graphiti](https://github.com/getzep/graphiti)** by [Zep AI](https://www.getzep.com/) — Inspired the episodic memory and temporal graph approach. Licensed under Apache 2.0. Research paper: [arXiv:2501.13956](https://arxiv.org/abs/2501.13956).
+
+### Voice Pipeline
+
+- **[LiveKit](https://livekit.io/)** by [LiveKit, Inc.](https://github.com/livekit) — Production-grade WebRTC platform for real-time voice. Voice UI adapted from [agent-starter-react](https://github.com/livekit-examples/agent-starter-react). Licensed under MIT.
 
 ### Browser Automation
 

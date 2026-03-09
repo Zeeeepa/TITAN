@@ -94,9 +94,20 @@
   - **Deep Research Agent** — researcher sub-agent template, iterative search-read-synthesize, citation tracking, 23 tests
   - 3,534 total tests across 105 files, ~112 tools, 34 providers, 15 channels
 
+### Phase 10: LiveKit Voice Integration (v2026.9.0)
+- **v2026.9.0**: Replaced custom PCM-over-WebSocket voice pipeline with LiveKit WebRTC:
+  - **Removed** old voice pipeline (10 files: pipeline.ts, audioUtils.ts, 4 STT providers, 4 TTS providers)
+  - **LiveKit WebRTC** — production-grade voice with echo cancellation, NAT traversal, jitter buffering
+  - **Token endpoint** — `POST /api/livekit/token` for secure room access (JWT, 15-min TTL)
+  - **Dashboard UI** — LiveKit voice panel with connect/mute/disconnect, bar visualizer, agent state indicator
+  - **Agent bridge** — `src/voice/livekitAgent.ts` bridges LiveKit rooms to TITAN's agent brain
+  - **License attribution** — proper MIT credit for LiveKit, Inc. in LICENSE and package.json
+  - Kept `voice.ts` skill (file-based OpenAI STT/TTS, independent of pipeline)
+  - ~3,450 total tests across 102 files, ~112 tools, 34 providers, 15 channels
+
 ---
 
-## Current State (v2026.8.0)
+## Current State (v2026.9.0)
 
 | Metric | Value |
 |--------|-------|
@@ -104,8 +115,9 @@
 | Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
 | Built-in Skills | 39 files |
 | Tools | ~112 registered |
-| Tests | 3,534 across 105 files |
+| Tests | ~3,450 across 102 files |
 | Line Coverage | ~82% |
+| Voice | LiveKit WebRTC (replaced custom pipeline) |
 | RAG/Vector Search | Yes (FTS5 + embeddings) |
 | Token Streaming | Yes (SSE + WebSocket) |
 | Adaptive Teaching | Yes (wizard, skill reveal, hints) |

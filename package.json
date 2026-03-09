@@ -1,6 +1,6 @@
 {
   "name": "titan-agent",
-  "version": "2026.8.0",
+  "version": "2026.9.0",
   "description": "TITAN — The Intelligent Task Automation Network. A premium, autonomous AI agent framework with configurable autonomy, prompt injection shield, and Mission Control GUI.",
   "author": "Tony Elliott (https://github.com/Djtony707)",
   "repository": {
@@ -138,6 +138,7 @@
       "src/skills/builtin/weather.ts",
       "src/skills/builtin/goals.ts",
       "src/skills/builtin/x_poster.ts",
+      "src/voice/livekitAgent.ts",
       "src/agent/sandbox.ts",
       "src/agent/reflection.ts",
       "src/agent/subAgent.ts",
@@ -158,6 +159,9 @@
       "playwright-core",
       "chromium-bidi",
       "@browserbasehq/stagehand",
+      "@livekit/agents",
+      "@livekit/agents-plugin-openai",
+      "livekit-server-sdk",
       "@whiskeysockets/baileys",
       "matrix-js-sdk",
       "pdf-parse",
@@ -170,11 +174,17 @@
   },
   "optionalDependencies": {
     "@browserbasehq/stagehand": "^3.1.0",
+    "@livekit/agents": "^1.0.0",
+    "@livekit/agents-plugin-openai": "^1.0.0",
     "@whiskeysockets/baileys": "^6.7.0",
     "bonjour-service": "^1.3.0",
+    "livekit-server-sdk": "^2.13.3",
     "matrix-js-sdk": "^34.0.0",
     "pdf-parse": "^1.1.1",
     "node-llama-cpp": "^3.0.0",
     "playwright": "^1.58.2"
+  },
+  "credits": {
+    "livekit": "Voice UI adapted from livekit-examples/agent-starter-react (MIT License, Copyright (c) 2025 LiveKit, Inc.)"
   }
 }

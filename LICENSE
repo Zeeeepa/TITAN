@@ -27,3 +27,8 @@ ACKNOWLEDGMENTS
 TITAN's architecture is inspired by OpenClaw (https://github.com/openclaw/openclaw),
 an open-source personal AI assistant framework, licensed under the MIT License.
 Thank you to the OpenClaw team and all open-source contributors.
+
+Voice interface adapted from LiveKit Agent Starter React
+(https://github.com/livekit-examples/agent-starter-react).
+Copyright (c) 2025 LiveKit, Inc. Licensed under the MIT License.
+Thank you to the LiveKit team for their excellent real-time WebRTC platform.

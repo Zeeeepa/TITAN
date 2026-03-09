@@ -198,36 +198,20 @@ export const DeliberationConfigSchema = z.object({
 });
 
 export const VoiceConfigSchema = z.object({
-    /** Enable real-time voice pipeline */
+    /** Enable real-time voice via LiveKit WebRTC */
     enabled: z.boolean().default(false),
-    stt: z.object({
-        provider: z.enum(['openai', 'deepgram', 'local']).default('local'),
-        model: z.string().default('whisper-large-v3'),
-        language: z.string().default('en'),
-        /** Local Whisper ASR server URL (configure via onboarding or titan.json) */
-        localUrl: z.string().default(''),
-        /** Deepgram API key (if using Deepgram provider) */
-        deepgramApiKey: z.string().optional(),
+    /** Voice provider (currently only LiveKit supported) */
+    provider: z.enum(['livekit']).default('livekit'),
+    livekit: z.object({
+        /** LiveKit server URL (wss://...) — also reads LIVEKIT_URL env */
+        url: z.string().default(''),
+        /** LiveKit API key — also reads LIVEKIT_API_KEY env */
+        apiKey: z.string().default(''),
+        /** LiveKit API secret — also reads LIVEKIT_API_SECRET env */
+        apiSecret: z.string().default(''),
+        /** Agent name to dispatch when user joins a room */
+        agentName: z.string().default('titan-voice'),
     }).default({}),
-    tts: z.object({
-        provider: z.enum(['chatterbox', 'orpheus', 'openai']).default('chatterbox'),
-        voice: z.string().default('default'),
-        speed: z.number().default(1.0),
-        /** Chatterbox TTS server URL (configure via onboarding or titan.json) */
-        chatterboxUrl: z.string().default(''),
-        /** Orpheus TTS server URL (configure via onboarding or titan.json) */
-        orpheusUrl: z.string().default(''),
-    }).default({}),
-    /** Cloned voice name for Chatterbox (personal sessions) */
-    personalVoice: z.string().default(''),
-    /** Path to reference audio clip for voice cloning */
-    personalReferenceClip: z.string().default(''),
-    /** Orpheus built-in voice for customer sessions */
-    customerVoice: z.string().default('tara'),
-    /** Default input mode */
-    defaultMode: z.enum(['push-to-talk', 'hands-free']).default('push-to-talk'),
-    /** Maximum recording duration in seconds */
-    maxRecordingSeconds: z.number().default(60),
 });
 
 export const ContextEnginePluginConfigSchema = z.object({

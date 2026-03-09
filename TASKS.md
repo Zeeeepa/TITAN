@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-08
-**Current Version:** 2026.6.7
+**Last Updated:** 2026-03-09
+**Current Version:** 2026.7.0
 
 ---
 
@@ -76,18 +76,29 @@
   - **Deliberation Fix** — model-aware thinking parameter, configurable fallback chain
   - 98 new tests across 9 test files, 3,323 total tests across 94 files
 
+### Phase 8: Catch Up & Teach (v2026.7.0)
+- **v2026.6.8**: Dashboard XSS fix (data-attribute onclick), voice hardcoded IP removal (TITAN port block 48420-48423), model_switch into registry, 31 ESLint warnings resolved, voice pipeline source committed, agent team hierarchy (27 agents)
+- **v2026.7.0**: Three features in parallel via agent teams:
+  - **RAG/Vector Search** — SQLite FTS5 + Ollama/OpenAI embeddings, 4 tools (rag_ingest/search/list/delete), auto context injection, 20 tests
+  - **Token Streaming** — SSE on `/api/message` with `Accept: text/event-stream`, WebSocket token streaming with typing cursor, backward compatible JSON, 6 tests
+  - **Adaptive Teaching** — first-run wizard, progressive skill reveal, teach mode detection, user skill profiles with correction learning, contextual dashboard hints, 30 tests
+  - 3,463 total tests across 101 files, 106 tools registered
+
 ---
 
-## Current State (v2026.6.7)
+## Current State (v2026.7.0)
 
 | Metric | Value |
 |--------|-------|
 | Providers | 21 (4 native + 17 OpenAI-compat) |
 | Channels | 9 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat) |
-| Built-in Skills | 36 files |
-| Tools | ~102 registered |
-| Tests | 3,407 across 98 files |
+| Built-in Skills | 37 files |
+| Tools | 106 registered |
+| Tests | 3,463 across 101 files |
 | Line Coverage | ~82% |
+| RAG/Vector Search | Yes (FTS5 + embeddings) |
+| Token Streaming | Yes (SSE + WebSocket) |
+| Adaptive Teaching | Yes (wizard, skill reveal, hints) |
 
 ---
 

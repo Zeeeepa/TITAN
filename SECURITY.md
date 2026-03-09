@@ -4,8 +4,8 @@
 
 | Version    | Supported |
 | ---------- | --------- |
-| 2026.5.x   | Yes       |
-| < 2026.5.0 | No        |
+| 2026.6.x   | Yes       |
+| < 2026.6.0 | No        |
 
 ## Reporting a Vulnerability
 

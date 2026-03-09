@@ -1,16 +1,17 @@
 # TITAN Architecture
 
 > **TITAN -- The Intelligent Task Automation Network**
+> v2026.6.7
 
 ## System Overview
 
-TITAN is a TypeScript-based autonomous AI agent framework with a modular architecture designed for extensibility, security, and multi-agent operation.
+TITAN is a TypeScript-based autonomous AI agent framework with a modular architecture designed for extensibility, security, and multi-agent operation. Pure ESM, zero native compilation, runs on Node.js >= 20.
 
 ## Core Components
 
 ```
                           CLI Interface
-  onboard | gateway | agent | pairing | agents | doctor | config
+  onboard | gateway | agent | mesh | doctor | config | autopilot
                               |
                       Gateway Server
             HTTP + WebSocket Control Plane
@@ -19,9 +20,9 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
             +-----------------+-----------------+
             |                 |                 |
       Multi-Agent        Channel           Security
-      Router (1-5)       Adapters (9)      Sandbox+Pairing
-            |                                Shield+Vault
-      Agent Core
+      Router (1-5)       Adapters (9)      Sandbox + Pairing
+            |                                Shield + Vault
+      Agent Core                             Audit Log
       Session Mgmt | Reflection
       Tool Runner  | Sub-Agents
       Orchestrator | Goals
@@ -29,8 +30,8 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
        +----+----+--------+
        |         |         |
     Skills    LLM Providers  Browsing
-    33 files  21 providers   Browser Pool
-    95 tools  (4 native +   Stagehand
+    36 files  21 providers   Browser Pool
+    95 tools  (4 native +    Stagehand
        |       17 compat)
     Memory + Learning
     Graph + Relationship
@@ -51,6 +52,79 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
 10. **Goals** -- Persistent goal tracking drives autopilot subtask execution + initiative chaining
 11. **Response** -- Final response routed back to originating channel
 
+## Autonomy Flow
+
+The v2026.6.7 autonomy system introduces a layered execution model:
+
+```
+  Inbound Message
+        |
+  Complexity Classification
+  (simple / moderate / complex / ambitious)
+        |
+  +-----+-----+
+  |           |
+  Simple    Complex/Ambitious
+  |           |
+  Direct    Deliberation Loop
+  LLM Call    |
+  |         Analyze -> Plan -> Approve -> Execute -> Adapt
+  |           |
+  |         Orchestrator
+  |           |
+  |         +---+---+---+
+  |         |   |   |   |
+  |        Sub-Agents (parallel or sequential)
+  |         explorer / coder / browser / analyst
+  |           |
+  +-----+-----+
+        |
+  Tool Execution Loop (up to 10 rounds)
+        |
+  Reflection Check (every N rounds)
+  "Am I making progress?"
+        |
+  +-----+-----+
+  |           |
+  Continue   Adjust/Stop
+  |           |
+  +-----+-----+
+        |
+  Goal Check (initiative)
+  "Is there a next subtask?"
+        |
+  +-----+-----+
+  |           |
+  Auto-start  Propose
+  (autonomous) (supervised)
+        |
+  Response
+```
+
+### Reflection Details
+
+- Runs every N tool-call rounds (configurable)
+- Uses the `fast` model alias for cheap, quick self-assessment
+- Evaluates: confidence level, progress toward goal, whether to continue or pivot
+- Prevents runaway tool loops and wasted token spend
+- Works alongside the existing loop detection and circuit breaker systems
+
+### Sub-Agent Architecture
+
+- `spawn_agent` tool creates isolated agent instances
+- Each sub-agent has its own session, constrained toolset, and context
+- Four templates: `explorer` (web), `coder` (files), `browser` (interactive web), `analyst` (analysis)
+- Max depth = 1 (sub-agents cannot spawn sub-agents)
+- Results returned to parent agent for synthesis
+
+### Orchestrator Flow
+
+- Analyzes incoming task for delegation potential
+- Identifies independent subtasks (can run in parallel) vs. dependent subtasks (must run sequentially)
+- Spawns sub-agents with appropriate templates
+- Parallel tasks execute concurrently; sequential tasks receive context from predecessors
+- Synthesizes all sub-agent results into a unified response
+
 ## Security Model
 
 - **Main session**: Full host access (single-user mode)
@@ -61,6 +135,39 @@ TITAN is a TypeScript-based autonomous AI agent framework with a modular archite
 - **Prompt injection shield**: Multi-layer detection (heuristic + LLM)
 - **Secrets vault**: AES-256-GCM encrypted credential store
 - **Audit log**: HMAC-SHA256 chained tamper-evident event trail
+
+## Voice Pipeline Architecture
+
+TITAN's voice capabilities operate through the `voice` skill, with two execution paths:
+
+```
+  Text-to-Speech (TTS)
+  generate_speech tool
+        |
+  +-----+-----+
+  |           |
+  Local       Cloud
+  Chatterbox  Provider TTS API
+  (GPU)       (fallback)
+        |
+  Audio Output (.wav / stream)
+
+
+  Speech-to-Text (STT)
+  transcribe_audio tool
+        |
+  +-----+-----+
+  |           |
+  Local       Cloud
+  Whisper     Provider STT API
+  (GPU)       (fallback)
+        |
+  Text Output -> Agent Message Loop
+```
+
+- **Chatterbox TTS**: Open-source voice cloning from 5-second audio samples. Runs on local GPU (RTX 5090 / 32GB VRAM for real-time inference).
+- **Whisper STT**: OpenAI's Whisper model running locally. No cloud calls, no transcription costs.
+- Both local models are optional — TITAN falls back to cloud provider APIs when local inference is unavailable.
 
 ## File Layout
 
@@ -147,7 +254,7 @@ src/
 +-- skills/
 |   +-- registry.ts         # Skill discovery, loading, toggle
 |   +-- marketplace.ts      # GitHub-hosted skills marketplace
-|   +-- builtin/            # 33 built-in skill files (95 tools)
+|   +-- builtin/            # 36 built-in skill files (95 tools)
 |       +-- shell.ts        # Shell execution
 |       +-- filesystem.ts   # File operations
 |       +-- browser.ts      # CDP browser control
@@ -181,8 +288,17 @@ src/
 |       +-- auto_generate.ts# Skill generation from NL
 |       +-- model_switch.ts # Runtime model switching
 |       +-- web_browser.ts  # Additional browser tools
+|       +-- code_exec.ts    # Sandbox code execution
+|       +-- weather.ts      # Weather forecasts
 +-- utils/
     +-- constants.ts        # Paths, defaults, version
     +-- logger.ts           # Structured logging
     +-- helpers.ts          # File I/O utilities
 ```
+
+## Test Coverage
+
+- **3,323 tests** across **94 files** (Vitest)
+- **~82% line coverage**
+- All core systems have dedicated test suites
+- Run with `npm run test` or `npm run test:coverage`

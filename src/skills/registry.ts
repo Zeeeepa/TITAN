@@ -284,6 +284,12 @@ export async function initBuiltinSkills(): Promise<void> {
     try { registerTool(getToolSearchHandler()); } catch (e) { logger.warn(COMPONENT, `Failed to register tool_search: ${(e as Error).message}`); }
 
     logger.info(COMPONENT, `Loaded ${registeredSkills.size} built-in skills`);
+
+    // Load dev skills (only in dev mode — skip import entirely in production)
+    if (process.env.NODE_ENV !== 'production' || process.env.TITAN_DEV) {
+        const { initDevSkills } = await import('./dev/loader.js');
+        await initDevSkills();
+    }
 }
 
 /**

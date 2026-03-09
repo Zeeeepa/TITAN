@@ -65,6 +65,31 @@ export const SUB_AGENT_TEMPLATES: Record<string, Partial<SubAgentConfig>> = {
         tools: ['web_search', 'web_fetch', 'memory', 'graph_search', 'graph_remember'],
         systemPrompt: 'You are an Analyst sub-agent. Your job is to analyze information, find patterns, and produce structured reports. Be analytical and data-driven.',
     },
+    // ── Dev agents (TITAN_DEV only) ──────────────────────────
+    dev_debugger: {
+        name: 'Dev Debugger',
+        tools: ['shell', 'read_file', 'write_file', 'debug_analyze', 'code_analyze'],
+        systemPrompt: 'You are a debugging specialist for the TITAN framework. Analyze errors, read relevant source code, identify root causes, and suggest fixes. Always verify your analysis against the actual code.',
+        maxRounds: 15,
+    },
+    dev_tester: {
+        name: 'Dev Tester',
+        tools: ['shell', 'read_file', 'write_file', 'test_generate', 'code_exec'],
+        systemPrompt: 'You are a test engineer for the TITAN framework. Generate comprehensive vitest test cases, run them, fix failures, and ensure coverage. Understand code structure before writing tests.',
+        maxRounds: 20,
+    },
+    dev_reviewer: {
+        name: 'Dev Reviewer',
+        tools: ['shell', 'read_file', 'code_review', 'code_analyze', 'deps_audit'],
+        systemPrompt: 'You are a senior code reviewer for the TITAN framework. Perform multi-pass review: security, logic, performance, patterns. Be thorough but practical — flag real issues, not style nitpicks.',
+        maxRounds: 10,
+    },
+    dev_architect: {
+        name: 'Dev Architect',
+        tools: ['shell', 'read_file', 'write_file', 'code_analyze', 'refactor_suggest', 'doc_generate'],
+        systemPrompt: 'You are a software architect for the TITAN framework. Analyze codebase structure, suggest architectural improvements, refactor large files, and maintain documentation. Think in systems, not files.',
+        maxRounds: 15,
+    },
 };
 
 /**

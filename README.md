@@ -26,6 +26,14 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/sponsors/Djtony707"><img src="https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F_Sponsor-ea4aaa?style=for-the-badge&logo=github" alt="Sponsor on GitHub"/></a>
+</p>
+
+<p align="center">
+  <em>TITAN is built solo by <a href="https://github.com/Djtony707">Tony Elliott</a> — a father, college student studying AI Software Engineering, and open-source builder. I was laid off in October 2025 and have been building TITAN between classes and taking care of my kids. If this project helps you, please consider sponsoring. Every dollar makes a real difference for my family right now.</em>
+</p>
+
+<p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
   <a href="#what-titan-does">What It Does</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
@@ -699,14 +707,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 - **Vector Search & RAG** — SQLite FTS5 + embeddings for semantic memory
 - **Team Mode & RBAC** — Role-based access control for multi-user deployments
-
----
-
-## Sponsor
-
-TITAN is built by [Tony Elliott](https://github.com/Djtony707) — a solo developer, college student studying AI Software Engineering, and open-source believer. I was laid off from my IT technician job in October 2025 and have been building TITAN in my free time between classes. Every contribution helps me keep this project alive and growing.
-
-<a href="https://github.com/sponsors/Djtony707"><img src="https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-Sponsor-ea4aaa?style=for-the-badge&logo=github" alt="Sponsor on GitHub"/></a>
 
 ---
 

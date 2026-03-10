@@ -38,7 +38,7 @@ import { LarkChannel } from '../channels/lark.js';
 import { EmailInboundChannel } from '../channels/email_inbound.js';
 import { LineChannel } from '../channels/line.js';
 import { ZulipChannel } from '../channels/zulip.js';
-import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity } from '../agent/multiAgent.js';
+import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity, getAgent } from '../agent/multiAgent.js';
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger, { initFileLogger } from '../utils/logger.js';
 import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR } from '../utils/constants.js';
@@ -744,7 +744,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Agent message endpoint (uses multi-agent routing)
   // Supports SSE streaming when Accept: text/event-stream header is present
   app.post('/api/message', rateLimit(60000, 30), async (req, res) => {
-    const { content, channel = 'api', userId = 'api-user' } = req.body;
+    const { content, channel = 'api', userId = 'api-user', agentId } = req.body;
     if (!content) {
       res.status(400).json({ error: 'content is required' });
       return;
@@ -807,7 +807,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           onToolCall: (name, args) => {
             res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
           },
-        });
+        }, agentId);
         titanRequestsTotal.increment({ channel, status: 'ok' });
         if (response.toolsUsed) {
           for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
@@ -820,7 +820,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
         res.end();
       } else {
-        const response = await routeMessage(content, channel, userId);
+        const response = await routeMessage(content, channel, userId, undefined, agentId);
         titanRequestsTotal.increment({ channel, status: 'ok' });
         if (response.toolsUsed) {
           for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
@@ -1499,7 +1499,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // LiveKit token generation (ported from titan-voice-ui)
-  app.post('/api/livekit/token', async (_req, res) => {
+  app.post('/api/livekit/token', async (req, res) => {
     const cfg = loadConfig();
     if (!cfg.voice?.enabled) {
       res.status(404).json({ error: 'Voice not enabled' });
@@ -1527,7 +1527,16 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         canPublishData: true,
         canSubscribe: true,
       });
-      const serverUrl = cfg.voice.livekitUrl;
+      // Use the browser's request hostname so LiveKit URL works over Tailscale / remote
+      let serverUrl = cfg.voice.livekitUrl;
+      try {
+        const reqHost = req.hostname || req.headers.host?.split(':')[0];
+        if (reqHost) {
+          const parsed = new URL(serverUrl);
+          parsed.hostname = reqHost;
+          serverUrl = parsed.toString().replace(/\/$/, '');
+        }
+      } catch { /* keep original */ }
       res.json({
         serverUrl,
         roomName,

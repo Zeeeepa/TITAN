@@ -3,7 +3,10 @@ TITAN Voice Agent — LiveKit Agents SDK v1.4+
 Fully local STT + TTS. TITAN Gateway is the brain (no local LLM routing).
 """
 import os
+import re
+import random
 import logging
+import datetime
 import aiohttp
 from dotenv import load_dotenv
 
@@ -24,8 +27,9 @@ from kokoro_tts import KokoroTTS
 load_dotenv(dotenv_path=".env.local")
 logger = logging.getLogger("titan-voice-agent")
 
-TITAN_API_URL = os.getenv("TITAN_API_URL", "http://192.168.1.95:48420/api/message")
+TITAN_API_URL = os.getenv("TITAN_API_URL", "http://localhost:48420/api/message")
 TITAN_AUTH_TOKEN = os.getenv("TITAN_AUTH_TOKEN", "")
+TITAN_AGENT_ID = os.getenv("TITAN_AGENT_ID", "")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.1.11:11434/v1")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:0.6b")
 STT_BASE_URL = os.getenv("STT_BASE_URL", "")
@@ -36,6 +40,65 @@ server = AgentServer()
 
 # Persistent TITAN session ID across turns
 _titan_session_id = None
+
+# ── Voice system prompt (research-backed, ChatGPT Voice style) ──────────────
+VOICE_SYSTEM_PROMPT = (
+    "You are TITAN, a voice AI assistant created by Tony Elliott. "
+    "You are having a live spoken conversation — the user hears every word you say.\n\n"
+    "PERSONALITY: Warm, confident, concise. You are a knowledgeable companion, not a corporate chatbot. "
+    "Use contractions naturally (I'll, we're, that's, don't). "
+    "Start sentences with So, Okay, Right, Actually, or Basically when it feels natural. "
+    "Occasionally end statements with right? or you know? for a conversational feel.\n\n"
+    "RULES:\n"
+    "- Respond in one to two sentences by default. Go longer ONLY if the user explicitly asks for detail.\n"
+    "- NEVER use markdown, bold, italic, bullet points, numbered lists, asterisks, headers, or code blocks.\n"
+    "- NEVER say As an AI or I'd be happy to help with that. Just answer directly.\n"
+    "- Spell out all numbers in words. Say forty two not 42. Say three point five not 3.5.\n"
+    "- Use spoken transitions instead of lists. Say first, then, and finally instead of formatting.\n"
+    "- When unsure, be honest: I'm not totally sure, but I think...\n"
+    "- Echo specific details from what the user said to show you are listening.\n"
+    "- For data or lookups: lead with the key finding in one sentence, then offer to go deeper.\n"
+    "- Keep technical jargon minimal unless the user is clearly technical.\n"
+    "- Do NOT repeat the phrase Voice conversation in your response."
+)
+
+# Preambles spoken immediately while waiting for TITAN Gateway to respond
+PREAMBLES = [
+    "Let me think about that.",
+    "Okay, one sec.",
+    "Good question.",
+    "Sure, let me check.",
+    "Alright, let me look into that.",
+    "Hmm, let me see.",
+]
+
+# Track recent preambles to avoid repetition
+_recent_preambles: list[str] = []
+
+
+def _pick_preamble() -> str:
+    """Pick a preamble that wasn't used recently."""
+    global _recent_preambles
+    available = [p for p in PREAMBLES if p not in _recent_preambles]
+    if not available:
+        _recent_preambles.clear()
+        available = PREAMBLES
+    choice = random.choice(available)
+    _recent_preambles.append(choice)
+    if len(_recent_preambles) > 3:
+        _recent_preambles.pop(0)
+    return choice
+
+
+def _make_greeting() -> str:
+    """Time-aware natural greeting."""
+    hour = datetime.datetime.now().hour
+    if hour < 12:
+        return "Good morning! I'm TITAN. What's on your mind?"
+    elif hour < 17:
+        return "Hey! I'm TITAN. What can I do for you?"
+    else:
+        return "Hey there! TITAN here. What do you need?"
 
 
 async def ask_titan_gateway(question: str) -> str:
@@ -49,15 +112,12 @@ async def ask_titan_gateway(question: str) -> str:
         payload = {
             "content": f"[Voice conversation] {question}",
             "options": {"voice": True},
-            "systemPrompt": (
-                "The user is talking to you through voice. Keep responses concise and conversational. "
-                "Do NOT use markdown, bullet points, code blocks, numbered lists, or special formatting. "
-                "Speak numbers naturally (say 'seventy four degrees' not '74°F'). "
-                "Keep answers to 2-3 sentences unless the user asks for detail."
-            ),
+            "systemPrompt": VOICE_SYSTEM_PROMPT,
         }
         if _titan_session_id:
             payload["sessionId"] = _titan_session_id
+        if TITAN_AGENT_ID:
+            payload["agentId"] = TITAN_AGENT_ID
 
         async with aiohttp.ClientSession() as http_session:
             async with http_session.post(
@@ -65,13 +125,13 @@ async def ask_titan_gateway(question: str) -> str:
                 timeout=aiohttp.ClientTimeout(total=60)
             ) as resp:
                 if resp.status != 200:
-                    return f"Sorry, I couldn't reach my brain. Status {resp.status}."
+                    return "Sorry, I'm having a bit of trouble right now. Can you try again?"
                 data = await resp.json()
                 _titan_session_id = data.get("sessionId", _titan_session_id)
-                return data.get("content", "I got a response but it was empty.")
+                return data.get("content", "Hmm, I got nothing back. Try asking again?")
     except Exception as e:
         logger.error(f"TITAN Gateway error: {e}")
-        return f"Sorry, I'm having trouble connecting to my backend right now."
+        return "Sorry, I'm having trouble connecting right now. Give me a moment."
 
 
 class TitanAgent(Agent):
@@ -80,14 +140,15 @@ class TitanAgent(Agent):
     def __init__(self):
         super().__init__(
             instructions=(
-                "You are TITAN, a helpful AI assistant. "
+                "You are TITAN, a helpful voice AI assistant created by Tony Elliott. "
                 "Keep responses very brief and conversational. "
-                "This is voice — no markdown, no lists, no code blocks."
+                "This is a voice conversation. Never use markdown, lists, or code blocks. "
+                "Use natural spoken language with contractions."
             ),
         )
 
 
-@server.rtc_session(agent_name="titan-voice")
+@server.rtc_session()
 async def titan_session(ctx: JobContext):
     """Called when a participant joins the LiveKit room."""
     logger.info("TITAN Voice Agent starting...")
@@ -104,16 +165,13 @@ async def titan_session(ctx: JobContext):
 
     session = AgentSession(
         stt=stt,
-        llm=openai.LLM.with_ollama(
-            model=OLLAMA_MODEL,
-            base_url=OLLAMA_BASE_URL,
-        ),
+        # No local LLM — all intelligence routed through TITAN Gateway
         tts=KokoroTTS(base_url=KOKORO_BASE_URL, voice=TTS_VOICE),
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
 
-    # Intercept user speech — send to TITAN Gateway, bypass local LLM
+    # Route all user speech to TITAN Gateway (no local LLM)
     @session.on("user_input_transcribed")
     def on_transcript(ev: UserInputTranscribedEvent):
         if not ev.is_final:
@@ -122,7 +180,6 @@ async def titan_session(ctx: JobContext):
         if not text:
             return
         logger.info(f"User said: {text}")
-        # Interrupt any current speech and route to TITAN
         import asyncio
         asyncio.create_task(_handle_user_input(session, text))
 
@@ -131,9 +188,11 @@ async def titan_session(ctx: JobContext):
         agent=TitanAgent(),
     )
 
-    # Hardcoded greeting — skip LLM entirely for speed
-    session.say("Hey! I'm TITAN, your AI assistant. What can I help you with?")
+    # Natural time-aware greeting
+    session.say(_make_greeting())
 
+
+# ── Number-to-words converter ───────────────────────────────────────────────
 
 def _num_to_words(n: int) -> str:
     """Convert integer to spoken words."""
@@ -164,18 +223,51 @@ def _num_to_words(n: int) -> str:
     return str(n)
 
 
+# ── Tech acronym pronunciation ──────────────────────────────────────────────
+
+ACRONYM_MAP = {
+    'API': 'A P I', 'APIs': 'A P Is',
+    'URL': 'U R L', 'URLs': 'U R Ls',
+    'HTTP': 'H T T P', 'HTTPS': 'H T T P S',
+    'HTML': 'H T M L', 'CSS': 'C S S',
+    'JSON': 'jason', 'YAML': 'yammal',
+    'SQL': 'sequel', 'CLI': 'C L I',
+    'SDK': 'S D K', 'SSH': 'S S H',
+    'DNS': 'D N S', 'TCP': 'T C P',
+    'UDP': 'U D P', 'GPU': 'G P U',
+    'CPU': 'C P U', 'RAM': 'ram',
+    'SSD': 'S S D', 'NVMe': 'N V M E',
+    'VRAM': 'V ram', 'LLM': 'L L M',
+    'AI': 'A I', 'ML': 'M L',
+    'CUDA': 'cooda', 'ONNX': 'onyx',
+    'RTX': 'R T X', 'NPM': 'N P M',
+    'TTS': 'T T S', 'STT': 'S T T',
+    'VAD': 'V A D', 'TITAN': 'TITAN',
+    'OAuth': 'oh auth', 'JWT': 'J W T',
+    'REST': 'rest', 'MQTT': 'M Q T T',
+    'IoT': 'I o T', 'OOM': 'O O M',
+}
+
+
+# ── Normalize for speech ────────────────────────────────────────────────────
+
 def normalize_for_speech(text: str) -> str:
-    """Clean up text for natural TTS output."""
-    import re
+    """Clean up LLM text output for natural TTS."""
+
+    # Strip "[Voice conversation]" prefix if echoed back
+    text = re.sub(r'^\[Voice conversation\]\s*', '', text, flags=re.IGNORECASE)
 
     # Strip markdown formatting
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # bold
-    text = re.sub(r'\*(.+?)\*', r'\1', text)  # italic
-    text = re.sub(r'`(.+?)`', r'\1', text)  # inline code
-    text = re.sub(r'```[\s\S]*?```', '', text)  # code blocks
+    text = re.sub(r'\*(.+?)\*', r'\1', text)       # italic
+    text = re.sub(r'`(.+?)`', r'\1', text)         # inline code
+    text = re.sub(r'```[\s\S]*?```', '', text)      # code blocks
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # headings
     text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)  # bullet points
     text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # numbered lists
+
+    # Strip markdown links: [text](url) → text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
 
     # Remove emojis (common unicode ranges)
     text = re.sub(
@@ -184,6 +276,10 @@ def normalize_for_speech(text: str) -> str:
         r'\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF\U00002600-\U000026FF'
         r'\U0000FE00-\U0000FE0F\U0000200D]+', '', text
     )
+
+    # Tech acronyms → spoken form (before general number expansion)
+    for acronym, spoken in ACRONYM_MAP.items():
+        text = re.sub(r'\b' + re.escape(acronym) + r'\b', spoken, text)
 
     # Units and abbreviations → spoken form (before number expansion)
     unit_map = {
@@ -198,7 +294,6 @@ def normalize_for_speech(text: str) -> str:
         'sec': 'seconds', 'ms': 'milliseconds',
     }
     for abbr, spoken in unit_map.items():
-        # Match number + optional space + unit (word boundary for non-symbol units)
         if abbr[0].isalpha():
             text = re.sub(r'(\d)\s*' + re.escape(abbr) + r'\b', r'\1 ' + spoken, text)
         else:
@@ -336,10 +431,7 @@ def normalize_for_speech(text: str) -> str:
 
     text = re.sub(r'\b(\d+)(?:st|nd|rd|th)\b', replace_ordinal, text)
 
-    # Phone-style numbers: keep digit-by-digit for 7+ digits without commas (phone, zip+4)
-    # Already handled naturally since we only expand comma-grouped or short numbers
-
-    # URLs and emails → just say "a link" or skip
+    # URLs and emails → spoken form
     text = re.sub(r'https?://\S+', 'a link', text)
     text = re.sub(r'\S+@\S+\.\S+', 'an email address', text)
 
@@ -371,20 +463,34 @@ def normalize_for_speech(text: str) -> str:
     # Normalize whitespace and ensure sentence spacing
     text = re.sub(r'\n+', '. ', text)
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\.\s*\.', '.', text)  # collapse double periods
-    text = re.sub(r',\s*\.', '.', text)  # trailing comma before period
+    text = re.sub(r'\.{2,}', '.', text)   # collapse multiple periods
+    text = re.sub(r'\.\s*\.', '.', text)   # collapse spaced double periods
+    text = re.sub(r',\s*\.', '.', text)    # trailing comma before period
     text = text.strip()
 
     return text
 
 
+# ── Main handler ────────────────────────────────────────────────────────────
+
 async def _handle_user_input(session: AgentSession, text: str):
     """Route user input to TITAN Gateway and speak the response."""
     logger.info(f"Routing to TITAN Gateway: {text}")
+
+    # Speak a brief preamble to fill silence while TITAN thinks
+    try:
+        session.say(_pick_preamble())
+    except RuntimeError:
+        logger.warning("Session closed before preamble could be spoken")
+        return
+
     response = await ask_titan_gateway(text)
     response = normalize_for_speech(response)
     logger.info(f"TITAN response: {response[:100]}...")
-    session.say(response)
+    try:
+        session.say(response)
+    except RuntimeError:
+        logger.warning("Session closed before response could be spoken")
 
 
 if __name__ == "__main__":

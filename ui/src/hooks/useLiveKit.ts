@@ -13,6 +13,17 @@ export function useLiveKit() {
     setState('connecting');
     setError(null);
     try {
+      // Pre-check voice services before connecting
+      const healthRes = await fetch('/api/voice/health');
+      if (healthRes.ok) {
+        const health = await healthRes.json();
+        if (!health.overall) {
+          const down = Object.entries(health)
+            .filter(([k, v]) => k !== 'overall' && !v)
+            .map(([k]) => k);
+          throw new Error(`Voice services unavailable: ${down.join(', ')}`);
+        }
+      }
       const data = await getLiveKitToken();
       setTokenData(data);
       setState('connected');

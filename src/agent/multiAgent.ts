@@ -134,8 +134,19 @@ export async function routeMessage(
     channel: string,
     userId: string,
     streamCallbacks?: StreamCallbacks,
+    overrideAgentId?: string,
 ): Promise<AgentResponse & { agentId: string; agentName: string }> {
-    const agent = resolveAgent(channel, userId);
+    let agent = resolveAgent(channel, userId);
+
+    // If a specific agent was requested and exists, use it instead
+    if (overrideAgentId) {
+        const override = getAgent(overrideAgentId);
+        if (override && override.status === 'running') {
+            agent = override;
+        } else {
+            logger.warn(COMPONENT, `Requested agent "${overrideAgentId}" not found or not running, falling back to default routing`);
+        }
+    }
 
     agent.messageCount++;
     agent.lastActive = new Date().toISOString();

@@ -47,11 +47,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export async function sendMessage(
   content: string,
   sessionId?: string,
-  model?: string,
+  options?: { model?: string; agentId?: string },
 ): Promise<SendMessageResponse> {
   return request('/api/message', {
     method: 'POST',
-    body: JSON.stringify({ content, sessionId, model }),
+    body: JSON.stringify({
+      content,
+      sessionId,
+      ...(options?.model && { model: options.model }),
+      ...(options?.agentId && { agentId: options.agentId }),
+    }),
   });
 }
 
@@ -60,6 +65,7 @@ export function streamMessage(
   sessionId?: string,
   onEvent?: (event: StreamEvent) => void,
   signal?: AbortSignal,
+  options?: { agentId?: string },
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     fetch(`${BASE}/api/message`, {
@@ -69,7 +75,11 @@ export function streamMessage(
         Accept: 'text/event-stream',
         ...authHeaders(),
       },
-      body: JSON.stringify({ content, sessionId }),
+      body: JSON.stringify({
+        content,
+        sessionId,
+        ...(options?.agentId && { agentId: options.agentId }),
+      }),
       signal,
     })
       .then((res) => {
@@ -210,10 +220,12 @@ export async function getStats(): Promise<SystemStats> {
 
 // ---- Agents ----
 
-export async function getAgents(): Promise<AgentInfo[]> {
+export async function getAgents(): Promise<{ agents: AgentInfo[]; capacity: number }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw = await request<any>('/api/agents');
-  return Array.isArray(raw) ? raw : (raw.agents ?? []);
+  const agents = Array.isArray(raw) ? raw : (raw.agents ?? []);
+  const capacity = raw.capacity ?? agents.length;
+  return { agents, capacity };
 }
 
 export async function spawnAgent(name: string, model?: string): Promise<AgentInfo> {
@@ -258,11 +270,15 @@ export async function getChannels(): Promise<ChannelInfo[]> {
 // ---- Mesh ----
 
 export async function getMeshPeers(): Promise<MeshPeer[]> {
-  return request('/api/mesh/peers');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>('/api/mesh/peers');
+  return Array.isArray(raw) ? raw : (raw.peers ?? []);
 }
 
 export async function getPendingPeers(): Promise<MeshPeer[]> {
-  return request('/api/mesh/pending');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>('/api/mesh/pending');
+  return Array.isArray(raw) ? raw : (raw.pending ?? []);
 }
 
 export async function approvePeer(id: string): Promise<void> {

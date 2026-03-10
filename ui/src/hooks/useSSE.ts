@@ -6,7 +6,7 @@ interface UseSSEReturn {
   isStreaming: boolean;
   streamingContent: string;
   activeTools: string[];
-  send: (message: string, sessionId?: string) => Promise<ChatMessage | null>;
+  send: (message: string, sessionId?: string, options?: { agentId?: string }) => Promise<ChatMessage | null>;
   cancel: () => void;
 }
 
@@ -23,7 +23,7 @@ export function useSSE(): UseSSEReturn {
   }, []);
 
   const send = useCallback(
-    async (message: string, sessionId?: string): Promise<ChatMessage | null> => {
+    async (message: string, sessionId?: string, options?: { agentId?: string }): Promise<ChatMessage | null> => {
       setIsStreaming(true);
       setStreamingContent('');
       setActiveTools([]);
@@ -69,6 +69,7 @@ export function useSSE(): UseSSEReturn {
             }
           },
           controller.signal,
+          options,
         );
       } catch (e) {
         if ((e as Error).name === 'AbortError') return null;

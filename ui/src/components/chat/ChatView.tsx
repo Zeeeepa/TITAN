@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquarePlus, PanelLeftClose, PanelLeft, Trash2 } from 'lucide-react';
 import { useSSE } from '@/hooks/useSSE';
-import { getSessions, getSessionMessages, deleteSession } from '@/api/client';
-import type { ChatMessage, Session } from '@/api/types';
+import { getSessions, getSessionMessages, deleteSession, getAgents } from '@/api/client';
+import type { ChatMessage, Session, AgentInfo } from '@/api/types';
 import { useConfig } from '@/hooks/useConfig';
 import { MessageBubble } from './MessageBubble';
 import { StreamingMessage } from './StreamingMessage';
@@ -18,6 +18,8 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { isStreaming, streamingContent, activeTools, send } = useSSE();
   const { voiceAvailable } = useConfig();
@@ -37,6 +39,20 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
         if (msgs) setMessages(msgs);
       })
       .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const data = await getAgents();
+        setAgents(data.agents.filter((a) => a.status === 'running'));
+      } catch {
+        /* non-critical */
+      }
+    };
+    loadAgents();
+    const interval = setInterval(loadAgents, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -89,7 +105,7 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      const assistantMessage = await send(content, currentSessionId);
+      const assistantMessage = await send(content, currentSessionId, selectedAgent ? { agentId: selectedAgent } : undefined);
 
       if (assistantMessage) {
         setMessages((prev) => [...prev, assistantMessage]);
@@ -105,7 +121,7 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
         }
       }
     },
-    [currentSessionId, send],
+    [currentSessionId, send, selectedAgent],
   );
 
   const handleVoiceClick = useCallback(() => {
@@ -225,6 +241,36 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
             )}
           </button>
         </div>
+
+        {/* Agent selector */}
+        {agents.length > 1 && (
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-[#27272a] shrink-0 overflow-x-auto">
+            <span className="text-xs text-[#71717a] shrink-0">Agent:</span>
+            <button
+              onClick={() => setSelectedAgent(null)}
+              className={`px-3 py-1 rounded-full text-xs transition-colors shrink-0 ${
+                !selectedAgent ? 'bg-[#6366f1] text-white' : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
+              }`}
+            >
+              Default
+            </button>
+            {agents
+              .filter((a) => a.id !== 'default')
+              .map((agent) => (
+                <button
+                  key={agent.id}
+                  onClick={() => setSelectedAgent(agent.id)}
+                  className={`px-3 py-1 rounded-full text-xs transition-colors shrink-0 ${
+                    selectedAgent === agent.id
+                      ? 'bg-[#6366f1] text-white'
+                      : 'bg-[#27272a] text-[#a1a1aa] hover:bg-[#3f3f46]'
+                  }`}
+                >
+                  {agent.name}
+                </button>
+              ))}
+          </div>
+        )}
 
         {/* Messages area */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">

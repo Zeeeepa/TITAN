@@ -22,7 +22,7 @@ function AgentsPanel() {
   const fetchAgents = async () => {
     try {
       const data = await getAgents();
-      setAgents(data);
+      setAgents(data.agents);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch agents');

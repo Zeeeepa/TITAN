@@ -4,7 +4,7 @@ interface FluidOrbProps {
   /** 0–1, drives animation intensity */
   audioLevel: number;
   /** Who is currently active */
-  speaker: 'idle' | 'user' | 'assistant';
+  speaker: 'idle' | 'user' | 'assistant' | 'thinking';
   /** Size in px */
   size?: number;
 }
@@ -25,6 +25,11 @@ const COLORS = {
     primary: [139, 92, 246],     // violet/purple
     secondary: [124, 58, 237],
     glow: 'rgba(139, 92, 246, 0.3)',
+  },
+  thinking: {
+    primary: [245, 158, 11],     // amber/gold
+    secondary: [217, 119, 6],
+    glow: 'rgba(245, 158, 11, 0.25)',
   },
 };
 
@@ -125,8 +130,9 @@ export function FluidOrb({ audioLevel, speaker, size = 240 }: FluidOrbProps) {
       const n2 = Math.sin(angle * 5 - t * 1.0) * 0.025;
       const audioWobble = Math.sin(angle * 4 + t * 3.5) * level * 0.06;
       const breathe = Math.sin(t * 0.8) * 0.02;
+      const thinkingPulse = speaker === 'thinking' ? Math.sin(t * 2.5) * 0.06 : 0;
 
-      const r = baseR * (1 + n1 + n2 + audioWobble + breathe);
+      const r = baseR * (1 + n1 + n2 + audioWobble + breathe + thinkingPulse);
       const x = Math.cos(angle) * r;
       const y = Math.sin(angle) * r;
 

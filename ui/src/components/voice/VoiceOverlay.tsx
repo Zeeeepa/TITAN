@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { X, Mic, MicOff, PhoneOff } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { X, Mic, MicOff, PhoneOff, RotateCcw } from 'lucide-react';
 import { useLiveKit } from '@/hooks/useLiveKit';
 import { AudioVisualizer } from './AudioVisualizer';
 import { FluidOrb } from './FluidOrb';
@@ -27,7 +27,27 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [phase, setPhase] = useState<'picking' | 'connecting' | 'active'>('picking');
   const [selectedVoice, setSelectedVoice] = useState<string>('');
-  const [activeSpeaker, setActiveSpeaker] = useState<'idle' | 'user' | 'assistant'>('idle');
+  const [activeSpeaker, setActiveSpeaker] = useState<'idle' | 'user' | 'assistant' | 'thinking'>('idle');
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 3;
+
+  const networkType = useMemo(() => {
+    const host = window.location.hostname;
+    if (host.startsWith('100.')) return 'Tailscale';
+    if (host === 'localhost' || host === '127.0.0.1') return 'Local';
+    return 'LAN';
+  }, []);
+
+  // Auto-retry on connection failure
+  useEffect(() => {
+    if (state === 'error' && phase === 'connecting' && retryCount < MAX_RETRIES) {
+      const timer = setTimeout(() => {
+        setRetryCount(prev => prev + 1);
+        connect();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [state, phase, retryCount, connect]);
 
   // Load saved voice preference
   useEffect(() => {
@@ -42,35 +62,37 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  // Simulate audio level + speaker detection for visualization
+  // Handle agent state changes from LiveKit
+  const handleAgentStateChange = useCallback((agentState: string) => {
+    switch (agentState) {
+      case 'listening':
+        setActiveSpeaker('user');
+        break;
+      case 'thinking':
+        setActiveSpeaker('thinking');
+        break;
+      case 'speaking':
+        setActiveSpeaker('assistant');
+        break;
+      default:
+        setActiveSpeaker('idle');
+    }
+  }, []);
+
+  // Handle audio level updates from LiveKit
+  const handleAudioLevelChange = useCallback((level: number) => {
+    setAudioLevel(level);
+  }, []);
+
+  // Reset state when not active or muted
   useEffect(() => {
     if (phase !== 'active') {
       setAudioLevel(0);
       setActiveSpeaker('idle');
-      return;
-    }
-    if (isMuted) {
+    } else if (isMuted) {
       setAudioLevel(0.15);
       setActiveSpeaker('idle');
-      return;
     }
-    let frame: number;
-    let t = 0;
-    let speakerCycle = 0;
-    function tick() {
-      t += 1;
-      speakerCycle += 0.002;
-      // Simulate speaker switching (will be replaced by real LiveKit data)
-      const isAssistantTurn = Math.sin(speakerCycle) > 0.3;
-      setActiveSpeaker(isAssistantTurn ? 'assistant' : 'user');
-
-      const base = 0.3 + Math.sin(t * 0.02) * 0.15;
-      const burst = Math.random() > 0.85 ? Math.random() * 0.4 : 0;
-      setAudioLevel(Math.min(1, base + burst));
-      frame = requestAnimationFrame(tick);
-    }
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
   }, [phase, isMuted]);
 
   // Try loading LiveKit components
@@ -169,14 +191,33 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         <>
           <div className="mb-8 text-center">
             <div className="text-lg font-medium mb-1 text-[#fafafa]">
-              {state === 'connecting' && 'Connecting...'}
-              {state === 'error' && 'Connection Failed'}
+              {state === 'connecting' && (retryCount > 0 ? `Reconnecting (${retryCount}/${MAX_RETRIES})...` : 'Connecting...')}
+              {state === 'error' && retryCount >= MAX_RETRIES && 'Connection Failed'}
+              {state === 'error' && retryCount < MAX_RETRIES && `Retrying (${retryCount + 1}/${MAX_RETRIES})...`}
               {state === 'disconnected' && 'Disconnected'}
             </div>
             {state === 'error' && error && (
-              <div className="text-sm text-red-500">{error}</div>
+              <div className="text-sm text-red-500 mt-1">{error}</div>
             )}
+            <div className="text-xs mt-1" style={{ color: '#52525b' }}>
+              via {networkType}
+            </div>
           </div>
+
+          {/* Try Again button when max retries exhausted */}
+          {state === 'error' && retryCount >= MAX_RETRIES && (
+            <button
+              onClick={() => {
+                setRetryCount(0);
+                connect();
+              }}
+              className="mb-6 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#3f3f46]"
+              style={{ backgroundColor: '#27272a', color: '#fafafa' }}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Try Again
+            </button>
+          )}
 
           {/* LiveKit not installed message */}
           {liveKitAvailable === false && (
@@ -205,9 +246,19 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
           {/* Status */}
           <div className="mb-6 text-center">
             <div className="text-base font-medium mb-0.5 transition-colors duration-500" style={{
-              color: activeSpeaker === 'user' ? '#22d3ee' : activeSpeaker === 'assistant' ? '#a78bfa' : '#71717a',
+              color: activeSpeaker === 'user' ? '#22d3ee' :
+                     activeSpeaker === 'assistant' ? '#a78bfa' :
+                     activeSpeaker === 'thinking' ? '#f59e0b' :
+                     '#71717a',
             }}>
-              {isMuted ? 'Muted' : activeSpeaker === 'assistant' ? 'TITAN is speaking...' : 'Listening...'}
+              {isMuted ? 'Muted' :
+               activeSpeaker === 'assistant' ? 'TITAN is speaking...' :
+               activeSpeaker === 'thinking' ? 'Thinking...' :
+               activeSpeaker === 'user' ? 'Listening...' :
+               'Connected'}
+            </div>
+            <div className="text-xs mt-1" style={{ color: '#52525b' }}>
+              via {networkType}
             </div>
           </div>
 
@@ -227,8 +278,9 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
               isMuted={isMuted}
               onTranscript={(msg) => {
                 setMessages((prev) => [...prev, msg]);
-                setActiveSpeaker(msg.role === 'assistant' ? 'assistant' : 'user');
               }}
+              onAgentStateChange={handleAgentStateChange}
+              onAudioLevelChange={handleAudioLevelChange}
             />
           )}
 
@@ -279,12 +331,16 @@ function LiveKitSession({
   token,
   isMuted,
   onTranscript,
+  onAgentStateChange,
+  onAudioLevelChange,
 }: {
   LK: any;
   serverUrl: string;
   token: string;
   isMuted: boolean;
   onTranscript: (msg: TranscriptMessage) => void;
+  onAgentStateChange: (state: string) => void;
+  onAudioLevelChange: (level: number) => void;
 }) {
   const { LiveKitRoom, RoomAudioRenderer } = LK;
 
@@ -297,7 +353,12 @@ function LiveKitSession({
       style={{ display: 'contents' }}
     >
       <RoomAudioRenderer />
-      <VoiceAssistantBridge LK={LK} onTranscript={onTranscript} />
+      <VoiceAssistantBridge
+        LK={LK}
+        onTranscript={onTranscript}
+        onAgentStateChange={onAgentStateChange}
+        onAudioLevelChange={onAudioLevelChange}
+      />
     </LiveKitRoom>
   );
 }
@@ -309,35 +370,144 @@ function LiveKitSession({
 function VoiceAssistantBridge({
   LK,
   onTranscript,
+  onAgentStateChange,
+  onAudioLevelChange,
 }: {
   LK: any;
   onTranscript: (msg: TranscriptMessage) => void;
+  onAgentStateChange: (state: string) => void;
+  onAudioLevelChange: (level: number) => void;
 }) {
   const useVoiceAssistant = LK.useVoiceAssistant;
   if (!useVoiceAssistant) return null;
 
-  return <VoiceAssistantInner useVoiceAssistant={useVoiceAssistant} onTranscript={onTranscript} />;
+  return (
+    <VoiceAssistantInner
+      LK={LK}
+      useVoiceAssistant={useVoiceAssistant}
+      onTranscript={onTranscript}
+      onAgentStateChange={onAgentStateChange}
+      onAudioLevelChange={onAudioLevelChange}
+    />
+  );
 }
 
 function VoiceAssistantInner({
+  LK,
   useVoiceAssistant,
   onTranscript,
+  onAgentStateChange,
+  onAudioLevelChange,
 }: {
+  LK: any;
   useVoiceAssistant: any;
   onTranscript: (msg: TranscriptMessage) => void;
+  onAgentStateChange: (state: string) => void;
+  onAudioLevelChange: (level: number) => void;
 }) {
   const voiceAssistant = useVoiceAssistant();
-  const lastTranscript = voiceAssistant?.lastTranscript;
+  const agentState: string = voiceAssistant?.state ?? 'disconnected';
+  const audioTrack = voiceAssistant?.audioTrack;
+  const agentTranscriptions: any[] = voiceAssistant?.agentTranscriptions ?? [];
+  const [hasRealVolume, setHasRealVolume] = useState(false);
+
+  // Emit agent state changes
+  const prevState = useRef(agentState);
+  useEffect(() => {
+    if (agentState !== prevState.current) {
+      prevState.current = agentState;
+      onAgentStateChange(agentState);
+    }
+  }, [agentState, onAgentStateChange]);
+
+  // Fire on mount so VoiceOverlay gets the initial state
+  useEffect(() => {
+    onAgentStateChange(agentState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fallback audio levels when no real track volume — synthesize from state
+  useEffect(() => {
+    if (hasRealVolume) return;
+    let frame: number;
+    function tick() {
+      let level: number;
+      switch (agentState) {
+        case 'speaking':
+          level = 0.5 + (Math.random() - 0.5) * 0.2;
+          break;
+        case 'listening':
+          level = 0.3 + (Math.random() - 0.5) * 0.1;
+          break;
+        default:
+          level = 0.1;
+      }
+      onAudioLevelChange(level);
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [agentState, hasRealVolume, onAudioLevelChange]);
+
+  // Emit transcripts from agentTranscriptions
+  const processedCount = useRef(0);
+  useEffect(() => {
+    if (agentTranscriptions.length > processedCount.current) {
+      const newSegments = agentTranscriptions.slice(processedCount.current);
+      for (const seg of newSegments) {
+        if (seg?.text) {
+          onTranscript({
+            role: 'assistant',
+            text: seg.text,
+          });
+        }
+      }
+      processedCount.current = agentTranscriptions.length;
+    }
+  }, [agentTranscriptions, onTranscript]);
+
+  return (
+    <>
+      {LK.useTrackVolume && audioTrack && (
+        <TrackVolumeMonitor
+          useTrackVolume={LK.useTrackVolume}
+          audioTrack={audioTrack}
+          onAudioLevelChange={onAudioLevelChange}
+          onActive={setHasRealVolume}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Isolated component for useTrackVolume hook.
+ * By mounting/unmounting this component instead of conditionally calling the hook,
+ * we avoid violating React's rules of hooks.
+ */
+function TrackVolumeMonitor({
+  useTrackVolume,
+  audioTrack,
+  onAudioLevelChange,
+  onActive,
+}: {
+  useTrackVolume: any;
+  audioTrack: any;
+  onAudioLevelChange: (level: number) => void;
+  onActive: (active: boolean) => void;
+}) {
+  const volume = useTrackVolume(audioTrack) as number;
 
   useEffect(() => {
-    if (lastTranscript?.text) {
-      onTranscript({
-        role: lastTranscript.participantKind === 'agent' ? 'assistant' : 'user',
-        text: lastTranscript.text,
-      });
+    onActive(true);
+    return () => onActive(false);
+  }, [onActive]);
+
+  useEffect(() => {
+    if (volume !== undefined) {
+      onAudioLevelChange(Math.min(1, volume));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastTranscript]);
+  }, [volume, onAudioLevelChange]);
 
   return null;
 }

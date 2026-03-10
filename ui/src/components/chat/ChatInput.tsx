@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
-import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
+import { ArrowUp, Plus, Square } from 'lucide-react';
+import { MiniFluidBubble } from './MiniFluidBubble';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -74,20 +75,11 @@ export function ChatInput({ onSend, disabled, voiceAvailable, onVoiceClick }: Ch
           {/* Action buttons */}
           <div className="flex items-center gap-1 shrink-0">
             {/* Voice button */}
-            <button
-              type="button"
-              onClick={onVoiceClick}
+            <MiniFluidBubble
+              size={28}
               disabled={!voiceAvailable}
-              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
-                voiceAvailable
-                  ? 'text-[#71717a] hover:bg-[#27272a] hover:text-[#fafafa]'
-                  : 'text-[#27272a] cursor-not-allowed'
-              }`}
-              aria-label="Voice input"
-              title={voiceAvailable ? 'Voice chat' : 'Voice not configured'}
-            >
-              <Mic className="h-[18px] w-[18px]" />
-            </button>
+              onClick={onVoiceClick}
+            />
 
             {/* Send / Stop button */}
             <button

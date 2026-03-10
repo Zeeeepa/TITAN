@@ -4,6 +4,26 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.6] — 2026-03-10
+
+### Added
+- **Human-like voice** — Conversational system prompt, thinking preambles, time-aware greetings, tech acronym expansion
+- **Dynamic FluidOrb** — Real LiveKit agent state (listening/thinking/speaking) drives orb color and animation
+- **Thinking state** — Amber/gold orb pulse while TITAN processes a response
+- **6 new voice personas** — Sarah, Liam, Lily, George, Jessica, Eric for small business and new users (16 total)
+- **MiniFluidBubble** — Animated canvas-based fluid orb replaces mic icon in chat input
+- **Agent selector** — ChatView agent pill bar for routing messages to specific spawned agents
+- **Agent routing** — `agentId` parameter through gateway → multiAgent router
+- **TrackVolumeMonitor** — Isolated component for LiveKit useTrackVolume hook
+
+### Fixed
+- **Voice overlay crash** — Conditional `useTrackVolume` hook call violated React rules of hooks, causing blank screen after 1 second
+- **Self-healing LiveKit URL** — WebSocket URL dynamically rewrites based on request hostname (Tailscale/LAN/local)
+- **Voice health pre-check** — Checks `/api/voice/health` before LiveKit connection with auto-retry (3 attempts)
+- **AgentsPanel type** — Fixed `getAgents()` return type unwrapping
+
+---
+
 ## [2026.10.5] — 2026-03-10
 
 ### Added

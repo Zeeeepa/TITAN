@@ -23,6 +23,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 # Copy built application
 COPY --from=builder /app/dist ./dist
 COPY assets ./assets
+COPY ui/dist ./ui/dist
 COPY .env.example ./.env.example
 
 # Create non-root titan user

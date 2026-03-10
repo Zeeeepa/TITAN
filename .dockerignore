@@ -1,5 +1,6 @@
 node_modules
 dist
+!ui/dist
 .git
 .github
 .claude
@@ -11,7 +12,7 @@ coverage
 .eslintrc*
 .prettierrc*
 vitest.config.ts
-tsconfig.json
+# tsconfig.json needed by Dockerfile build stage
 *.test.ts
 *.spec.ts
 .DS_Store

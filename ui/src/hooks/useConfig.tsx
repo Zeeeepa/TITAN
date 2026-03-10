@@ -27,7 +27,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     try {
       const cfg = await getConfig();
       setConfig(cfg);
-      if (cfg.voice?.enabled) {
+      if (cfg.voice) {
         try {
           const vh = await getVoiceHealth();
           setVoiceHealth(vh);

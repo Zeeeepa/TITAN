@@ -1,6 +1,6 @@
 {
   "name": "titan-agent",
-  "version": "2026.10.3",
+  "version": "2026.10.5",
   "description": "TITAN — The Intelligent Task Automation Network. A premium, autonomous AI agent framework with configurable autonomy, prompt injection shield, and Mission Control GUI.",
   "author": "Tony Elliott (https://github.com/Djtony707)",
   "repository": {
@@ -178,7 +178,8 @@
     "matrix-js-sdk": "^34.0.0",
     "pdf-parse": "^1.1.1",
     "node-llama-cpp": "^3.0.0",
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "livekit-server-sdk": "^2.9.1"
   },
   "credits": {}
 }

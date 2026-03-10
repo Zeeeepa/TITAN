@@ -8,8 +8,10 @@ import { loadConfig } from '../config/config.js';
 import { getOrCreateSession, addMessage, getContextMessages } from './session.js';
 import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
-import { recordToolResult, getLearningContext } from '../memory/learning.js';
+import { recordToolResult, getLearningContext, learnFact } from '../memory/learning.js';
 import { buildPersonalContext } from '../memory/relationship.js';
+import { getTeachingContext, isCorrection } from './teaching.js';
+import { recordToolUsage, recordCorrection } from './userProfile.js';
 import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler, setAutonomousMode } from './stallDetector.js';
 import { checkForLoop, resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
@@ -118,14 +120,22 @@ async function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMess
     const soulMd = getCachedPromptFile(SOUL_MD);
     const toolsMd = getCachedPromptFile(TOOLS_MD);
 
+    // Active persona content (from assets/personas/)
+    const { getActivePersonaContent } = await import('../personas/manager.js');
+    const personaContent = getActivePersonaContent(config.agent.persona || 'default');
+
     const workspaceContext = [
         agentsMd ? `\n## Agent Instructions (AGENTS.md)\n${agentsMd}` : '',
         soulMd ? `\n## Personality (SOUL.md)\n${soulMd}` : '',
+        personaContent ? `\n## Active Persona\n${personaContent}` : '',
         toolsMd ? `\n## Tool Notes (TOOLS.md)\n${toolsMd}` : '',
     ].filter(Boolean).join('\n');
 
     // Continuous learning context
     const learningContext = getLearningContext();
+
+    // Teaching context — adaptive skill level, corrections, tool suggestions
+    const teachingContext = getTeachingContext();
 
     // Personal context from Relationship Memory
     const personalContext = buildPersonalContext();
@@ -156,16 +166,17 @@ You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful pe
 - Remember facts and user preferences persistently
 
 ## Behavior Guidelines
+- **Respond quickly and with quality.** Lead with the answer, not the reasoning. Be concise but thorough.
 - Be proactive: if a task implies follow-up actions, suggest or perform them
-- Be concise but thorough in responses
-- When executing commands, always explain what you're doing and why
-- If a task could be destructive (deleting files, etc.), confirm with the user first
 - **ALWAYS use your tools to complete tasks — NEVER just describe what could be done or suggest URLs for the user to visit. Execute the task yourself.**
+- When executing commands, briefly explain what you're doing
+- If a task could be destructive (deleting files, etc.), confirm with the user first
 - For weather requests, ALWAYS use the \`weather\` tool — it returns accurate real-time data. Do NOT use web_search for weather.
-- When the user asks for other information (prices, news, etc.), use web_search to find it, then use web_fetch to read the full page content and extract the actual data. Return the data directly — do NOT tell the user to go check a website.
-- Remember important information about the user for future conversations
+- When the user asks for information (prices, news, etc.), use web_search to find it, then use web_fetch to read the full page content. Return the data directly — do NOT tell the user to go check a website.
+- **Learn and adapt:** Remember important information about the user for future conversations. Notice their preferences, communication style, and common tasks. Get better over time.
 - If you encounter an error, try alternative approaches before reporting failure
-- If web_search results don't contain enough detail, follow up with web_fetch on the most relevant URL to get the full content
+- If web_search results don't contain enough detail, follow up with web_fetch on the most relevant URL
+- **Use the right tool for the job.** Don't default to web_search when a specialized tool (weather, system_info, shell, etc.) exists. Check your available tools first.
 
 ## Security
 - Never expose API keys, passwords, or other secrets
@@ -175,15 +186,17 @@ You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful pe
 ## Continuous Learning
 You get smarter with every interaction. Below is your accumulated knowledge:
 ${learningContext}
+${teachingContext ? `\n## Adaptive Teaching\n${teachingContext}` : ''}
 ${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}${personalContext}${graphSection}
 
-## Memory Tools
-You have access to a knowledge graph (temporal memory). Use these tools actively:
-- **graph_remember**: Record important facts, decisions, or events for long-term memory
-- **graph_search**: Search past conversations and knowledge by keyword
-- **graph_entities**: List known people, topics, projects, or places
-- **graph_recall**: Recall everything about a specific entity
-Use graph_remember when you learn something important about the user, their projects, or their preferences. This persists across sessions.`;
+## Memory & Learning
+You have a knowledge graph (temporal memory) that persists across sessions. **Use it actively** — this is how you get smarter:
+- **graph_remember**: Record facts, decisions, preferences, or events. Use this whenever you learn something new about the user.
+- **graph_search**: Search past conversations and knowledge before answering — you may already know the answer.
+- **graph_entities**: List known people, topics, projects, or places.
+- **graph_recall**: Recall everything about a specific entity.
+- **memory**: Store and retrieve key-value preferences (e.g., "preferred language: Python").
+**Always check your memory first** when the user asks about something you might already know. Record new facts proactively — names, projects, preferences, technical choices, locations. The more you remember, the more helpful you become.`;
 }
 
 /** Streaming callbacks for real-time token delivery */
@@ -205,6 +218,20 @@ export async function processMessage(
     const session = getOrCreateSession(channel, userId);
 
     logger.info(COMPONENT, `Processing message in session ${session.id} (${channel}/${userId})`);
+
+    // ── Record user message to knowledge graph (fire-and-forget) ───
+    if (message.length > 10) {
+        addEpisode(`[User → ${channel}/${userId}] ${message.slice(0, 500)}`, 'user').catch(() => {});
+    }
+
+    // ── Detect user corrections and learn from them ───
+    if (isCorrection(message)) {
+        const prevAssistant = getContextMessages(session).filter(m => m.role === 'assistant').pop();
+        if (prevAssistant) {
+            recordCorrection(prevAssistant.content.slice(0, 200), message.slice(0, 300));
+            logger.info(COMPONENT, `Recorded user correction for adaptive learning`);
+        }
+    }
 
     // ── Register spawn_agent tool if sub-agents enabled ───────
     const subAgentConfig = (config as Record<string, unknown>).subAgents as { enabled?: boolean } | undefined;
@@ -642,9 +669,10 @@ export async function processMessage(
                 break;
             }
 
-            // Record tool result for continuous learning
+            // Record tool result for continuous learning + user profile
             const success = !result.content.toLowerCase().includes('error:');
             recordToolResult(result.name, success, undefined, success ? undefined : result.content.slice(0, 200));
+            recordToolUsage(result.name);
         }
 
         // Break outer agent loop if loop detection triggered
@@ -700,6 +728,16 @@ export async function processMessage(
 
     const durationMs = Date.now() - startTime;
     logger.info(COMPONENT, `Response generated in ${durationMs}ms (${totalPromptTokens + totalCompletionTokens} tokens)`);
+
+    // ── Post-conversation learning: record insights from tool usage ───
+    if (toolsUsed.length > 0) {
+        const uniqueTools = [...new Set(toolsUsed)];
+        learnFact(
+            'conversation_insight',
+            `User asked "${message.slice(0, 80)}" → used tools: ${uniqueTools.join(', ')} (${durationMs}ms)`,
+            message.slice(0, 100),
+        );
+    }
 
     return {
         content: finalContent,

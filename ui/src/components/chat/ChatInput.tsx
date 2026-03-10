@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type KeyboardEvent, type ChangeEvent } from 'react';
-import { Send, Mic } from 'lucide-react';
+import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -46,47 +46,76 @@ export function ChatInput({ onSend, disabled, voiceAvailable, onVoiceClick }: Ch
   const canSend = value.trim().length > 0 && !disabled;
 
   return (
-    <div className="sticky bottom-0 bg-[#09090b] pt-2 pb-4">
+    <div className="sticky bottom-0 bg-gradient-to-t from-[#09090b] via-[#09090b] to-transparent pt-6 pb-4 px-4">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-end gap-2 bg-[#18181b] border border-[#3f3f46] rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-[#6366f1] focus-within:border-transparent transition-shadow">
+        <div className="relative flex items-end gap-2 rounded-2xl border border-[#3f3f46] bg-[#18181b] px-2 py-2 transition-all focus-within:border-[#52525b] focus-within:shadow-[0_0_0_1px_rgba(99,102,241,0.15)]">
+          {/* Attach button */}
+          <button
+            type="button"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[#71717a] transition-colors hover:bg-[#27272a] hover:text-[#a1a1aa]"
+            aria-label="Attach file"
+            title="Attach file"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+
+          {/* Textarea */}
           <textarea
             ref={textareaRef}
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message TITAN..."
+            placeholder="Ask anything..."
             disabled={disabled}
             rows={1}
-            className="flex-1 bg-transparent text-[#fafafa] placeholder-[#71717a] text-sm resize-none outline-none leading-6 max-h-36 scrollbar-thin"
+            className="flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-[#fafafa] placeholder-[#52525b] outline-none scrollbar-thin max-h-36"
           />
 
-          <div className="flex items-center gap-1 shrink-0 pb-0.5">
+          {/* Action buttons */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Voice button */}
             <button
               type="button"
               onClick={onVoiceClick}
               disabled={!voiceAvailable}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
                 voiceAvailable
-                  ? 'text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a]'
-                  : 'text-[#3f3f46] cursor-not-allowed'
+                  ? 'text-[#71717a] hover:bg-[#27272a] hover:text-[#fafafa]'
+                  : 'text-[#27272a] cursor-not-allowed'
               }`}
               aria-label="Voice input"
               title={voiceAvailable ? 'Voice chat' : 'Voice not configured'}
             >
-              <Mic className="w-4 h-4" />
+              <Mic className="h-[18px] w-[18px]" />
             </button>
 
+            {/* Send / Stop button */}
             <button
               type="button"
               onClick={handleSend}
-              disabled={!canSend}
-              className="p-2 rounded-lg bg-[#6366f1] text-white hover:bg-[#818cf8] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#6366f1] transition-colors"
-              aria-label="Send message"
+              disabled={!canSend && !disabled}
+              className={`flex h-9 w-9 items-center justify-center rounded-xl transition-all ${
+                disabled
+                  ? 'bg-[#fafafa] text-[#09090b]'
+                  : canSend
+                    ? 'bg-[#fafafa] text-[#09090b] hover:bg-[#e4e4e7] scale-100 hover:scale-105'
+                    : 'bg-[#27272a] text-[#52525b] cursor-not-allowed'
+              }`}
+              aria-label={disabled ? 'Stop' : 'Send'}
             >
-              <Send className="w-4 h-4" />
+              {disabled ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
+              )}
             </button>
           </div>
         </div>
+
+        {/* Footer hint */}
+        <p className="mt-2 text-center text-[10px] text-[#3f3f46]">
+          TITAN can make mistakes. Verify important information.
+        </p>
       </div>
     </div>
   );

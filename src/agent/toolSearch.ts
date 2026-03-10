@@ -28,6 +28,9 @@ export const DEFAULT_CORE_TOOLS = [
     'web_fetch',
     'weather',
     'memory',
+    'system_info',
+    'goal_list',
+    'spawn_agent',
     'tool_search',
 ];
 

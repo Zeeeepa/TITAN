@@ -1,0 +1,203 @@
+# CLAUDE.md — TITAN Project Guide
+
+> This file is read automatically by Claude Code. It contains everything needed to understand, build, test, and contribute to TITAN.
+
+## What is TITAN?
+
+**TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
+
+- **Current version**: v2026.10.5
+- **License**: MIT
+- **Repo**: https://github.com/Djtony707/TITAN
+- **Runtime**: Node.js >= 20, pure ESM
+
+## Quick Reference
+
+| Stat | Value |
+|------|-------|
+| Providers | 34 (4 native + 30 OpenAI-compatible) |
+| Tools | ~112 across 37 skill files |
+| Channels | 15 (Discord, Telegram, Slack, WhatsApp, Matrix, IRC, etc.) |
+| Tests | 3,591 across 108 files (vitest) |
+| Default model | `anthropic/claude-sonnet-4-20250514` |
+| Gateway port | 48420 |
+
+## Project Structure
+
+```
+src/
+├── agent/        # Agent core, reflection, sub-agents, orchestrator, goals, initiative
+├── browsing/     # Stagehand + shared browser pool (Playwright)
+├── channels/     # 15 channel adapters
+├── config/       # Zod-validated config schema
+├── context/      # ContextEngine plugin system
+├── gateway/      # Express HTTP/WS server + Mission Control v2 (React SPA)
+├── mcp/          # MCP Server (JSON-RPC 2.0, stdio + HTTP)
+├── memory/       # Memory, learning, graph, relationship, briefings
+├── mesh/         # P2P mesh networking (mDNS, WebSocket, HMAC)
+├── providers/    # LLM provider router + 34 providers
+├── skills/       # Builtin skills (36 files, ~112 tools) + dev skills
+├── utils/        # Constants, helpers, hardware detection
+└── voice/        # LiveKit WebRTC voice integration
+ui/               # React 19 SPA (Vite + Tailwind CSS 4 + React Router v7)
+tests/            # 108 vitest test files
+```
+
+## Build & Run
+
+```bash
+# Install
+npm install
+
+# Development (runs from source via tsx)
+npm run dev              # CLI
+npm run dev:gateway      # Gateway + Mission Control UI
+
+# Build
+npm run build            # TypeScript → dist/ (tsup)
+npm run build:ui         # React SPA → ui/dist/ (Vite)
+
+# Production
+npm start                # Runs from dist/
+
+# Lint & Typecheck
+npm run lint
+npm run typecheck
+```
+
+## Testing
+
+```bash
+npm test                 # Run all 3,591 tests
+npm run test:watch       # Watch mode
+npx vitest run tests/core.test.ts  # Run specific file
+```
+
+- Framework: **vitest**
+- Tests use heavy `vi.mock()` patterns — see `tests/gateway-extended.test.ts` for the full mock setup
+- Mission Control tests: `tests/mission-control.test.ts` (35 tests)
+
+## Version Bumping
+
+When bumping the version, update ALL of these files:
+1. `package.json` → `"version"`
+2. `src/utils/constants.ts` → `TITAN_VERSION`
+3. `tests/core.test.ts` → version assertion
+4. `tests/mission-control.test.ts` → version references (4 occurrences)
+5. `CHANGELOG.md` → new entry
+
+## Key Architecture Decisions
+
+- **Pure ESM** — No CommonJS. Use `import.meta.url` not `__dirname`.
+- **Zod schemas** for all config validation (`src/config/schema.ts`)
+- **Provider/model format**: `"provider/model-name"` (e.g., `"anthropic/claude-sonnet-4-20250514"`)
+- **Tool execution**: Multi-round loop (up to 25 rounds in autonomous mode)
+- **Auth**: Default `auth.mode='token'`. When no `auth.token` is configured, auth is bypassed (open access).
+- **Gateway API**: All endpoints under `/api/*`. Auth middleware skips when no token configured.
+- **React SPA**: Served from `ui/dist/` at `/`. Legacy dashboard at `/legacy`.
+
+## API Endpoints
+
+Main chat endpoint:
+```
+POST /api/message
+Body: { content, sessionId?, model? }
+Returns: { content, sessionId, toolsUsed, durationMs, model }
+SSE streaming: Add header `Accept: text/event-stream`
+```
+
+Key endpoints:
+- `GET /api/health` — Health check
+- `GET /api/config` — Full config (nested: `agent.model`, `gateway.auth`, etc.)
+- `GET /api/models` — Returns `{ provider: ["provider/model", ...] }` (object, NOT array)
+- `POST /api/config` — Update config
+- `POST /api/model/switch` — Switch active model
+- `GET /api/stats` — System stats
+- `GET /api/voice/health` — Voice subsystem status
+
+## Mission Control v2 (React SPA)
+
+Located in `ui/` — React 19 + Vite + Tailwind CSS 4 + React Router v7.
+
+Key files:
+- `ui/src/App.tsx` — Routes and layout
+- `ui/src/api/client.ts` — API client (transforms server responses)
+- `ui/src/api/types.ts` — TypeScript interfaces
+- `ui/src/components/admin/` — 10 admin panels
+- `ui/src/components/chat/` — ChatGPT-style chat interface
+- `ui/src/hooks/useConfig.tsx` — Config + voice health hook
+
+Important: The API returns nested config (`config.agent.model`) but some UI types expect flat shapes. The `client.ts` transforms responses where needed (e.g., `getModels()` flattens `{provider: [ids]}` into `ModelInfo[]`).
+
+## Deployment
+
+### Local Development
+```bash
+npm run dev:gateway      # http://localhost:48420
+```
+
+### Remote Machines — Homelab Fleet
+
+| Machine | LAN IP | Tailscale IP | SSH User | Role |
+|---------|--------|-------------|----------|------|
+| **Titan PC** | 192.168.1.11 | 100.100.168.26 | `dj` | Primary GPU (RTX 5090), Ollama inference |
+| **Mini PC #2** | 192.168.1.95 | 100.108.231.109 | `djtony707` | Previous TITAN Docker host |
+| **T610 Server** | 192.168.1.67 | 100.100.25.57 | `t610` | Always-on backbone (Docker stack) |
+
+SSH aliases configured in `~/.ssh/config`: `titan`, `minipc`, `t610` (LAN) and `ts-titan`, `ts-minipc`, `ts-t610` (Tailscale).
+
+**TITAN deployment target**: Titan PC at `/opt/TITAN/`
+- Ollama runs locally on Titan PC at `localhost:11434`
+- Gateway port: 48420
+- Docker env: `OLLAMA_HOST=http://localhost:11434`, `TITAN_GATEWAY_HOST=0.0.0.0`
+- For Docker with GPU: add `--gpus all`
+- Mini PC runs Node 18 — it **cannot build Tailwind CSS 4**. Always build `ui/dist/` elsewhere.
+- Dashboard URL: `http://192.168.1.11:48420`
+
+**Service ports on T610** (Docker stack at `/opt/ai-stack/`):
+Open WebUI :3000 | Portainer :9443 | LiteLLM :4000 | Ollama :11434 | n8n :5678 | Qdrant :6333
+
+Additional memory files with detailed homelab context are in `~/.claude/projects/` memory files.
+
+## Publishing
+
+After all changes are committed and pushed:
+```bash
+npm run build && npm run build:ui
+npm publish
+```
+
+Always publish to npm after pushing to git.
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/utils/constants.ts` | Version, paths, defaults |
+| `src/config/schema.ts` | Zod config schema with all defaults |
+| `src/gateway/server.ts` | Express server, auth middleware, API routes, SPA serving |
+| `src/agent/agent.ts` | Core agent loop |
+| `src/providers/base.ts` | LLM provider base class, `parseModelId()` |
+| `src/skills/registry.ts` | Skill/tool registration |
+| `ui/src/api/client.ts` | React SPA API client |
+| `package.json` | Dependencies, scripts, tsup config |
+
+## Recent History
+
+See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, new admin panels
+- **v2026.10.3**: Settings panel data binding (models API shape, nested config keys)
+- **v2026.10.2**: Auth lockout fix (unconfigured token auth no longer blocks API)
+- **v2026.10.1**: Settings panel padding, voice button, Docker/ESM fixes
+- **v2026.10.0**: Mission Control v2 (React 19 SPA replacing monolithic HTML dashboard)
+- **v2026.9.0**: LiveKit WebRTC voice, MCP Server mode
+- **v2026.8.0**: ContextEngine plugins, Prometheus metrics, 30 providers, 15 channels
+
+## Style & Conventions
+
+- TypeScript strict mode
+- ESM only (`"type": "module"` in package.json)
+- Tests colocated in `tests/` directory (not alongside source)
+- Skill files export tool definitions with Zod parameter schemas
+- Config defaults defined in Zod schema (`src/config/schema.ts`)
+- No `__dirname` — use `fileURLToPath(import.meta.url)` + `dirname()`

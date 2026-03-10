@@ -46,10 +46,19 @@ function TelemetryPanel() {
 
   if (!metrics) return null;
 
-  // Render metrics as StatCards from the summary object
-  const entries = Object.entries(metrics).filter(
-    ([, v]) => typeof v === 'number' || typeof v === 'string',
-  );
+  // Flatten metrics — expand nested objects like { totalTokens: { prompt, completion } }
+  const entries: [string, string | number][] = [];
+  for (const [key, value] of Object.entries(metrics)) {
+    if (typeof value === 'number' || typeof value === 'string') {
+      entries.push([key, value]);
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [subKey, subVal] of Object.entries(value as Record<string, unknown>)) {
+        if (typeof subVal === 'number' || typeof subVal === 'string') {
+          entries.push([`${key}.${subKey}`, subVal]);
+        }
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">

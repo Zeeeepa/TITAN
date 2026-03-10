@@ -1,7 +1,8 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router';
 import { Layout } from '@/components/layout/Layout';
 import { ConfigProvider } from '@/hooks/useConfig';
+import { SetupWizard } from '@/components/onboarding/SetupWizard';
 
 const ChatView = lazy(() => import('@/components/chat/ChatView'));
 const OverviewPanel = lazy(() => import('@/components/admin/OverviewPanel'));
@@ -13,6 +14,12 @@ const SkillsPanel = lazy(() => import('@/components/admin/SkillsPanel'));
 const TelemetryPanel = lazy(() => import('@/components/admin/TelemetryPanel'));
 const LogsPanel = lazy(() => import('@/components/admin/LogsPanel'));
 const MeshPanel = lazy(() => import('@/components/admin/MeshPanel'));
+const LearningPanel = lazy(() => import('@/components/admin/LearningPanel'));
+const AutopilotPanel = lazy(() => import('@/components/admin/AutopilotPanel'));
+const SecurityPanel = lazy(() => import('@/components/admin/SecurityPanel'));
+const WorkflowsPanel = lazy(() => import('@/components/admin/WorkflowsPanel'));
+const MemoryGraphPanel = lazy(() => import('@/components/admin/MemoryGraphPanel'));
+const PersonasPanel = lazy(() => import('@/components/admin/PersonasPanel'));
 const VoiceOverlay = lazy(() =>
   import('@/components/voice/VoiceOverlay').then((m) => ({ default: m.VoiceOverlay })),
 );
@@ -32,6 +39,26 @@ function AdminPage({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const [voiceOpen, setVoiceOpen] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/onboarding/status')
+      .then(r => r.json())
+      .then(d => setOnboarded(d.onboarded !== false))
+      .catch(() => setOnboarded(true));
+  }, []);
+
+  if (onboarded === null) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#09090b]">
+        <div className="text-[#71717a] text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!onboarded) {
+    return <SetupWizard onComplete={() => setOnboarded(true)} />;
+  }
 
   return (
     <ConfigProvider>
@@ -48,6 +75,12 @@ export default function App() {
             <Route path="/telemetry" element={<AdminPage><TelemetryPanel /></AdminPage>} />
             <Route path="/logs" element={<AdminPage><LogsPanel /></AdminPage>} />
             <Route path="/mesh" element={<AdminPage><MeshPanel /></AdminPage>} />
+            <Route path="/learning" element={<AdminPage><LearningPanel /></AdminPage>} />
+            <Route path="/autopilot" element={<AdminPage><AutopilotPanel /></AdminPage>} />
+            <Route path="/security" element={<AdminPage><SecurityPanel /></AdminPage>} />
+            <Route path="/workflows" element={<AdminPage><WorkflowsPanel /></AdminPage>} />
+            <Route path="/memory-graph" element={<AdminPage><MemoryGraphPanel /></AdminPage>} />
+            <Route path="/personas" element={<AdminPage><PersonasPanel /></AdminPage>} />
           </Routes>
         </Suspense>
       </Layout>

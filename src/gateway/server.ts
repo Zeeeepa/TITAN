@@ -10,13 +10,14 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir, hostname as osHostname, cpus, loadavg } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import fs from 'fs';
 import { loadConfig, updateConfig } from '../config/config.js';
 import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relationship.js';
 import { processMessage } from '../agent/agent.js';
 import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../skills/registry.js';
+import { listPersonas, getPersona, invalidatePersonaCache } from '../personas/manager.js';
 import { searchSkills as marketplaceSearch, installSkill, uninstallSkill, listSkills as listMarketplaceSkills, listInstalled as listInstalledMarketplace } from '../skills/marketplace.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
 import { listSessions } from '../agent/session.js';
@@ -531,7 +532,28 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  app.get('/api/sessions/:id/messages', (req, res) => {
+    const sessionId = req.params.id;
+    try {
+      const history = getHistory(sessionId);
+      // history may be an array of messages or an object with a messages field
+      const messages = Array.isArray(history) ? history : (history as any).messages || [];
+      res.json(messages);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   app.post('/api/sessions/:id/close', (req, res) => {
+    try {
+      closeSession(req.params.id);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.delete('/api/sessions/:id', (req, res) => {
     try {
       closeSession(req.params.id);
       res.json({ ok: true });
@@ -592,6 +614,26 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (e) { res.status(500).json({ error: (e as Error).message }); }
   });
 
+  // ── Personas ──────────────────────────────────────────────────
+  app.get('/api/personas', (_req, res) => {
+    try {
+      const cfg = loadConfig();
+      res.json({ personas: listPersonas(), active: cfg.agent.persona || 'default' });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
+  app.post('/api/persona/switch', (req, res): void => {
+    try {
+      const { persona } = req.body as { persona: string };
+      if (!persona || typeof persona !== 'string') { res.status(400).json({ error: 'Missing persona ID' }); return; }
+      if (persona !== 'default' && !getPersona(persona)) { res.status(404).json({ error: `Persona "${persona}" not found` }); return; }
+      const cfg = loadConfig();
+      updateConfig({ agent: { ...cfg.agent, persona } });
+      invalidatePersonaCache();
+      res.json({ ok: true, active: persona });
+    } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+  });
+
   app.get('/api/tools', (_req, res) => {
     const tools = getRegisteredTools().map((t) => ({
       name: t.name,
@@ -616,7 +658,52 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', version: TITAN_VERSION, uptime: process.uptime() });
+    const cfg = loadConfig();
+    res.json({ status: 'ok', version: TITAN_VERSION, uptime: process.uptime(), onboarded: cfg.onboarded });
+  });
+
+  // ── Onboarding API ──────────────────────────────────────────
+  app.get('/api/onboarding/status', (_req, res) => {
+    const cfg = loadConfig();
+    res.json({ onboarded: cfg.onboarded, version: TITAN_VERSION });
+  });
+
+  app.post('/api/onboarding/complete', (req, res) => {
+    try {
+      const { provider, apiKey, model, agentName, personality } = req.body;
+
+      // Build config updates
+      const updates: Record<string, unknown> = { onboarded: true };
+
+      // Set provider API key
+      if (provider && apiKey) {
+        const providerKey = provider.toLowerCase();
+        const cfg = loadConfig();
+        const providers = { ...cfg.providers } as Record<string, Record<string, unknown>>;
+        if (!providers[providerKey]) providers[providerKey] = {};
+        providers[providerKey].apiKey = apiKey;
+        updates.providers = providers;
+      }
+
+      // Set model
+      if (model) {
+        updates.agent = { model };
+      }
+
+      // Set agent name / personality via soul
+      if (agentName || personality) {
+        const soulParts: string[] = [];
+        if (agentName) soulParts.push(`Your name is ${agentName}.`);
+        if (personality) soulParts.push(personality);
+        updates.soul = soulParts.join(' ');
+      }
+
+      updateConfig(updates);
+      broadcast({ type: 'config_updated' });
+      res.json({ ok: true, message: 'Onboarding complete! Welcome to TITAN.' });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
   });
 
   // Prometheus metrics endpoint
@@ -801,25 +888,47 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   app.post('/api/update', (req, res) => {
-    // Check if we are in a git repository locally
     const isLocalDev = fs.existsSync(join(process.cwd(), '.git'));
+    const restart = req.body?.restart === true;
 
     let command = 'npm update -g titan-agent';
     if (isLocalDev) {
       command = 'git pull && npm run build';
     }
 
-    logger.info(COMPONENT, `Triggering update: ${command}`);
+    logger.info(COMPONENT, `Triggering update: ${command} (restart=${restart})`);
 
-    exec(command, (error, stdout, _stderr) => {
+    exec(command, { timeout: 120_000 }, (error, stdout, _stderr) => {
       if (error) {
         logger.error(COMPONENT, `Update failed: ${error.message}`);
-      } else {
-        logger.info(COMPONENT, `Update completed successfully.\\n${stdout}`);
+        if (!res.headersSent) res.json({ ok: false, error: error.message });
+        return;
+      }
+
+      logger.info(COMPONENT, `Update completed successfully.\\n${stdout}`);
+      if (!res.headersSent) {
+        res.json({ ok: true, message: 'Update completed', restarting: restart, output: stdout.slice(-500) });
+      }
+
+      if (restart) {
+        logger.info(COMPONENT, 'Scheduling restart in 2 seconds...');
+        const cwd = process.cwd();
+        const scriptPath = '/tmp/titan-restart.sh';
+        fs.writeFileSync(scriptPath, [
+          '#!/bin/bash',
+          'sleep 2',
+          `cd "${cwd}"`,
+          'nohup node dist/cli/index.js gateway >> /tmp/titan-gateway.log 2>&1 &',
+        ].join('\n'), { mode: 0o755 });
+
+        spawn('bash', [scriptPath], { detached: true, stdio: 'ignore' }).unref();
+
+        setTimeout(() => {
+          logger.info(COMPONENT, 'Exiting for restart...');
+          process.exit(0);
+        }, 1000);
       }
     });
-
-    res.json({ ok: true, message: 'Update triggered in background' });
   });
 
   // Config endpoints
@@ -827,6 +936,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const cfg = loadConfig();
     // Return config with sensitive fields masked
     res.json({
+      model: cfg.agent.model,
+      provider: cfg.agent.provider || 'openai',
+      voice: {
+        enabled: Boolean(cfg.voice?.enabled),
+        livekitUrl: cfg.voice?.livekitUrl || '',
+        agentUrl: cfg.voice?.agentUrl || '',
+      },
       agent: cfg.agent,
       autonomy: cfg.autonomy,
       security: {
@@ -1432,9 +1548,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       return;
     }
     const results = { livekit: false, whisper: false, kokoro: false, agent: false, overall: false };
+    const sttUrl = cfg.voice.sttUrl || 'http://localhost:8300';
+    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:8880';
     const checks = [
       { key: 'livekit' as const, url: cfg.voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://') },
       { key: 'agent' as const, url: cfg.voice.agentUrl },
+      { key: 'whisper' as const, url: `${sttUrl}/health` },
+      { key: 'kokoro' as const, url: `${ttsUrl}/v1/audio/voices` },
     ];
     await Promise.allSettled(checks.map(async ({ key, url }) => {
       try {
@@ -1442,8 +1562,46 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         results[key] = resp.ok || resp.status < 500;
       } catch { results[key] = false; }
     }));
-    results.overall = results.livekit;
+    results.overall = results.livekit && results.whisper && results.kokoro;
     res.json(results);
+  });
+
+  // Voice preview — synthesize a short sample and return audio
+  app.post('/api/voice/preview', async (req, res) => {
+    const cfg = loadConfig();
+    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'af_heart';
+    const text = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
+    const kokoroUrl = 'http://localhost:8880/v1/audio/speech';
+
+    try {
+      const ttsRes = await fetch(kokoroUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer not-needed' },
+        body: JSON.stringify({ model: 'kokoro', voice: voiceId, input: text, response_format: 'mp3' }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!ttsRes.ok) {
+        res.status(502).json({ error: 'TTS service unavailable' });
+        return;
+      }
+      res.setHeader('Content-Type', 'audio/mpeg');
+      const buffer = Buffer.from(await ttsRes.arrayBuffer());
+      res.send(buffer);
+    } catch {
+      res.status(502).json({ error: 'TTS service unavailable' });
+    }
+  });
+
+  // Voice available voices
+  app.get('/api/voice/voices', async (_req, res) => {
+    try {
+      const kokoroRes = await fetch('http://localhost:8880/v1/audio/voices', { signal: AbortSignal.timeout(3000) });
+      if (!kokoroRes.ok) { res.json({ voices: [] }); return; }
+      const data = await kokoroRes.json() as { voices?: string[] };
+      res.json(data);
+    } catch {
+      res.json({ voices: [] });
+    }
   });
 
   // ── Tunnel ─────────────────────────────────────────────────

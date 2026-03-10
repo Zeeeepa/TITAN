@@ -45,12 +45,16 @@ This file lists the open-source software used by TITAN, organized by category.
 
 | Project | License | URL | Usage |
 |---------|---------|-----|-------|
-| LiveKit Server | Apache-2.0 | https://github.com/livekit/livekit | WebRTC SFU |
-| faster-whisper | MIT | https://github.com/SYSTRAN/faster-whisper | Speech-to-text |
-| faster-whisper-server | MIT | https://github.com/fedirz/faster-whisper-server | STT HTTP server |
-| Kokoro FastAPI | MIT | https://github.com/remsky/Kokoro-FastAPI | Text-to-speech |
-| Caddy | Apache-2.0 | https://caddyserver.com/ | Reverse proxy |
+| LiveKit Server | Apache-2.0 | https://github.com/livekit/livekit | WebRTC SFU for real-time voice |
 | LiveKit Agents SDK | Apache-2.0 | https://github.com/livekit/agents | Python voice agent framework |
+| LiveKit Server SDK (Node) | Apache-2.0 | https://github.com/livekit/server-sdk-js | Token generation for voice sessions |
+| @livekit/components-react | Apache-2.0 | https://github.com/livekit/components-js | React components for LiveKit rooms |
+| faster-whisper | MIT | https://github.com/SYSTRAN/faster-whisper | CTranslate2-based speech-to-text engine |
+| faster-whisper-server | MIT | https://github.com/fedirz/faster-whisper-server | OpenAI-compatible STT HTTP server |
+| Kokoro | Apache-2.0 | https://huggingface.co/hexgrad/Kokoro-82M | 82M parameter text-to-speech model by Hexgrad |
+| Kokoro-FastAPI | MIT | https://github.com/remsky/Kokoro-FastAPI | OpenAI-compatible TTS HTTP server wrapping Kokoro |
+| Silero VAD | MIT | https://github.com/snakers4/silero-vad | Voice activity detection for speech segmentation |
+| Caddy | Apache-2.0 | https://caddyserver.com/ | Reverse proxy for voice services |
 
 ## Channels (Optional)
 
@@ -85,6 +89,14 @@ This file lists the open-source software used by TITAN, organized by category.
 | OpenClaw | MIT | https://github.com/openclaw/openclaw | Architecture, CLI design, workspace patterns |
 | Graphiti | Apache-2.0 | https://github.com/getzep/graphiti | Temporal knowledge graph concepts |
 | Skyvern | AGPL-3.0 | https://github.com/Skyvern-AI/skyvern | Browser automation patterns (separate service, not bundled) |
+
+## Persona Definitions
+
+| Project | License | URL | Usage |
+|---------|---------|-----|-------|
+| agency-agents | MIT | https://github.com/msitarzewski/agency-agents | Agent personality definitions adapted for TITAN personas |
+
+Copyright (c) 2025 AgentLand Contributors. MIT License.
 
 ---
 

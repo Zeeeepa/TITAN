@@ -5,16 +5,16 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~108 tools, ~3,561 tests. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,591 tests. Now with a gorgeous onboarding wizard. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-108-orange" alt="108 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
-  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C561-brightgreen" alt="3,561 Tests"/></a>
+  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C591-brightgreen" alt="3,591 Tests"/></a>
 </p>
 
 <p align="center">
@@ -55,6 +55,20 @@
 
 > **WARNING — EXPERIMENTAL SOFTWARE**
 > TITAN is experimental, actively developed software. It can execute shell commands, modify files, access the network, and take autonomous actions on your system. **Use at your own risk.** Think of it less as "software you install" and more as "a very motivated intern with root access." The author and contributors provide this software "as is" without warranty of any kind. By installing or running TITAN, you accept full responsibility for any consequences, including but not limited to data loss, system instability, unintended actions, API charges, or security issues. Always review TITAN's configuration, run it in supervised mode first, and never grant it access to systems or credentials you cannot afford to lose. See [LICENSE](LICENSE) for the full legal terms.
+
+---
+
+> **A Note to Early Adopters (v2026.10.4)**
+>
+> First off — **thank you.** If you installed TITAN before this version, you are a certified pioneer. You survived the Settings panel that showed nothing, the auth system that locked you out of your own agent, and chat responses that confidently told you your CPU was a "high-performance processor" without actually checking. We know. We're sorry. We're also laughing a little.
+>
+> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Four point releases in one day? Yes. We regret nothing. Each one fixed something real, and this one — **v2026.10.4** — is the one we're actually proud of.
+>
+> **What's new:** A beautiful web-based onboarding wizard (your grandma could set this up now — no terminal required), real hardware detection that actually runs `nvidia-smi` instead of guessing, improved tool discovery so the agent stops pretending it can't do things it absolutely can, and a polished Mission Control dashboard that doesn't crash when you look at it funny.
+>
+> We're getting there. Please hold on. The best is genuinely ahead, and we're building it as fast as humanly (and sometimes inhumanly) possible.
+>
+> **— Tony**
 
 ---
 
@@ -136,7 +150,7 @@ TITAN queries the income tracker, pulls cost data from provider logs, runs the n
 **"Deploy this to my mini PC"**
 TITAN SSHs into the target machine via the mesh network, pulls the latest code, builds the Docker container, and reports back. All through the `shell` tool with mesh routing.
 
-No custom code required for any of the above. TITAN ships with 38 built-in skills exposing ~108 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
+No custom code required for any of the above. TITAN ships with 37 built-in skills exposing ~112 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
 
 ---
 
@@ -166,8 +180,8 @@ No custom code required for any of the above. TITAN ships with 38 built-in skill
        +----+----+       IRC                mDNS + Tailscale
        |         |       Mattermost         Peer Discovery
     Skills    Providers  Lark/Feishu        WS Transport
-    38 files  34 total   Email (IMAP)
-    ~108 tools (4 native  LINE               Voice
+    37 files  34 total   Email (IMAP)
+    ~112 tools (4 native  LINE               Voice
        |       + 30       Zulip             LiveKit WebRTC
     Memory     compat)
     Graph + RAG
@@ -459,7 +473,7 @@ Or add static peers manually: `titan mesh --add "192.168.1.100:48420"`
 
 ## MCP Server Mode
 
-TITAN can act as an **MCP server**, exposing all ~108 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
+TITAN can act as an **MCP server**, exposing all ~112 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
 
 **HTTP transport** (runs on the gateway port):
 ```json
@@ -523,7 +537,7 @@ print(f"Found {len(results)} results")
 
 ## Built-in Tools
 
-38 skills exposing ~108 tools. All individually toggleable from Mission Control.
+37 skills exposing ~112 tools. All individually toggleable from Mission Control.
 
 | Category | Tools |
 |----------|-------|
@@ -716,7 +730,7 @@ The temporal graph is pure TypeScript — no Neo4j, no Docker, no external servi
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (3,561 tests across 107 files)
+npm run test           # vitest (3,591 tests across 108 files)
 npm run test:coverage  # ~82% line coverage
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit

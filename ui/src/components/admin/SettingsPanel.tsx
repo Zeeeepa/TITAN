@@ -1,11 +1,166 @@
-import { useEffect, useState } from 'react';
-import { Save, CheckCircle, AlertCircle } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { Save, CheckCircle, AlertCircle, Monitor, Cloud, Mic, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { getConfig, updateConfig, getModels, switchModel } from '@/api/client';
 import type { ModelInfo } from '@/api/types';
 
-// The raw config from /api/config is nested (agent.model, gateway.auth, etc.)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RawConfig = Record<string, any>;
+
+const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'localai'];
+
+// Known TTS voices organized by provider
+const TTS_VOICES = [
+  { id: 'af_heart', name: 'Heart', provider: 'Kokoro', desc: 'Warm, natural female' },
+  { id: 'af_bella', name: 'Bella', provider: 'Kokoro', desc: 'Gentle, soothing female' },
+  { id: 'af_sarah', name: 'Sarah', provider: 'Kokoro', desc: 'Professional female' },
+  { id: 'am_adam', name: 'Adam', provider: 'Kokoro', desc: 'Deep, confident male' },
+  { id: 'am_michael', name: 'Michael', provider: 'Kokoro', desc: 'Friendly, clear male' },
+  { id: 'alloy', name: 'Alloy', provider: 'OpenAI', desc: 'Balanced, versatile' },
+  { id: 'echo', name: 'Echo', provider: 'OpenAI', desc: 'Warm, conversational male' },
+  { id: 'fable', name: 'Fable', provider: 'OpenAI', desc: 'Expressive, storytelling' },
+  { id: 'onyx', name: 'Onyx', provider: 'OpenAI', desc: 'Deep, authoritative male' },
+  { id: 'nova', name: 'Nova', provider: 'OpenAI', desc: 'Friendly, upbeat female' },
+  { id: 'shimmer', name: 'Shimmer', provider: 'OpenAI', desc: 'Clear, bright female' },
+  { id: 'tara', name: 'Tara', provider: 'Orpheus', desc: 'Natural streaming voice' },
+];
+
+interface VoiceHealth {
+  livekit: boolean;
+  whisper: boolean;
+  kokoro: boolean;
+  agent: boolean;
+  overall: boolean;
+}
+
+interface VoiceStatus {
+  available: boolean;
+  livekitUrl?: string;
+  ttsVoice?: string;
+  reason?: string;
+}
+
+function StatusDot({ ok }: { ok: boolean }) {
+  return ok ? (
+    <div className="h-2 w-2 rounded-full bg-[#22c55e] shadow-[0_0_6px_rgba(34,197,94,0.4)]" />
+  ) : (
+    <div className="h-2 w-2 rounded-full bg-[#52525b]" />
+  );
+}
+
+function ModelSelector({
+  models,
+  selectedModel,
+  onSelect,
+  onSwitch,
+  currentModel,
+}: {
+  models: ModelInfo[];
+  selectedModel: string;
+  onSelect: (id: string) => void;
+  onSwitch: () => void;
+  currentModel: string;
+}) {
+  const currentProvider = currentModel.includes('/') ? currentModel.split('/')[0] : '';
+  const [selectedProvider, setSelectedProvider] = useState(currentProvider);
+
+  const providers = useMemo(() => {
+    const set = new Set(models.map((m) => m.provider));
+    return [...set].sort((a, b) => {
+      const aLocal = LOCAL_PROVIDERS.includes(a.toLowerCase());
+      const bLocal = LOCAL_PROVIDERS.includes(b.toLowerCase());
+      if (aLocal && !bLocal) return -1;
+      if (!aLocal && bLocal) return 1;
+      return a.localeCompare(b);
+    });
+  }, [models]);
+
+  const providerModels = useMemo(
+    () => models.filter((m) => m.provider === selectedProvider),
+    [models, selectedProvider],
+  );
+
+  const handleProviderChange = (provider: string) => {
+    setSelectedProvider(provider);
+    const modelsInProvider = models.filter((m) => m.provider === provider);
+    const currentInProvider = modelsInProvider.find((m) => m.id === currentModel);
+    if (currentInProvider) {
+      onSelect(currentInProvider.id);
+    } else if (modelsInProvider.length > 0) {
+      onSelect(modelsInProvider[0].id);
+    }
+  };
+
+  const isChanged = selectedModel !== currentModel;
+  const isLocal = LOCAL_PROVIDERS.includes(selectedProvider.toLowerCase());
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="mb-1.5 block text-xs text-[#71717a]">Provider</label>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedProvider}
+            onChange={(e) => handleProviderChange(e.target.value)}
+            className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2.5 text-sm text-[#fafafa] outline-none transition-colors focus:border-[#6366f1]"
+          >
+            {providers.map((p) => {
+              const pLocal = LOCAL_PROVIDERS.includes(p.toLowerCase());
+              const count = models.filter((m) => m.provider === p).length;
+              return (
+                <option key={p} value={p}>
+                  {pLocal ? `\u{1F4BB} ${p} (local)` : p} — {count} model{count !== 1 ? 's' : ''}
+                </option>
+              );
+            })}
+          </select>
+          {isLocal && (
+            <span className="flex items-center gap-1 whitespace-nowrap rounded bg-[#22c55e]/15 px-2 py-1 text-xs font-medium text-[#22c55e]">
+              <Monitor className="h-3 w-3" /> Local
+            </span>
+          )}
+          {!isLocal && selectedProvider && (
+            <span className="flex items-center gap-1 whitespace-nowrap rounded bg-[#6366f1]/15 px-2 py-1 text-xs font-medium text-[#818cf8]">
+              <Cloud className="h-3 w-3" /> Cloud
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs text-[#71717a]">Model</label>
+        <div className="flex items-end gap-3">
+          <select
+            value={selectedModel}
+            onChange={(e) => onSelect(e.target.value)}
+            className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2.5 text-sm text-[#fafafa] outline-none transition-colors focus:border-[#6366f1]"
+          >
+            {providerModels.map((m) => (
+              <option key={m.id} value={m.id} disabled={!m.available}>
+                {m.name}{m.id === currentModel ? ' (active)' : ''}{!m.available ? ' — unavailable' : ''}
+              </option>
+            ))}
+            {providerModels.length === 0 && (
+              <option disabled>No models for this provider</option>
+            )}
+          </select>
+          <button
+            onClick={onSwitch}
+            disabled={!isChanged}
+            className="rounded-lg bg-[#6366f1] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#6366f1]/80 disabled:opacity-50"
+          >
+            Switch
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2">
+        <div className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
+        <span className="text-xs text-[#71717a]">Active:</span>
+        <span className="text-xs text-[#a1a1aa] font-mono">{currentModel || 'None'}</span>
+      </div>
+    </div>
+  );
+}
 
 function SettingsPanel() {
   const [config, setConfig] = useState<RawConfig | null>(null);
@@ -21,12 +176,12 @@ function SettingsPanel() {
   const [livekitUrl, setLivekitUrl] = useState('');
   const [ttsVoice, setTtsVoice] = useState('');
 
-  // Helper to read model from nested config
+  // Voice auto-discovery state
+  const [voiceHealth, setVoiceHealth] = useState<VoiceHealth | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
+  const [checkingVoice, setCheckingVoice] = useState(false);
+
   const getModel = (cfg: RawConfig) => cfg?.agent?.model ?? cfg?.model ?? '';
-  const getProvider = (cfg: RawConfig) => {
-    const model = getModel(cfg);
-    return model.includes('/') ? model.split('/')[0] : 'unknown';
-  };
 
   useEffect(() => {
     const load = async () => {
@@ -50,13 +205,41 @@ function SettingsPanel() {
     load();
   }, []);
 
+  // Auto-discover voice services on mount and when voice is enabled
+  const checkVoiceServices = async () => {
+    setCheckingVoice(true);
+    try {
+      const [healthRes, statusRes] = await Promise.allSettled([
+        fetch('/api/voice/health').then((r) => r.json()),
+        fetch('/api/voice/status').then((r) => r.json()),
+      ]);
+      if (healthRes.status === 'fulfilled') setVoiceHealth(healthRes.value);
+      if (statusRes.status === 'fulfilled') {
+        setVoiceStatus(statusRes.value);
+        // Auto-populate LiveKit URL if discovered and field is empty
+        if (statusRes.value.livekitUrl && !livekitUrl) {
+          setLivekitUrl(statusRes.value.livekitUrl);
+        }
+        // Auto-populate TTS voice if discovered and field is empty
+        if (statusRes.value.ttsVoice && !ttsVoice) {
+          setTtsVoice(statusRes.value.ttsVoice);
+        }
+      }
+    } catch { /* Voice endpoints may not exist */ }
+    setCheckingVoice(false);
+  };
+
+  useEffect(() => {
+    if (!loading) checkVoiceServices();
+  }, [loading]);
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3000);
   };
 
   const handleSwitchModel = async () => {
-    if (!selectedModel || selectedModel === config?.model) return;
+    if (!selectedModel || selectedModel === getModel(config ?? {})) return;
     try {
       const model = models.find((m) => m.id === selectedModel);
       await switchModel(selectedModel, model?.provider);
@@ -84,6 +267,8 @@ function SettingsPanel() {
       });
       setConfig(updated);
       showToast('success', 'Settings saved');
+      // Re-check voice services after save
+      if (voiceEnabled) checkVoiceServices();
     } catch (e) {
       showToast('error', e instanceof Error ? e.message : 'Failed to save settings');
     } finally {
@@ -122,6 +307,9 @@ function SettingsPanel() {
     );
   }
 
+  const currentModel = config ? getModel(config) : '';
+  const voiceProviders = [...new Set(TTS_VOICES.map((v) => v.provider))];
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-[#fafafa]">Settings</h2>
@@ -146,41 +334,64 @@ function SettingsPanel() {
       {/* Model Section */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <h3 className="mb-4 text-sm font-medium text-[#a1a1aa]">Model</h3>
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
-            <label className="mb-1 block text-xs text-[#71717a]">Current Model</label>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id} disabled={!m.available}>
-                  {m.name} ({m.provider}){!m.available ? ' - unavailable' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={handleSwitchModel}
-            disabled={selectedModel === getModel(config ?? {})}
-            className="rounded-lg bg-[#6366f1] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#6366f1]/80 disabled:opacity-50"
-          >
-            Switch
-          </button>
-        </div>
-      </div>
-
-      {/* Provider Section */}
-      <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
-        <h3 className="mb-4 text-sm font-medium text-[#a1a1aa]">Provider</h3>
-        <p className="text-sm text-[#fafafa]">{config ? getProvider(config) : 'Unknown'}</p>
+        <ModelSelector
+          models={models}
+          selectedModel={selectedModel}
+          onSelect={setSelectedModel}
+          onSwitch={handleSwitchModel}
+          currentModel={currentModel}
+        />
       </div>
 
       {/* Voice Section */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
-        <h3 className="mb-4 text-sm font-medium text-[#a1a1aa]">Voice</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mic className="h-4 w-4 text-[#818cf8]" />
+            <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
+          </div>
+          <button
+            onClick={checkVoiceServices}
+            disabled={checkingVoice}
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] text-[#71717a] hover:bg-[#27272a] hover:text-[#a1a1aa] transition-colors"
+          >
+            <RefreshCw className={`h-3 w-3 ${checkingVoice ? 'animate-spin' : ''}`} />
+            {checkingVoice ? 'Scanning...' : 'Scan Services'}
+          </button>
+        </div>
+
         <div className="space-y-4">
+          {/* Service Health Status */}
+          {voiceHealth && (
+            <div className="rounded-lg border border-[#27272a] bg-[#09090b] p-3">
+              <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[#52525b]">Service Discovery</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'LiveKit Server', ok: voiceHealth.livekit },
+                  { label: 'Voice Agent', ok: voiceHealth.agent },
+                  { label: 'Whisper STT', ok: voiceHealth.whisper },
+                  { label: 'Kokoro TTS', ok: voiceHealth.kokoro },
+                ].map(({ label, ok }) => (
+                  <div key={label} className="flex items-center gap-2">
+                    <StatusDot ok={ok} />
+                    <span className={`text-xs ${ok ? 'text-[#a1a1aa]' : 'text-[#52525b]'}`}>{label}</span>
+                    {ok && <span className="text-[9px] text-[#22c55e]">Online</span>}
+                  </div>
+                ))}
+              </div>
+              {voiceStatus?.available !== undefined && (
+                <div className="mt-2 flex items-center gap-2 border-t border-[#27272a] pt-2">
+                  {voiceStatus.available ? (
+                    <><Wifi className="h-3.5 w-3.5 text-[#22c55e]" /><span className="text-xs text-[#22c55e]">Voice system ready</span></>
+                  ) : (
+                    <><WifiOff className="h-3.5 w-3.5 text-[#71717a]" /><span className="text-xs text-[#71717a]">{voiceStatus.reason || 'Voice not available'}</span></>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Enable toggle */}
           <label className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -188,28 +399,68 @@ function SettingsPanel() {
               onChange={(e) => setVoiceEnabled(e.target.checked)}
               className="h-4 w-4 rounded border-[#3f3f46] accent-[#6366f1]"
             />
-            <span className="text-sm text-[#fafafa]">Enable Voice</span>
+            <span className="text-sm text-[#fafafa]">Enable Voice Chat</span>
           </label>
 
+          {/* LiveKit URL */}
           <div>
-            <label className="mb-1 block text-xs text-[#71717a]">LiveKit URL</label>
+            <label className="mb-1 flex items-center gap-2 text-xs text-[#71717a]">
+              LiveKit URL
+              {voiceHealth?.livekit && (
+                <span className="rounded bg-[#22c55e]/15 px-1.5 py-0.5 text-[9px] font-medium text-[#22c55e]">Connected</span>
+              )}
+            </label>
             <input
               value={livekitUrl}
               onChange={(e) => setLivekitUrl(e.target.value)}
-              placeholder="wss://your-livekit-server.com"
+              placeholder="ws://localhost:7880"
               className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
             />
           </div>
 
+          {/* TTS Voice — dropdown instead of text input */}
           <div>
             <label className="mb-1 block text-xs text-[#71717a]">TTS Voice</label>
-            <input
+            <select
               value={ttsVoice}
               onChange={(e) => setTtsVoice(e.target.value)}
-              placeholder="e.g. alloy"
-              className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
-            />
+              className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2.5 text-sm text-[#fafafa] outline-none transition-colors focus:border-[#6366f1]"
+            >
+              <option value="">Select a voice...</option>
+              {voiceProviders.map((provider) => (
+                <optgroup key={provider} label={provider}>
+                  {TTS_VOICES.filter((v) => v.provider === provider).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} — {v.desc}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {ttsVoice && !TTS_VOICES.find((v) => v.id === ttsVoice) && (
+              <p className="mt-1 text-[10px] text-[#71717a]">
+                Custom voice: <span className="font-mono text-[#a1a1aa]">{ttsVoice}</span>
+              </p>
+            )}
           </div>
+
+          {/* Active voice preview */}
+          {ttsVoice && (
+            <div className="flex items-center gap-2 rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2">
+              <Mic className="h-3.5 w-3.5 text-[#818cf8]" />
+              <span className="text-xs text-[#71717a]">Selected:</span>
+              <span className="text-xs font-mono text-[#a1a1aa]">{ttsVoice}</span>
+              {(() => {
+                const voice = TTS_VOICES.find((v) => v.id === ttsVoice);
+                if (!voice) return null;
+                return (
+                  <span className="ml-auto rounded bg-[#27272a] px-1.5 py-0.5 text-[9px] text-[#71717a]">
+                    {voice.provider}
+                  </span>
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
 

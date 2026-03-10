@@ -79,6 +79,8 @@ export const AgentConfigSchema = z.object({
     maxTokens: z.number().default(DEFAULT_MAX_TOKENS),
     temperature: z.number().min(0).max(2).default(DEFAULT_TEMPERATURE),
     systemPrompt: z.string().optional(),
+    /** Active persona ID (filename stem from assets/personas/). Default 'default' = no persona override. */
+    persona: z.string().default('default'),
     workspace: z.string().optional(),
     thinkingMode: z.enum(['off', 'low', 'medium', 'high']).default('medium'),
     /** Model aliases — e.g. { fast: "openai/gpt-4o-mini", smart: "anthropic/claude-sonnet-4-20250514", local: "ollama/qwen3.5:4b" } */
@@ -260,6 +262,8 @@ export const TeamConfigSchema = z.object({
 });
 
 export const TitanConfigSchema = z.object({
+    /** Whether the user has completed the web onboarding wizard */
+    onboarded: z.boolean().default(false),
     agent: AgentConfigSchema.default({}),
     providers: z.object({
         anthropic: ProviderConfigSchema.default({}),

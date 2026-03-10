@@ -24,10 +24,17 @@ export function TopBar({ children }: TopBarProps) {
           {loading ? (
             <span className="text-sm text-[var(--text-muted)]">Connecting...</span>
           ) : config ? (
-            <span className="text-sm text-[var(--text-secondary)]">
-              {config.model}{' '}
-              <span className="text-[var(--text-muted)]">via {config.provider}</span>
-            </span>
+            (() => {
+              const model = config.model || config.agent?.model || '';
+              // Extract provider from model string (e.g. "ollama/qwen3.5:35b" → "ollama")
+              const displayProvider = model.includes('/') ? model.split('/')[0] : (config.provider || config.agent?.provider || 'auto');
+              return (
+                <span className="text-sm text-[var(--text-secondary)]">
+                  {model || 'Unknown model'}{' '}
+                  <span className="text-[var(--text-muted)]">via {displayProvider}</span>
+                </span>
+              );
+            })()
           ) : (
             <span className="text-sm text-[var(--error)]">Disconnected</span>
           )}

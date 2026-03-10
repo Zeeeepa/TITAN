@@ -18,15 +18,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:48420',
+        target: 'http://192.168.1.11:48420',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:48420',
+        target: 'ws://192.168.1.11:48420',
         ws: true,
       },
       '/metrics': {
-        target: 'http://localhost:48420',
+        target: 'http://192.168.1.11:48420',
         changeOrigin: true,
       },
     },

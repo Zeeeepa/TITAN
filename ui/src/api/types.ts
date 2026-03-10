@@ -9,7 +9,7 @@ export interface ChatMessage {
 }
 
 export interface SendMessageRequest {
-  message: string;
+  content: string;
   sessionId?: string;
   model?: string;
 }
@@ -47,6 +47,7 @@ export interface TitanConfig {
   model: string;
   provider: string;
   voice: VoiceConfig;
+  agent?: { model: string; provider?: string; [key: string]: unknown };
   [key: string]: unknown;
 }
 
@@ -144,6 +145,15 @@ export interface LogEntry {
   level: string;
   message: string;
   meta?: Record<string, unknown>;
+}
+
+// ---- Personas ----
+export interface PersonaMeta {
+  id: string;
+  name: string;
+  description: string;
+  division: string;
+  source?: string;
 }
 
 // ---- Models ----

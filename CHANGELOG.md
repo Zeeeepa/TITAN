@@ -4,6 +4,46 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.5] — 2026-03-10
+
+### Added
+- **Personas system** — 21 curated agent personas (default + 20 from agency-agents) with division-based organization (engineering, testing, product, project-mgmt, design, specialized)
+- **Persona Manager skill** — `list_personas`, `switch_persona`, `get_persona` tools for runtime persona switching
+- **Personas admin panel** — Mission Control panel with division-filtered grid, active persona indicator, click-to-switch
+- **API endpoints** — `GET /api/personas` and `POST /api/persona/switch` for persona management
+- **Onboarding FluidOrb hero** — Welcome step now features the animated FluidOrb instead of static logo
+- **Onboarding persona selection** — Profile step replaced with dynamic persona picker from API
+- **Onboarding cinematic launch** — Launch step with shimmer text "MISSION CONTROL READY" and animated stat counters
+- **Persona tests** — `tests/personas.test.ts` covering load, get, list, content, and cache invalidation
+
+### Improved
+- **System prompt** — Active persona content injected after SOUL.md in agent context
+- **Config schema** — Added `agent.persona` field (default: 'default')
+- **Third-party attribution** — Added agency-agents (MIT, AgentLand Contributors) to THIRD_PARTY_NOTICES.md
+
+---
+
+## [2026.10.4] — 2026-03-10
+
+### Added
+- **Onboarding Wizard** — beautiful 5-step web-based setup wizard for first-time users (provider selection, model picking, personality customization) — no terminal required
+- **`system_info` tool** — real hardware detection (CPU, RAM, GPU via nvidia-smi, disk, network, OS, Docker containers, Ollama models) replaces generic placeholder responses
+- **New admin panels** — Learning, Autopilot, Security, Workflows, Memory Graph panels in Mission Control
+- **Suggestion pills** — chat empty state now shows quick-start prompts for new users
+
+### Fixed
+- **Tool discovery** — added `system_info`, `goal_list`, `spawn_agent` to core tools so the model always has access without needing `tool_search`
+- **Chat 400 errors** — fixed message field name (`message` → `content`) in chat API client
+- **SSE parser** — fixed streaming response parsing for real-time chat output
+- **Version display** — sidebar now shows current version with npm update check
+
+### Improved
+- **109 tools** — up from 108 with the new `system_info` skill
+- **Onboarding API** — `GET /api/onboarding/status` and `POST /api/onboarding/complete` endpoints
+- **Health endpoint** — now includes `onboarded` status flag
+
+---
+
 ## [2026.10.3] — 2026-03-09
 
 ### Fixed

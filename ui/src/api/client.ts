@@ -13,6 +13,7 @@ import type {
   LiveKitTokenResponse,
   LogEntry,
   ModelInfo,
+  PersonaMeta,
   ChatMessage,
   StreamEvent,
 } from './types';
@@ -44,18 +45,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ---- Chat ----
 
 export async function sendMessage(
-  message: string,
+  content: string,
   sessionId?: string,
   model?: string,
 ): Promise<SendMessageResponse> {
   return request('/api/message', {
     method: 'POST',
-    body: JSON.stringify({ message, sessionId, model }),
+    body: JSON.stringify({ content, sessionId, model }),
   });
 }
 
 export function streamMessage(
-  message: string,
+  content: string,
   sessionId?: string,
   onEvent?: (event: StreamEvent) => void,
   signal?: AbortSignal,
@@ -68,7 +69,7 @@ export function streamMessage(
         Accept: 'text/event-stream',
         ...authHeaders(),
       },
-      body: JSON.stringify({ message, sessionId }),
+      body: JSON.stringify({ content, sessionId }),
       signal,
     })
       .then((res) => {
@@ -83,6 +84,7 @@ export function streamMessage(
         }
         const decoder = new TextDecoder();
         let buffer = '';
+        let currentEventType = '';
 
         function read(): void {
           reader!.read().then(({ done, value }) => {
@@ -94,19 +96,46 @@ export function streamMessage(
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
             for (const line of lines) {
-              if (line.startsWith('data: ')) {
+              if (line.startsWith('event: ')) {
+                currentEventType = line.slice(7).trim();
+              } else if (line.startsWith('data: ')) {
                 const data = line.slice(6);
                 if (data === '[DONE]') {
                   resolve();
                   return;
                 }
                 try {
-                  const event = JSON.parse(data) as StreamEvent;
-                  onEvent?.(event);
+                  const parsed = JSON.parse(data);
+                  // Map gateway SSE events to StreamEvent format
+                  const eventType = currentEventType || parsed.type || 'token';
+                  if (eventType === 'token') {
+                    onEvent?.({ type: 'token', data: parsed.text ?? parsed.data ?? '' });
+                  } else if (eventType === 'tool_call') {
+                    onEvent?.({ type: 'tool_start', data: '', toolName: parsed.name });
+                  } else if (eventType === 'tool_end') {
+                    onEvent?.({ type: 'tool_end', data: '', toolName: parsed.name });
+                  } else if (eventType === 'done') {
+                    onEvent?.({
+                      type: 'done',
+                      data: parsed.content ?? '',
+                      sessionId: parsed.sessionId,
+                      model: parsed.model,
+                      durationMs: parsed.durationMs,
+                      toolsUsed: parsed.toolsUsed,
+                    });
+                  } else if (eventType === 'error') {
+                    onEvent?.({ type: 'error', data: parsed.error ?? parsed.message ?? '' });
+                  } else {
+                    onEvent?.({ type: parsed.type ?? 'token', data: parsed.text ?? parsed.data ?? '', ...parsed });
+                  }
                 } catch {
                   // non-JSON SSE data, treat as token
                   onEvent?.({ type: 'token', data });
                 }
+                currentEventType = '';
+              } else if (line === '') {
+                // Empty line resets event type per SSE spec
+                currentEventType = '';
               }
             }
             read();
@@ -158,13 +187,33 @@ export async function getVoiceHealth(): Promise<VoiceHealth> {
 // ---- Stats ----
 
 export async function getStats(): Promise<SystemStats> {
-  return request('/api/stats');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>('/api/stats');
+  // API returns flat shape — normalize to what UI expects
+  return {
+    uptime: raw.uptime ?? 0,
+    totalRequests: raw.totalRequests ?? 0,
+    activeAgents: raw.activeAgents ?? 0,
+    activeSessions: raw.activeSessions ?? 0,
+    memoryUsage: raw.memoryUsage ?? {
+      heapUsed: (raw.memoryMB ?? 0) * 1024 * 1024,
+      heapTotal: (raw.memoryMB ?? 0) * 1024 * 1024 * 1.5,
+      rss: 0,
+      external: 0,
+      arrayBuffers: 0,
+    },
+    version: raw.version ?? '',
+    model: raw.model ?? raw.activeModel ?? '',
+    provider: raw.provider ?? '',
+  };
 }
 
 // ---- Agents ----
 
 export async function getAgents(): Promise<AgentInfo[]> {
-  return request('/api/agents');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>('/api/agents');
+  return Array.isArray(raw) ? raw : (raw.agents ?? []);
 }
 
 export async function spawnAgent(name: string, model?: string): Promise<AgentInfo> {
@@ -196,7 +245,14 @@ export async function getTools(): Promise<ToolInfo[]> {
 // ---- Channels ----
 
 export async function getChannels(): Promise<ChannelInfo[]> {
-  return request('/api/channels');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any[]>('/api/channels');
+  return (Array.isArray(raw) ? raw : []).map((ch) => ({
+    name: ch.name ?? 'Unknown',
+    type: ch.type ?? ch.name?.toLowerCase() ?? 'unknown',
+    enabled: ch.enabled ?? ch.connected ?? false,
+    status: ch.connected ? 'connected' as const : 'disconnected' as const,
+  }));
 }
 
 // ---- Mesh ----
@@ -238,7 +294,15 @@ export async function getLogs(level?: string, limit?: number): Promise<LogEntry[
   if (level) params.set('level', level);
   if (limit) params.set('limit', String(limit));
   const qs = params.toString();
-  return request(`/api/logs${qs ? `?${qs}` : ''}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>(`/api/logs${qs ? `?${qs}` : ''}`);
+  if (Array.isArray(raw)) return raw;
+  const lines: string[] = raw.lines ?? [];
+  return lines.map((line) => {
+    const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(DEBUG|INFO|WARN|ERROR)\s+(.*)$/);
+    if (match) return { timestamp: match[1], level: match[2].toLowerCase(), message: match[3] };
+    return { timestamp: '', level: 'info', message: line };
+  });
 }
 
 // ---- Models ----
@@ -261,6 +325,19 @@ export async function switchModel(modelId: string, provider?: string): Promise<v
   await request('/api/model/switch', {
     method: 'POST',
     body: JSON.stringify({ model: modelId, provider }),
+  });
+}
+
+// ---- Personas ----
+
+export async function getPersonas(): Promise<{ personas: PersonaMeta[]; active: string }> {
+  return request('/api/personas');
+}
+
+export async function switchPersona(persona: string): Promise<{ ok: boolean; active: string }> {
+  return request('/api/persona/switch', {
+    method: 'POST',
+    body: JSON.stringify({ persona }),
   });
 }
 

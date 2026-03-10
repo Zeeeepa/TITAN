@@ -8,7 +8,11 @@ import { MessageBubble } from './MessageBubble';
 import { StreamingMessage } from './StreamingMessage';
 import { ChatInput } from './ChatInput';
 
-function ChatView() {
+interface ChatViewProps {
+  onVoiceOpen?: () => void;
+}
+
+function ChatView({ onVoiceOpen }: ChatViewProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | undefined>();
@@ -109,9 +113,8 @@ function ChatView() {
   );
 
   const handleVoiceClick = useCallback(() => {
-    // Navigate to voice view or open voice modal — placeholder
-    window.location.hash = '#voice';
-  }, []);
+    onVoiceOpen?.();
+  }, [onVoiceOpen]);
 
   // Session sidebar content
   const sidebarContent = (

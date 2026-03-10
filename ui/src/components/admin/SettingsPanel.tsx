@@ -9,6 +9,7 @@ function SettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedModel, setSelectedModel] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Voice form state
@@ -27,7 +28,9 @@ function SettingsPanel() {
         setLivekitUrl(cfg.voice?.livekitUrl ?? '');
         setTtsVoice(cfg.voice?.ttsVoice ?? '');
       } catch (e) {
-        showToast('error', e instanceof Error ? e.message : 'Failed to load config');
+        const msg = e instanceof Error ? e.message : 'Failed to load config';
+        setLoadError(msg);
+        showToast('error', msg);
       } finally {
         setLoading(false);
       }
@@ -81,6 +84,27 @@ function SettingsPanel() {
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-32 animate-pulse rounded-xl border border-[#3f3f46] bg-[#18181b]" />
         ))}
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold text-[#fafafa]">Settings</h2>
+        <div className="rounded-xl border border-[#ef4444]/50 bg-[#18181b] p-6">
+          <div className="flex items-center gap-2 text-[#ef4444]">
+            <AlertCircle className="h-5 w-5" />
+            <p className="text-sm font-medium">Failed to load settings</p>
+          </div>
+          <p className="mt-2 text-sm text-[#a1a1aa]">{loadError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-[#27272a] px-4 py-2 text-sm text-[#fafafa] hover:bg-[#3f3f46] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }

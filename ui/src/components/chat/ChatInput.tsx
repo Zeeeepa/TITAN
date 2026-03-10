@@ -61,16 +61,20 @@ export function ChatInput({ onSend, disabled, voiceAvailable, onVoiceClick }: Ch
           />
 
           <div className="flex items-center gap-1 shrink-0 pb-0.5">
-            {voiceAvailable && (
-              <button
-                type="button"
-                onClick={onVoiceClick}
-                className="p-2 rounded-lg text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors"
-                aria-label="Voice input"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onVoiceClick}
+              disabled={!voiceAvailable}
+              className={`p-2 rounded-lg transition-colors ${
+                voiceAvailable
+                  ? 'text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a]'
+                  : 'text-[#3f3f46] cursor-not-allowed'
+              }`}
+              aria-label="Voice input"
+              title={voiceAvailable ? 'Voice chat' : 'Voice not configured'}
+            >
+              <Mic className="w-4 h-4" />
+            </button>
 
             <button
               type="button"

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Routes, Route } from 'react-router';
 import { Layout } from '@/components/layout/Layout';
 import { ConfigProvider } from '@/hooks/useConfig';
@@ -13,6 +13,9 @@ const SkillsPanel = lazy(() => import('@/components/admin/SkillsPanel'));
 const TelemetryPanel = lazy(() => import('@/components/admin/TelemetryPanel'));
 const LogsPanel = lazy(() => import('@/components/admin/LogsPanel'));
 const MeshPanel = lazy(() => import('@/components/admin/MeshPanel'));
+const VoiceOverlay = lazy(() =>
+  import('@/components/voice/VoiceOverlay').then((m) => ({ default: m.VoiceOverlay })),
+);
 
 function LoadingFallback() {
   return (
@@ -22,25 +25,39 @@ function LoadingFallback() {
   );
 }
 
+/** Wrapper that adds padding for admin panels (ChatView manages its own layout) */
+function AdminPage({ children }: { children: React.ReactNode }) {
+  return <div className="p-6 h-full overflow-auto">{children}</div>;
+}
+
 export default function App() {
+  const [voiceOpen, setVoiceOpen] = useState(false);
+
   return (
     <ConfigProvider>
       <Layout>
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
-            <Route path="/" element={<ChatView />} />
-            <Route path="/overview" element={<OverviewPanel />} />
-            <Route path="/agents" element={<AgentsPanel />} />
-            <Route path="/sessions" element={<SessionsPanel />} />
-            <Route path="/settings" element={<SettingsPanel />} />
-            <Route path="/channels" element={<ChannelsPanel />} />
-            <Route path="/skills" element={<SkillsPanel />} />
-            <Route path="/telemetry" element={<TelemetryPanel />} />
-            <Route path="/logs" element={<LogsPanel />} />
-            <Route path="/mesh" element={<MeshPanel />} />
+            <Route path="/" element={<ChatView onVoiceOpen={() => setVoiceOpen(true)} />} />
+            <Route path="/overview" element={<AdminPage><OverviewPanel /></AdminPage>} />
+            <Route path="/agents" element={<AdminPage><AgentsPanel /></AdminPage>} />
+            <Route path="/sessions" element={<AdminPage><SessionsPanel /></AdminPage>} />
+            <Route path="/settings" element={<AdminPage><SettingsPanel /></AdminPage>} />
+            <Route path="/channels" element={<AdminPage><ChannelsPanel /></AdminPage>} />
+            <Route path="/skills" element={<AdminPage><SkillsPanel /></AdminPage>} />
+            <Route path="/telemetry" element={<AdminPage><TelemetryPanel /></AdminPage>} />
+            <Route path="/logs" element={<AdminPage><LogsPanel /></AdminPage>} />
+            <Route path="/mesh" element={<AdminPage><MeshPanel /></AdminPage>} />
           </Routes>
         </Suspense>
       </Layout>
+
+      {/* Voice overlay — rendered outside Layout so it covers everything */}
+      {voiceOpen && (
+        <Suspense fallback={null}>
+          <VoiceOverlay onClose={() => setVoiceOpen(false)} />
+        </Suspense>
+      )}
     </ConfigProvider>
   );
 }

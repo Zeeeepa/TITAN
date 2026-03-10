@@ -123,7 +123,8 @@ function isValidToken(token: string | undefined, config: ReturnType<typeof loadC
   const auth = config.gateway.auth;
   if (!auth || auth.mode === 'none') return true;
   if (!token) return false;
-  if (auth.mode === 'token') return auth.token ? safeCompare(token, auth.token) : false;
+  // No token configured = auth not set up yet, allow access
+  if (auth.mode === 'token') return auth.token ? safeCompare(token, auth.token) : true;
   if (auth.mode === 'password') {
     const entry = authTokens.get(token);
     if (!entry) return false;
@@ -467,6 +468,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const cfg = loadConfig();
     const auth = cfg.gateway.auth;
     if (!auth || auth.mode === 'none') { next(); return; }
+    // Token mode with no token configured = auth not set up, allow access
+    if (auth.mode === 'token' && !auth.token) { next(); return; }
     // Skip /api/login itself
     if (req.path === '/login') { next(); return; }
     const header = req.headers.authorization;

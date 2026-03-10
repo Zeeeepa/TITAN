@@ -4,6 +4,13 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.2] — 2026-03-09
+
+### Fixed
+- **Auth lockout on fresh installs** — default `auth.mode='token'` with no token configured permanently locked out all API requests (401); now treats unconfigured token auth as no-auth so Mission Control works out of the box
+
+---
+
 ## [2026.10.1] — 2026-03-09
 
 ### Fixed

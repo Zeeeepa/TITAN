@@ -4,6 +4,21 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.1] — 2026-03-09
+
+### Fixed
+- **Settings panel blank screen** — admin panels now have proper padding wrapper
+- **Settings error handling** — shows error message with retry button instead of blank screen on API failure
+- **Voice button always visible** — mic button renders in chat input (disabled when voice not configured)
+- **Voice overlay modal** — clicking voice button now opens VoiceOverlay instead of hash navigation
+- **Docker build** — include `tsconfig.json` and `ui/dist` in Docker image
+- **ESM `__dirname`** — fixed `ReferenceError` in gateway server when serving React SPA
+
+### Added
+- **Mission Control v2 tests** — 35 comprehensive tests covering all admin panels, auth, SSE, SPA serving
+
+---
+
 ## [2026.10.0] — 2026-03-09
 
 ### Added

@@ -198,20 +198,18 @@ export const DeliberationConfigSchema = z.object({
 });
 
 export const VoiceConfigSchema = z.object({
-    /** Enable real-time voice via LiveKit WebRTC */
+    /** Enable voice chat (requires LiveKit server + voice agent running) */
     enabled: z.boolean().default(false),
-    /** Voice provider (currently only LiveKit supported) */
-    provider: z.enum(['livekit']).default('livekit'),
-    livekit: z.object({
-        /** LiveKit server URL (wss://...) — also reads LIVEKIT_URL env */
-        url: z.string().default(''),
-        /** LiveKit API key — also reads LIVEKIT_API_KEY env */
-        apiKey: z.string().default(''),
-        /** LiveKit API secret — also reads LIVEKIT_API_SECRET env */
-        apiSecret: z.string().default(''),
-        /** Agent name to dispatch when user joins a room */
-        agentName: z.string().default('titan-voice'),
-    }).default({}),
+    /** LiveKit server WebSocket URL */
+    livekitUrl: z.string().default('ws://localhost:7880'),
+    /** LiveKit API key (matches livekit server config) */
+    livekitApiKey: z.string().default('devkey'),
+    /** LiveKit API secret (matches livekit server config) */
+    livekitApiSecret: z.string().default('secret'),
+    /** URL of the voice agent (for health checks) */
+    agentUrl: z.string().default('http://localhost:8081'),
+    /** Default TTS voice name (Kokoro) */
+    ttsVoice: z.string().default('af_heart'),
 });
 
 export const ContextEnginePluginConfigSchema = z.object({

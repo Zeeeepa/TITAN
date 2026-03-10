@@ -1,0 +1,11 @@
+# LiveKit Server Configuration (for production/persistent use)
+# For dev, just use: docker run livekit/livekit-server --dev
+port: 7880
+rtc:
+  port_range_start: 7882
+  port_range_end: 7892
+  use_external_ip: true
+keys:
+  devkey: secret
+logging:
+  level: info

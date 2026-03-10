@@ -1,0 +1,113 @@
+# TITAN Voice — LiveKit Stack
+# Self-hosted LiveKit server + faster-whisper STT + Kokoro TTS + Python voice agent
+#
+# Usage:
+#   docker compose -f docker-compose.voice.yml up -d
+#
+# Environment variables (set in .env or export):
+#   OLLAMA_HOST       - IP/hostname of the machine running Ollama (default: 192.168.1.11)
+#   OLLAMA_MODEL      - Model to use for voice responses (default: qwen3:0.6b)
+#   TITAN_HOST        - IP/hostname of the TITAN gateway (default: localhost)
+#   TITAN_PORT        - TITAN gateway port (default: 48420)
+#   TTS_VOICE         - Kokoro TTS voice (default: af_heart)
+#
+# Distributed setup (Pi 5 + GPU PC):
+#   Pi 5 runs:  TITAN gateway + this voice stack (lightweight containers)
+#   GPU PC runs: Ollama with large models
+#   Set OLLAMA_HOST to the GPU PC's IP address
+
+services:
+  livekit-server:
+    image: livekit/livekit-server
+    container_name: livekit-server
+    command: --dev --bind 0.0.0.0
+    ports:
+      - "7880:7880"   # HTTP / WebSocket signaling
+      - "7881:7881"   # RTC TCP
+      - "7882:7882/udp"  # RTC UDP (WebRTC media)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7880"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  faster-whisper:
+    image: fedirz/faster-whisper-server:latest-cpu
+    container_name: faster-whisper
+    ports:
+      - "8300:8000"
+    environment:
+      - WHISPER__MODEL=Systran/faster-whisper-base
+      - WHISPER__COMPUTE_TYPE=int8
+      - HF_HUB_OFFLINE=0
+    volumes:
+      - whisper-cache:/root/.cache
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: kokoro-tts
+    ports:
+      - "8880:8880"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/v1/models"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+  # titan-voice-ui removed — voice UI is now part of the React SPA served by TITAN gateway
+
+  titan-voice-agent:
+    build: ./titan-voice-agent
+    container_name: titan-voice-agent
+    network_mode: host
+    environment:
+      - LIVEKIT_URL=ws://localhost:7880
+      - LIVEKIT_API_KEY=devkey
+      - LIVEKIT_API_SECRET=secret
+      - OLLAMA_BASE_URL=http://${OLLAMA_HOST:-192.168.1.11}:11434/v1
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:0.6b}
+      - STT_BASE_URL=http://localhost:8300/v1
+      - KOKORO_BASE_URL=http://localhost:8880/v1
+      - TTS_VOICE=${TTS_VOICE:-af_heart}
+      - TITAN_API_URL=http://${TITAN_HOST:-localhost}:${TITAN_PORT:-48420}/api/message
+      - TITAN_AUTH_TOKEN=${TITAN_AUTH_TOKEN:-}
+    volumes:
+      - model-cache:/root/.cache
+    depends_on:
+      livekit-server:
+        condition: service_healthy
+      faster-whisper:
+        condition: service_healthy
+      kokoro-tts:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy-voice
+    ports:
+      - "3443:3443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - livekit-server
+    restart: unless-stopped
+
+volumes:
+  model-cache:
+  whisper-cache:
+  caddy-data:
+  caddy-config:

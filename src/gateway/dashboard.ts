@@ -312,6 +312,7 @@ tr:hover{background:rgba(6,182,212,.03)}
     <div class="nav-section">Core</div>
     <div class="nav-item active" data-panel="overview"><span class="icon">📊</span>Overview</div>
     <div class="nav-item" data-panel="chat"><span class="icon">💬</span>WebChat</div>
+    <div class="nav-item" data-panel="voice" data-load="voice"><span class="icon">🎙️</span>Voice</div>
     <div class="nav-item" data-panel="agents"><span class="icon">🤖</span>Agents</div>
     <div class="nav-section">Config</div>
     <div class="nav-item" data-panel="config" data-load="config"><span class="icon">⚙️</span>Settings</div>
@@ -519,24 +520,10 @@ tr:hover{background:rgba(6,182,212,.03)}
           <input type="text" id="chat-input" placeholder="Type a message and press Enter…"/>
           <button id="send-btn" data-action="send-chat">Send ⚡</button>
         </div>
-        <!-- LiveKit Voice Panel -->
-        <div id="voice-panel" style="padding:8px 16px;border-top:1px solid var(--border);background:var(--bg2);display:none;flex-shrink:0">
-          <div style="display:flex;align-items:center;gap:10px">
-            <button id="lk-connect-btn" class="btn" style="padding:8px 16px;font-size:13px;background:#1e293b;border:2px solid #06b6d4;cursor:pointer">🎙️ Start Voice</button>
-            <button id="lk-mute-btn" class="btn" style="padding:6px 12px;font-size:13px;display:none">🔇 Mute</button>
-            <button id="lk-disconnect-btn" class="btn" style="padding:6px 12px;font-size:13px;display:none;border-color:#ef4444">⏹ End</button>
-            <div id="lk-visualizer" style="display:none;width:120px;height:32px;border-radius:4px;background:#0f172a;overflow:hidden">
-              <canvas id="lk-viz-canvas" width="120" height="32"></canvas>
-            </div>
-            <span id="lk-agent-state" style="font-size:11px;color:var(--text-dim);display:none"></span>
-            <span id="voice-status" style="font-size:11px;color:var(--text-dim)">Ready</span>
-          </div>
-        </div>
         <div style="padding:10px 16px;border-top:1px solid var(--border);background:var(--bg2);display:flex;gap:8px;flex-shrink:0">
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-status">📊 Status</button>
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-reset">🔄 Reset Session</button>
           <button class="btn" style="font-size:11px;padding:4px 8px" data-action="chat-compact">📦 Compact Context</button>
-          <button id="voice-toggle-btn" class="btn" style="font-size:11px;padding:4px 8px" data-action="voice-toggle">🎤 Voice</button>
         </div>
       </div>
     </div>
@@ -1054,6 +1041,51 @@ tr:hover{background:rgba(6,182,212,.03)}
         </div>
       </div>
     </div>
+
+    <!-- Voice Panel -->
+    <div id="panel-voice" class="panel">
+      <div class="card-grid">
+        <div class="stat-card cyan"><div class="stat-label">LiveKit Server</div><div class="stat-value" id="voice-status" style="font-size:16px">Checking...</div></div>
+        <div class="stat-card purple"><div class="stat-label">LiveKit URL</div><div class="stat-value" id="voice-livekit-url" style="font-size:12px">—</div></div>
+        <div class="stat-card green"><div class="stat-label">TTS Voice</div><div class="stat-value" id="voice-tts-voice" style="font-size:14px">—</div></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">Voice Chat</h3>
+        </div>
+
+        <div style="text-align:center;padding:40px 20px">
+          <p style="color:var(--text-dim);margin-bottom:24px;font-size:14px;line-height:1.6">
+            Voice chat uses LiveKit with a dedicated React UI featuring audio visualizers,<br>
+            transcripts, interruption handling, and WebRTC-powered audio.
+          </p>
+          <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap">
+            <input id="voice-ui-url" type="text" value="http://192.168.1.11:3000" style="width:280px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:monospace"/>
+            <button class="btn" data-action="voice-open" style="font-size:14px;padding:10px 24px">Open Voice Chat</button>
+          </div>
+          <p style="color:var(--text-dim);margin-top:20px;font-size:12px">
+            Powered by <a href="https://github.com/livekit/agent-starter-react" target="_blank" style="color:var(--accent)">LiveKit agent-starter-react</a>
+            &mdash; runs locally on Titan PC
+          </p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h3 style="margin:0 0 12px 0">Architecture</h3>
+        <pre style="font-size:11px;color:var(--text-dim);line-height:1.5;margin:0;overflow-x:auto">Browser (agent-starter-react, port 3000)
+  |  WebRTC
+LiveKit Server (Docker, port 7880)
+  |  LiveKit Agents SDK
+Python Agent (titan-voice-agent)
+  +-- STT: faster-whisper (GPU)
+  +-- LLM: Ollama qwen3.5:35b
+  +-- TTS: Kokoro (CPU)
+  |
+TITAN Gateway (Mini PC, port 48420)</pre>
+      </div>
+    </div>
+
   </div>
   <div class="footer-bar">
     <span><span class="footer-dot on" id="footer-ws-dot"></span><span id="footer-status">Connected</span> · v<span id="footer-ver">—</span></span>
@@ -1166,6 +1198,7 @@ document.addEventListener('click', (e) => {
     if (target.dataset.load === 'graphiti') loadGraphiti();
     if (target.dataset.load === 'autopilot') loadAutopilot();
     if (target.dataset.load === 'telemetry') loadTelemetry();
+    if (target.dataset.load === 'voice') loadVoicePanel();
     // Close sidebar on mobile
     document.getElementById('sidebar')?.classList.remove('open');
   }
@@ -1196,6 +1229,7 @@ document.addEventListener('click', (e) => {
     if (a === 'refresh-ollama') refreshOllamaModels();
     if (a === 'test-ollama') testOllamaConnection();
     if (a === 'refresh-mesh') loadMeshPanel();
+    if (a === 'voice-open') { const url = document.getElementById('voice-ui-url').value.trim(); if (url) window.open(url, '_blank'); }
     if (a === 'refresh-plugins') loadPluginsPanel();
     if (a === 'refresh-logs') loadLogs();
     if (a === 'refresh-telemetry') loadTelemetry();
@@ -1246,7 +1280,7 @@ function renderSparkline(data, color) {
 
 // ── Panel navigation ──────────────────────────────────────────────
 const panelTitles = {
-  overview:'📊 Overview', chat:'💬 WebChat', agents:'🤖 Agents',
+  overview:'📊 Overview', chat:'💬 WebChat', voice:'🎙️ Voice', agents:'🤖 Agents',
   config:'⚙️ Settings', channels:'📡 Channels', skills:'🧩 Skills',
   sessions:'🔗 Sessions', learning:'🧠 Learning', security:'🔒 Security',
   logs:'📜 Live Logs', graphiti:'🕸️ Memory Graph', autopilot:'🚁 Autopilot',
@@ -1265,6 +1299,7 @@ const panelHints = {
   sessions: 'Tip: Idle sessions are cleaned up after 30 minutes. Use /clear to reset a session.',
   learning: 'Tip: TITAN learns from corrections — say "no, do X instead" to teach preferences.',
   autopilot: 'Tip: Autopilot runs on a schedule. Add tasks to AUTOPILOT.md or use goal mode.',
+  voice: 'Tip: Voice chat uses LiveKit. Run docker compose -f docker-compose.voice.yml up on Titan PC.',
   agents: 'Tip: Each agent runs independently with its own session and tool access.',
   graphiti: 'Tip: The memory graph stores relationships between entities for richer context.',
   workflows: 'Tip: Workflows are reusable multi-step recipes. Export as YAML to share with your team.',
@@ -1321,12 +1356,10 @@ function connectWS() {
     toast('WebSocket error — check console', 'error');
   };
   ws.onmessage = (e) => {
-    // Binary frames ignored (voice uses LiveKit WebRTC)
     if (e.data instanceof ArrayBuffer) return;
     removeTyping();
     try {
       const data = JSON.parse(e.data);
-      // Voice transcripts handled by LiveKit UI (no longer via WebSocket)
       // Streaming token — accumulate in a streaming message bubble
       if (data.type === 'token' && data.data) {
         let streamDiv = document.getElementById('streaming-msg');
@@ -3202,186 +3235,20 @@ function stopLogs() {
   if (logsInterval) { clearInterval(logsInterval); logsInterval = null; }
 }
 
-// ── LiveKit Voice (WebRTC) ──────────────────────────────────────
-let lkVoiceEnabled = false;
-let lkRoom = null;
-let lkMuted = false;
-let lkVizAnimId = null;
-let lkAudioCtx = null;
-let lkAnalyser = null;
 
-function updateVoiceStatus(text) {
-  const el = document.getElementById('voice-status');
-  if (el) el.textContent = text;
-}
-
-// Toggle voice panel visibility
-document.addEventListener('click', (e) => {
-  if (e.target && e.target.dataset && e.target.dataset.action === 'voice-toggle') {
-    lkVoiceEnabled = !lkVoiceEnabled;
-    const panel = document.getElementById('voice-panel');
-    if (panel) panel.style.display = lkVoiceEnabled ? 'block' : 'none';
-    if (!lkVoiceEnabled && lkRoom) lkDisconnect();
+// ── Voice Chat ──────────────────────────────────────────────────
+async function loadVoicePanel() {
+  try {
+    const r = await fetch('/api/voice/status', {headers:authHeaders()});
+    const data = await r.json();
+    document.getElementById('voice-status').textContent = data.available ? 'Online' : 'Offline';
+    document.getElementById('voice-status').style.color = data.available ? 'var(--accent3)' : 'var(--error)';
+    document.getElementById('voice-livekit-url').textContent = data.livekitUrl || '—';
+    document.getElementById('voice-tts-voice').textContent = data.ttsVoice || '—';
+  } catch(e) {
+    document.getElementById('voice-status').textContent = 'Error';
+    document.getElementById('voice-status').style.color = 'var(--error)';
   }
-});
-
-// Connect to LiveKit room
-const lkConnectBtn = document.getElementById('lk-connect-btn');
-if (lkConnectBtn) {
-  lkConnectBtn.addEventListener('click', async () => {
-    if (lkRoom) { lkDisconnect(); return; }
-    updateVoiceStatus('Connecting...');
-    lkConnectBtn.disabled = true;
-    try {
-      const resp = await fetch('/api/livekit/token', { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' } });
-      if (!resp.ok) {
-        const err = await resp.json();
-        throw new Error(err.error || 'Token request failed');
-      }
-      const { token, serverUrl, roomName } = await resp.json();
-
-      // Load LiveKit client from CDN if not already loaded
-      if (!window.LivekitClient) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/livekit-client@2.17.2/dist/livekit-client.umd.js';
-          s.onload = resolve;
-          s.onerror = () => reject(new Error('Failed to load LiveKit client'));
-          document.head.appendChild(s);
-        });
-      }
-
-      const room = new window.LivekitClient.Room({
-        audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        adaptiveStream: true,
-        dynacast: true,
-      });
-
-      // Track agent state changes
-      room.on('participantAttributesChanged', (changed, participant) => {
-        if (participant.isAgent) {
-          const stateEl = document.getElementById('lk-agent-state');
-          const agentState = participant.attributes?.['lk.agent.state'] || '';
-          if (stateEl) {
-            stateEl.style.display = 'inline';
-            const labels = { listening: '👂 Listening', thinking: '🤔 Thinking', speaking: '🔊 Speaking' };
-            stateEl.textContent = labels[agentState] || agentState;
-          }
-        }
-      });
-
-      // Handle remote audio tracks (agent voice)
-      room.on('trackSubscribed', (track, pub, participant) => {
-        if (track.kind === 'audio') {
-          const audioEl = track.attach();
-          audioEl.id = 'lk-agent-audio';
-          document.body.appendChild(audioEl);
-          // Set up analyser for visualization
-          if (!lkAudioCtx) lkAudioCtx = new AudioContext();
-          const source = lkAudioCtx.createMediaElementSource(audioEl);
-          lkAnalyser = lkAudioCtx.createAnalyser();
-          lkAnalyser.fftSize = 64;
-          source.connect(lkAnalyser);
-          lkAnalyser.connect(lkAudioCtx.destination);
-          drawLkVisualizer();
-        }
-      });
-
-      room.on('trackUnsubscribed', (track) => {
-        track.detach().forEach(el => el.remove());
-      });
-
-      room.on('disconnected', () => {
-        lkRoom = null;
-        lkUpdateUI(false);
-        updateVoiceStatus('Disconnected');
-      });
-
-      await room.connect(serverUrl, token);
-      await room.localParticipant.setMicrophoneEnabled(true);
-
-      lkRoom = room;
-      lkMuted = false;
-      lkUpdateUI(true);
-      updateVoiceStatus('Connected to ' + roomName);
-      toast('Voice connected via LiveKit WebRTC', 'success');
-    } catch (err) {
-      toast('Voice connection failed: ' + err.message, 'error');
-      updateVoiceStatus('Failed');
-    }
-    lkConnectBtn.disabled = false;
-  });
-}
-
-// Mute/unmute
-const lkMuteBtn = document.getElementById('lk-mute-btn');
-if (lkMuteBtn) {
-  lkMuteBtn.addEventListener('click', async () => {
-    if (!lkRoom) return;
-    lkMuted = !lkMuted;
-    await lkRoom.localParticipant.setMicrophoneEnabled(!lkMuted);
-    lkMuteBtn.textContent = lkMuted ? '🔈 Unmute' : '🔇 Mute';
-    updateVoiceStatus(lkMuted ? 'Muted' : 'Connected');
-  });
-}
-
-// Disconnect
-const lkDisconnectBtn = document.getElementById('lk-disconnect-btn');
-if (lkDisconnectBtn) {
-  lkDisconnectBtn.addEventListener('click', lkDisconnect);
-}
-
-function lkDisconnect() {
-  if (lkRoom) {
-    lkRoom.disconnect();
-    lkRoom = null;
-  }
-  if (lkVizAnimId) { cancelAnimationFrame(lkVizAnimId); lkVizAnimId = null; }
-  if (lkAudioCtx) { lkAudioCtx.close(); lkAudioCtx = null; lkAnalyser = null; }
-  const agentAudio = document.getElementById('lk-agent-audio');
-  if (agentAudio) agentAudio.remove();
-  lkUpdateUI(false);
-  updateVoiceStatus('Ready');
-}
-
-function lkUpdateUI(connected) {
-  const connectBtn = document.getElementById('lk-connect-btn');
-  const muteBtn = document.getElementById('lk-mute-btn');
-  const disconnectBtn = document.getElementById('lk-disconnect-btn');
-  const viz = document.getElementById('lk-visualizer');
-  const agentState = document.getElementById('lk-agent-state');
-  if (connectBtn) connectBtn.textContent = connected ? '🎙️ Connected' : '🎙️ Start Voice';
-  if (muteBtn) muteBtn.style.display = connected ? 'inline-block' : 'none';
-  if (disconnectBtn) disconnectBtn.style.display = connected ? 'inline-block' : 'none';
-  if (viz) viz.style.display = connected ? 'inline-block' : 'none';
-  if (agentState) agentState.style.display = connected ? 'inline' : 'none';
-}
-
-// Simple bar visualizer for agent audio
-function drawLkVisualizer() {
-  const canvas = document.getElementById('lk-viz-canvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const barCount = 16;
-  const barW = W / barCount;
-
-  function draw() {
-    lkVizAnimId = requestAnimationFrame(draw);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(0, 0, W, H);
-    if (!lkAnalyser) return;
-    const data = new Uint8Array(lkAnalyser.frequencyBinCount);
-    lkAnalyser.getByteFrequencyData(data);
-    const step = Math.floor(data.length / barCount);
-    for (let i = 0; i < barCount; i++) {
-      const val = data[i * step] / 255;
-      const barH = val * H;
-      ctx.fillStyle = val > 0.5 ? '#06b6d4' : '#334155';
-      ctx.fillRect(i * barW + 1, H - barH, barW - 2, barH);
-    }
-  }
-  draw();
 }
 
 // Check for Google OAuth callback redirect

@@ -1,0 +1,13 @@
+:3443 {
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+
+	handle /livekit/* {
+		uri strip_prefix /livekit
+		reverse_proxy livekit-server:7880
+	}
+
+	handle {
+		# Proxy to TITAN gateway (serves React SPA + API)
+		reverse_proxy host.docker.internal:48420
+	}
+}

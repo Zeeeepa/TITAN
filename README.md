@@ -102,7 +102,8 @@ That's it. From zero to a running autonomous agent with a dashboard.
 ```bash
 git clone https://github.com/Djtony707/TITAN.git && cd TITAN
 npm install
-npm run dev:gateway       # Start in dev mode
+npm run build:ui          # Build the React frontend
+npm run dev:gateway       # Start in dev mode with Mission Control v2
 ```
 
 ### First Contact
@@ -261,12 +262,12 @@ When TITAN detects an ambitious request, it enters a multi-stage loop:
 
 ## Mission Control
 
-A 14-panel dark-mode dashboard at `http://localhost:48420`.
+**Mission Control v2** — a ChatGPT-style React 19 SPA at `http://localhost:48420`. Built with Vite, Tailwind CSS 4, and React Router v7.
 
 | Panel | What It Does |
 |-------|-------------|
+| **Chat** | ChatGPT-style real-time chat with SSE token streaming, markdown rendering, syntax highlighting |
 | **Overview** | System health, uptime, memory usage, model info, cost stats |
-| **WebChat** | Real-time chat with your agent via WebSocket with token streaming |
 | **Agents** | Spawn, stop, and monitor up to 5 agent instances |
 | **Settings** | 6-tab live config: AI, Providers, Channels, Security, Gateway, Profile |
 | **Channels** | Connection status for all 15 channel adapters |
@@ -281,7 +282,21 @@ A 14-panel dark-mode dashboard at `http://localhost:48420`.
 | **Workflows** | Visual drag-and-drop recipe builder with YAML export/import |
 | **Telemetry** | Prometheus metrics — request counts, latency, token usage |
 
+The legacy dashboard is still available at `/legacy`.
+
 Settings includes a SOUL.md live editor (Profile tab) and Google OAuth connection manager (Providers tab). All changes take effect without restarting the gateway.
+
+### Distributed Setup
+
+TITAN supports split-machine deployments — run the gateway on a low-power node (e.g., Raspberry Pi 5) and route inference to a GPU machine (e.g., a desktop with an RTX GPU running Ollama). Configure via environment variables in `docker-compose.yml`:
+
+```bash
+# On your Pi 5 / Mini PC (gateway)
+OLLAMA_BASE_URL=http://192.168.1.11:11434  # Points to GPU machine
+
+# On your GPU PC
+ollama serve  # Exposes models on the LAN
+```
 
 ---
 
@@ -715,8 +730,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ## Roadmap
 
-### Current (v2026.9.x)
+### Current (v2026.10.x)
 
+- **v2026.10.0**: Mission Control v2 — React 19 SPA with ChatGPT-style chat, distributed setup support, voice health endpoint, THIRD_PARTY_NOTICES.md
 - **v2026.9.6**: Version sync fix, mini PC deployment update
 - **v2026.9.5**: Visual Workflow Builder — drag-and-drop recipe editor, YAML export/import, node-graph canvas, 7 API endpoints
 - **v2026.9.4**: One-Line Install, Cloud Deploy (Railway/Render/Replit), optimized Dockerfile
@@ -774,9 +790,20 @@ We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
 
 - **[Skyvern](https://github.com/Skyvern-AI/skyvern)** by [Skyvern AI](https://skyvern.com/) — AI browser automation via vision + LLMs. Licensed under AGPL-3.0 (separate service).
 
+### Frontend (Mission Control v2)
+
+- **[React 19](https://react.dev/)** — UI framework (MIT)
+- **[Vite](https://vite.dev/)** — Build tool (MIT)
+- **[Tailwind CSS 4](https://tailwindcss.com/)** — CSS framework (MIT)
+- **[React Router v7](https://reactrouter.com/)** — Client-side routing (MIT)
+- **[Lucide React](https://lucide.dev/)** — Icon library (ISC)
+- **[Motion](https://motion.dev/)** — Animations (MIT)
+
 ### Open-Source Libraries
 
-Express, Zod, Commander.js, ws, Chalk, Ora, Boxen, Inquirer, dotenv, node-cron, uuid, Playwright, bonjour-service, tsup, Vitest, TypeScript.
+Express, Zod, Commander.js, ws, Chalk, Ora, Boxen, Inquirer, dotenv, node-cron, uuid, Playwright, jsdom, turndown, @mozilla/readability, bonjour-service, tsup, Vitest, TypeScript.
+
+For the complete list, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

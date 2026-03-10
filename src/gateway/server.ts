@@ -6,7 +6,8 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import net from 'net';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { homedir, hostname as osHostname, cpus, loadavg } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
 import { exec } from 'child_process';
@@ -385,27 +386,47 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   const app = express();
   app.use(express.json());
 
-  // Security headers
+  // Security headers + CSP
   app.use((req, res, next) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.setHeader('X-XSS-Protection', '1; mode=block');
       res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Content-Security-Policy', [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+          "style-src 'self' 'unsafe-inline'",
+          "connect-src 'self' ws: wss: https: http:",
+          "media-src 'self' blob: mediastream:",
+          "img-src 'self' data: blob:",
+          "font-src 'self' data:",
+      ].join('; '));
       res.removeHeader('X-Powered-By');
       next();
   });
 
-  // CORS — allowlist only localhost origins
+  // CORS — allow localhost, Tailscale, Cloudflare tunnels, and LAN origins
   const gatewayPort = config.gateway.port || 48420;
-  const allowedOrigins = new Set([
+  const localhostOrigins = new Set([
       `http://127.0.0.1:${gatewayPort}`,
       `http://localhost:${gatewayPort}`,
       `https://127.0.0.1:${gatewayPort}`,
       `https://localhost:${gatewayPort}`,
   ]);
+  const dynamicOriginPatterns = [
+      /^https?:\/\/[a-z0-9-]+\.ts\.net(:\d+)?$/,          // Tailscale (*.ts.net)
+      /^https?:\/\/[a-z0-9-]+\.trycloudflare\.com(:\d+)?$/, // Cloudflare tunnel
+      /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,     // LAN 192.168.x.x
+      /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,  // LAN 10.x.x.x
+      /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/, // LAN 172.16-31.x.x
+  ];
+  function isAllowedOrigin(origin: string): boolean {
+      if (localhostOrigins.has(origin)) return true;
+      return dynamicOriginPatterns.some(re => re.test(origin));
+  }
   app.use((req, res, next) => {
       const origin = req.headers.origin;
-      if (origin && allowedOrigins.has(origin)) {
+      if (origin && isAllowedOrigin(origin)) {
           res.setHeader('Access-Control-Allow-Origin', origin);
           res.setHeader('Access-Control-Allow-Credentials', 'true');
           res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -454,10 +475,30 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.status(401).json({ error: 'Unauthorized' });
   });
 
-  // Serve dashboard
-  app.get('/', (_req, res) => {
+  // ── Serve React SPA (Mission Control v2) ──────────────────
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const uiDistPath = join(__dirname, '../../ui/dist');
+  const uiIndexPath = join(uiDistPath, 'index.html');
+  const hasReactUI = fs.existsSync(uiIndexPath);
+  if (hasReactUI) {
+    app.use(express.static(uiDistPath, { index: false }));
+  }
+
+  // Legacy dashboard (kept during migration, also fallback if React UI not built)
+  app.get('/legacy', (_req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(getMissionControlHTML());
+  });
+
+  // Root route: React SPA or legacy dashboard
+  app.get('/', (_req, res) => {
+    if (hasReactUI) {
+      res.sendFile(uiIndexPath);
+    } else {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(getMissionControlHTML());
+    }
   });
 
   // API routes
@@ -928,46 +969,6 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(state || { active: null });
   });
 
-  // ── LiveKit Voice Token Endpoint ──────────────────────────────────
-  app.post('/api/livekit/token', async (req, res) => {
-    try {
-      const voiceCfg = loadConfig().voice;
-      if (!voiceCfg.enabled) {
-        res.status(400).json({ error: 'Voice is not enabled in config' });
-        return;
-      }
-      const url = voiceCfg.livekit.url || process.env.LIVEKIT_URL || '';
-      const apiKey = voiceCfg.livekit.apiKey || process.env.LIVEKIT_API_KEY || '';
-      const apiSecret = voiceCfg.livekit.apiSecret || process.env.LIVEKIT_API_SECRET || '';
-      if (!url || !apiKey || !apiSecret) {
-        res.status(400).json({ error: 'LiveKit credentials not configured (url, apiKey, apiSecret)' });
-        return;
-      }
-      const lkMod = 'livekit-server-sdk';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const livekitSdk: any = await import(lkMod);
-      const { AccessToken } = livekitSdk;
-      const { shortId } = await import('../utils/helpers.js');
-      const roomName = `titan-voice-${shortId()}`;
-      const participantName = `user-${shortId()}`;
-      const at = new AccessToken(apiKey, apiSecret, {
-        identity: participantName,
-        ttl: '15m',
-      });
-      at.addGrant({
-        roomJoin: true,
-        room: roomName,
-        canPublish: true,
-        canSubscribe: true,
-      });
-      const token = await at.toJwt();
-      res.json({ token, serverUrl: url, roomName, participantName });
-    } catch (err) {
-      logger.error(COMPONENT, `LiveKit token error: ${(err as Error).message}`);
-      res.status(500).json({ error: (err as Error).message });
-    }
-  });
-
   app.post('/api/model/switch', (req, res) => {
     try {
       const { model } = req.body as { model?: string };
@@ -1351,6 +1352,97 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // ── Voice ──────────────────────────────────────────────────
+  app.get('/api/voice/status', async (_req, res) => {
+    const cfg = loadConfig();
+    const voice = cfg.voice;
+    if (!voice.enabled) {
+      res.json({ available: false, reason: 'Voice not enabled in config' });
+      return;
+    }
+    try {
+      // Ping LiveKit server health endpoint
+      const livekitHttp = voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+      const resp = await fetch(livekitHttp, { signal: AbortSignal.timeout(3000) });
+      res.json({
+        available: resp.ok,
+        livekitUrl: voice.livekitUrl,
+        ttsVoice: voice.ttsVoice,
+      });
+    } catch {
+      res.json({ available: false, livekitUrl: voice.livekitUrl, reason: 'LiveKit server unreachable' });
+    }
+  });
+
+  app.get('/api/voice/config', (_req, res) => {
+    const cfg = loadConfig();
+    res.json(cfg.voice);
+  });
+
+  // LiveKit token generation (ported from titan-voice-ui)
+  app.post('/api/livekit/token', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.voice?.enabled) {
+      res.status(404).json({ error: 'Voice not enabled' });
+      return;
+    }
+    try {
+      const lkModule = 'livekit-server-sdk';
+      const livekitSdk: any = await import(lkModule).catch(() => null);
+      if (!livekitSdk?.AccessToken) {
+        res.status(500).json({ error: 'livekit-server-sdk not installed. Run: npm install livekit-server-sdk' });
+        return;
+      }
+      const { AccessToken } = livekitSdk;
+      const participantIdentity = `voice_user_${Math.floor(Math.random() * 10_000)}`;
+      const roomName = `voice_room_${Math.floor(Math.random() * 10_000)}`;
+      const at = new AccessToken(cfg.voice.livekitApiKey, cfg.voice.livekitApiSecret, {
+        identity: participantIdentity,
+        name: 'user',
+        ttl: '15m',
+      });
+      at.addGrant({
+        room: roomName,
+        roomJoin: true,
+        canPublish: true,
+        canPublishData: true,
+        canSubscribe: true,
+      });
+      const serverUrl = cfg.voice.livekitUrl;
+      res.json({
+        serverUrl,
+        roomName,
+        participantName: 'user',
+        participantToken: await at.toJwt(),
+      });
+    } catch (err) {
+      logger.error(COMPONENT, `LiveKit token error: ${(err as Error).message}`);
+      res.status(500).json({ error: 'Failed to generate LiveKit token. Is livekit-server-sdk installed?' });
+    }
+  });
+
+  // Voice health check (checks all voice services)
+  app.get('/api/voice/health', async (_req, res) => {
+    const cfg = loadConfig();
+    if (!cfg.voice?.enabled) {
+      res.json({ livekit: false, whisper: false, kokoro: false, agent: false, overall: false });
+      return;
+    }
+    const results = { livekit: false, whisper: false, kokoro: false, agent: false, overall: false };
+    const checks = [
+      { key: 'livekit' as const, url: cfg.voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://') },
+      { key: 'agent' as const, url: cfg.voice.agentUrl },
+    ];
+    await Promise.allSettled(checks.map(async ({ key, url }) => {
+      try {
+        const resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        results[key] = resp.ok || resp.status < 500;
+      } catch { results[key] = false; }
+    }));
+    results.overall = results.livekit;
+    res.json(results);
+  });
+
   // ── Tunnel ─────────────────────────────────────────────────
   app.get('/api/tunnel/status', (_req, res) => {
     res.json(getTunnelStatus());
@@ -1528,6 +1620,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         '/api/teams/{teamId}/permissions/{userId}': { get: { summary: 'Get user permissions',     tags: ['Teams'] } },
         '/api/teams/{teamId}/roles/{role}/permissions': { put: { summary: 'Set role permissions', tags: ['Teams'] } },
         '/api/logs':               { get:  { summary: 'Read log file',                          tags: ['Logs'], parameters: [{ name: 'lines', in: 'query', schema: { type: 'integer' } }] } },
+        '/api/voice/status':       { get:  { summary: 'Voice server status and availability',    tags: ['Voice'] } },
+        '/api/voice/config':       { get:  { summary: 'Voice configuration',                    tags: ['Voice'] } },
         '/api/tunnel/status':      { get:  { summary: 'Cloudflare tunnel status',               tags: ['Tunnel'] } },
         '/api/autopilot/status':   { get:  { summary: 'Autopilot status',                      tags: ['Autopilot'] } },
         '/api/autopilot/history':  { get:  { summary: 'Autopilot run history',                 tags: ['Autopilot'] } },
@@ -1625,6 +1719,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         { method: 'GET',  path: '/metrics',              desc: 'Prometheus text exposition format' },
         { method: 'GET',  path: '/api/metrics/summary',  desc: 'Metrics summary (JSON)' },
       ]},
+      { cat: 'Voice',    routes: [
+        { method: 'GET',  path: '/api/voice/status',     desc: 'Voice server status and availability' },
+        { method: 'GET',  path: '/api/voice/config',     desc: 'Voice configuration' },
+      ]},
       { cat: 'Tunnel',   routes: [
         { method: 'GET',  path: '/api/tunnel/status',    desc: 'Cloudflare tunnel status' },
       ]},
@@ -1685,6 +1783,17 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 </body>
 </html>`);
   });
+
+  // ── SPA fallback (must be after all API routes) ──────────
+  if (hasReactUI) {
+    app.get('*', (req, res, next) => {
+      // Don't intercept API, WebSocket, metrics, or legacy routes
+      if (req.path.startsWith('/api/') || req.path === '/ws' || req.path === '/metrics' || req.path === '/legacy' || req.path === '/login') {
+        return next();
+      }
+      res.sendFile(uiIndexPath);
+    });
+  }
 
   // Create HTTP server
   httpServer = createServer(app);

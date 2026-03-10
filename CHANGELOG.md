@@ -4,6 +4,26 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.0] — 2026-03-09
+
+### Added
+- **Mission Control v2** — complete React 19 SPA replacing the monolithic HTML dashboard
+  - ChatGPT-style chat interface with SSE token streaming
+  - 10 admin panels: Overview, Agents, Settings, Channels, Skills, Sessions, Learning, Autopilot, Security, Logs
+  - Built with Vite, Tailwind CSS 4, React Router v7, Lucide React, Motion
+  - Markdown rendering with syntax highlighting (react-markdown + rehype-highlight)
+- **Voice health endpoint** — `GET /api/voice/health` reports LiveKit, STT, and TTS status
+- **LiveKit token endpoint on gateway** — `POST /api/livekit/token` for voice session tokens
+- **Distributed setup support** — env-var based docker-compose for split-machine deployments (Pi 5 + GPU PC)
+- **THIRD_PARTY_NOTICES.md** — comprehensive OSS attribution for all ~50 dependencies
+
+### Changed
+- Legacy dashboard moved to `/legacy` route
+- Removed titan-voice-ui container (voice UI consolidated into Mission Control v2)
+- Docker-compose restructured for multi-machine deployments
+
+---
+
 ## [2026.9.6] — 2026-03-09
 
 ### Fixed

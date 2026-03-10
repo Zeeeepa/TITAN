@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Save, CheckCircle, AlertCircle } from 'lucide-react';
 import { getConfig, updateConfig, getModels, switchModel } from '@/api/client';
-import type { TitanConfig, ModelInfo } from '@/api/types';
+import type { ModelInfo } from '@/api/types';
+
+// The raw config from /api/config is nested (agent.model, gateway.auth, etc.)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RawConfig = Record<string, any>;
 
 function SettingsPanel() {
-  const [config, setConfig] = useState<TitanConfig | null>(null);
+  const [config, setConfig] = useState<RawConfig | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -17,16 +21,24 @@ function SettingsPanel() {
   const [livekitUrl, setLivekitUrl] = useState('');
   const [ttsVoice, setTtsVoice] = useState('');
 
+  // Helper to read model from nested config
+  const getModel = (cfg: RawConfig) => cfg?.agent?.model ?? cfg?.model ?? '';
+  const getProvider = (cfg: RawConfig) => {
+    const model = getModel(cfg);
+    return model.includes('/') ? model.split('/')[0] : 'unknown';
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
         const [cfg, mdls] = await Promise.all([getConfig(), getModels()]);
         setConfig(cfg);
         setModels(mdls);
-        setSelectedModel(cfg.model);
-        setVoiceEnabled(cfg.voice?.enabled ?? false);
-        setLivekitUrl(cfg.voice?.livekitUrl ?? '');
-        setTtsVoice(cfg.voice?.ttsVoice ?? '');
+        setSelectedModel(getModel(cfg));
+        const voice = cfg?.voice ?? {};
+        setVoiceEnabled(voice.enabled ?? false);
+        setLivekitUrl(voice.livekitUrl ?? '');
+        setTtsVoice(voice.ttsVoice ?? '');
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load config';
         setLoadError(msg);
@@ -50,6 +62,7 @@ function SettingsPanel() {
       await switchModel(selectedModel, model?.provider);
       const cfg = await getConfig();
       setConfig(cfg);
+      setSelectedModel(getModel(cfg));
       showToast('success', `Switched to ${selectedModel}`);
     } catch (e) {
       showToast('error', e instanceof Error ? e.message : 'Failed to switch model');
@@ -150,7 +163,7 @@ function SettingsPanel() {
           </div>
           <button
             onClick={handleSwitchModel}
-            disabled={selectedModel === config?.model}
+            disabled={selectedModel === getModel(config ?? {})}
             className="rounded-lg bg-[#6366f1] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#6366f1]/80 disabled:opacity-50"
           >
             Switch
@@ -161,7 +174,7 @@ function SettingsPanel() {
       {/* Provider Section */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <h3 className="mb-4 text-sm font-medium text-[#a1a1aa]">Provider</h3>
-        <p className="text-sm text-[#fafafa]">{config?.provider ?? 'Unknown'}</p>
+        <p className="text-sm text-[#fafafa]">{config ? getProvider(config) : 'Unknown'}</p>
       </div>
 
       {/* Voice Section */}

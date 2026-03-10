@@ -4,6 +4,14 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.3] — 2026-03-09
+
+### Fixed
+- **Settings panel crash** — `getModels()` API returns `{provider: [models]}` object but Settings panel expected an array; now flattens to `ModelInfo[]` in the API client
+- **Settings panel wrong config keys** — panel read `config.model` / `config.provider` but API returns nested `config.agent.model`; fixed to read from correct paths
+
+---
+
 ## [2026.10.2] — 2026-03-09
 
 ### Fixed

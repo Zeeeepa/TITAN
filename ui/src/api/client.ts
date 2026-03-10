@@ -244,7 +244,17 @@ export async function getLogs(level?: string, limit?: number): Promise<LogEntry[
 // ---- Models ----
 
 export async function getModels(): Promise<ModelInfo[]> {
-  return request('/api/models');
+  const raw = await request<Record<string, string[]>>('/api/models');
+  // API returns { provider: ["provider/model", ...] } — flatten to ModelInfo[]
+  const models: ModelInfo[] = [];
+  for (const [provider, ids] of Object.entries(raw)) {
+    if (!Array.isArray(ids)) continue;
+    for (const id of ids) {
+      const name = id.includes('/') ? id.split('/').slice(1).join('/') : id;
+      models.push({ id, name, provider, available: true });
+    }
+  }
+  return models;
 }
 
 export async function switchModel(modelId: string, provider?: string): Promise<void> {

@@ -4,6 +4,20 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.10] — 2026-03-12
+
+### Added
+- **Integrations Panel** — New admin panel for managing LLM provider API keys (12 providers: Anthropic, OpenAI, Google, Groq, Mistral, OpenRouter, Fireworks, xAI, Together, DeepSeek, Perplexity, Ollama) and Google OAuth credentials, with configured/not-configured status badges
+- **Workflows Panel** — Fully functional command center with Active Goals (create/track/complete), Scheduled Tasks (cron CRUD), Recipes (browse/run), and Autopilot status with run history
+- **Goals API** — REST endpoints for goal/subtask CRUD (`/api/goals`)
+- **Cron API** — REST endpoints for cron job management (`/api/cron`)
+- **Autopilot toggle API** — Enable/disable autopilot via `/api/autopilot/toggle`
+- **Recipe run API** — Execute recipes via `/api/recipes/:id/run`
+- **Autonomous persona** — New `autonomous` persona with prime directives, tool mastery guide, and self-reflection protocol
+- **Provider config support** — Backend handles API keys for 8 additional providers (Groq, Mistral, OpenRouter, Fireworks, xAI, Together, DeepSeek, Perplexity)
+
+---
+
 ## [2026.10.9] — 2026-03-12
 
 ### Fixed

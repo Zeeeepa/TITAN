@@ -20,6 +20,7 @@ const SecurityPanel = lazy(() => import('@/components/admin/SecurityPanel'));
 const WorkflowsPanel = lazy(() => import('@/components/admin/WorkflowsPanel'));
 const MemoryGraphPanel = lazy(() => import('@/components/admin/MemoryGraphPanel'));
 const PersonasPanel = lazy(() => import('@/components/admin/PersonasPanel'));
+const IntegrationsPanel = lazy(() => import('@/components/admin/IntegrationsPanel'));
 const VoiceOverlay = lazy(() =>
   import('@/components/voice/VoiceOverlay').then((m) => ({ default: m.VoiceOverlay })),
 );
@@ -81,6 +82,7 @@ export default function App() {
             <Route path="/workflows" element={<AdminPage><WorkflowsPanel /></AdminPage>} />
             <Route path="/memory-graph" element={<AdminPage><MemoryGraphPanel /></AdminPage>} />
             <Route path="/personas" element={<AdminPage><PersonasPanel /></AdminPage>} />
+            <Route path="/integrations" element={<AdminPage><IntegrationsPanel /></AdminPage>} />
           </Routes>
         </Suspense>
       </Layout>

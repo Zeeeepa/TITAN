@@ -15,7 +15,7 @@ import fs from 'fs';
 import { loadConfig, updateConfig } from '../config/config.js';
 import { loadProfile, saveProfile, type PersonalProfile } from '../memory/relationship.js';
 import { processMessage } from '../agent/agent.js';
-import { initMemory, getUsageStats, getHistory } from '../memory/memory.js';
+import { initMemory, getUsageStats, getHistory, getDb } from '../memory/memory.js';
 import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../skills/registry.js';
 import { listPersonas, getPersona, invalidatePersonaCache } from '../personas/manager.js';
 import { searchSkills as marketplaceSearch, installSkill, uninstallSkill, listSkills as listMarketplaceSkills, listInstalled as listInstalledMarketplace } from '../skills/marketplace.js';
@@ -61,6 +61,7 @@ import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 import { invalidateCacheForModel } from '../agent/responseCache.js';
 import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
+import { listGoals, createGoal, getGoal, deleteGoal, completeSubtask, addSubtask } from '../agent/goals.js';
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
 import { createTeam, getTeam, listTeams, deleteTeam, updateTeam, addMember, removeMember, updateMemberRole, createInvite, acceptInvite, getEffectivePermissions, setRolePermissions, getTeamStats, isToolAllowed, getUserRole } from '../security/teams.js';
@@ -962,6 +963,14 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         openai: { configured: Boolean(cfg.providers.openai?.apiKey) },
         google: { configured: Boolean(cfg.providers.google?.apiKey) },
         ollama: { baseUrl: cfg.providers.ollama?.baseUrl || 'http://localhost:11434' },
+        groq: { configured: Boolean(cfg.providers.groq?.apiKey) },
+        mistral: { configured: Boolean(cfg.providers.mistral?.apiKey) },
+        openrouter: { configured: Boolean(cfg.providers.openrouter?.apiKey) },
+        fireworks: { configured: Boolean(cfg.providers.fireworks?.apiKey) },
+        xai: { configured: Boolean(cfg.providers.xai?.apiKey) },
+        together: { configured: Boolean(cfg.providers.together?.apiKey) },
+        deepseek: { configured: Boolean(cfg.providers.deepseek?.apiKey) },
+        perplexity: { configured: Boolean(cfg.providers.perplexity?.apiKey) },
       },
       oauth: {
         google: {
@@ -995,6 +1004,14 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       if (body.openaiKey !== undefined) { cfg.providers.openai.apiKey = body.openaiKey as string; changedFields.push('providers.openai.apiKey'); }
       if (body.googleKey !== undefined) { cfg.providers.google.apiKey = body.googleKey as string; changedFields.push('providers.google.apiKey'); }
       if (body.ollamaUrl !== undefined) { cfg.providers.ollama.baseUrl = body.ollamaUrl as string; changedFields.push('providers.ollama.baseUrl'); }
+      if (body.groqKey !== undefined) { cfg.providers.groq.apiKey = body.groqKey as string; changedFields.push('providers.groq.apiKey'); }
+      if (body.mistralKey !== undefined) { cfg.providers.mistral.apiKey = body.mistralKey as string; changedFields.push('providers.mistral.apiKey'); }
+      if (body.openrouterKey !== undefined) { cfg.providers.openrouter.apiKey = body.openrouterKey as string; changedFields.push('providers.openrouter.apiKey'); }
+      if (body.fireworksKey !== undefined) { cfg.providers.fireworks.apiKey = body.fireworksKey as string; changedFields.push('providers.fireworks.apiKey'); }
+      if (body.xaiKey !== undefined) { cfg.providers.xai.apiKey = body.xaiKey as string; changedFields.push('providers.xai.apiKey'); }
+      if (body.togetherKey !== undefined) { cfg.providers.together.apiKey = body.togetherKey as string; changedFields.push('providers.together.apiKey'); }
+      if (body.deepseekKey !== undefined) { cfg.providers.deepseek.apiKey = body.deepseekKey as string; changedFields.push('providers.deepseek.apiKey'); }
+      if (body.perplexityKey !== undefined) { cfg.providers.perplexity.apiKey = body.perplexityKey as string; changedFields.push('providers.perplexity.apiKey'); }
       // Google OAuth
       if (body.googleOAuthClientId !== undefined) {
         if (!cfg.oauth) (cfg as Record<string, unknown>).oauth = { google: {} };
@@ -1031,9 +1048,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       }
       if (changedFields.length === 0) {
         const validFields = ['model', 'autonomyMode', 'sandboxMode', 'logLevel', 'anthropicKey', 'openaiKey',
-          'googleKey', 'ollamaUrl', 'maxTokens', 'temperature', 'systemPrompt', 'shieldEnabled',
-          'shieldMode', 'deniedTools', 'networkAllowlist', 'gatewayPort', 'gatewayAuthMode',
-          'gatewayPassword', 'gatewayToken', 'channels'];
+          'googleKey', 'ollamaUrl', 'groqKey', 'mistralKey', 'openrouterKey', 'fireworksKey', 'xaiKey',
+          'togetherKey', 'deepseekKey', 'perplexityKey', 'maxTokens', 'temperature', 'systemPrompt',
+          'shieldEnabled', 'shieldMode', 'deniedTools', 'networkAllowlist', 'gatewayPort', 'gatewayAuthMode',
+          'gatewayPassword', 'gatewayToken', 'channels', 'googleOAuthClientId', 'googleOAuthClientSecret'];
         res.status(400).json({ error: 'No recognized fields in request body', validFields });
         return;
       }
@@ -1466,6 +1484,118 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     try {
       const result = await runAutopilotNow();
       res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/autopilot/toggle', (req, res) => {
+    try {
+      const cfg = loadConfig();
+      const enable = typeof req.body.enabled === 'boolean' ? req.body.enabled : !cfg.autopilot.enabled;
+      cfg.autopilot.enabled = enable;
+      if (enable) {
+        initAutopilot(cfg);
+      } else {
+        stopAutopilot();
+      }
+      res.json({ enabled: enable });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  // ── Goals API ─────────────────────────────────────────────
+
+  app.get('/api/goals', (_req, res) => {
+    res.json({ goals: listGoals() });
+  });
+
+  app.post('/api/goals', (req, res) => {
+    const { title, description, subtasks, priority, tags } = req.body;
+    if (!title) { res.status(400).json({ error: 'title is required' }); return; }
+    const goal = createGoal({
+      title,
+      description: description || '',
+      subtasks: subtasks || [],
+      priority,
+      tags,
+    });
+    res.status(201).json({ goal });
+  });
+
+  app.get('/api/goals/:id', (req, res) => {
+    const goal = getGoal(req.params.id);
+    if (!goal) { res.status(404).json({ error: 'Goal not found' }); return; }
+    res.json({ goal });
+  });
+
+  app.delete('/api/goals/:id', (req, res) => {
+    const deleted = deleteGoal(req.params.id);
+    if (!deleted) { res.status(404).json({ error: 'Goal not found' }); return; }
+    res.json({ deleted: true });
+  });
+
+  app.post('/api/goals/:id/subtasks', (req, res) => {
+    const { title, description } = req.body;
+    if (!title) { res.status(400).json({ error: 'title is required' }); return; }
+    const subtask = addSubtask(req.params.id, title, description || '');
+    if (!subtask) { res.status(404).json({ error: 'Goal not found' }); return; }
+    res.status(201).json({ subtask });
+  });
+
+  app.post('/api/goals/:id/subtasks/:sid/complete', (req, res) => {
+    const ok = completeSubtask(req.params.id, req.params.sid, req.body.result || 'Completed via UI');
+    if (!ok) { res.status(404).json({ error: 'Goal or subtask not found' }); return; }
+    res.json({ completed: true });
+  });
+
+  // ── Cron API ──────────────────────────────────────────────
+
+  app.get('/api/cron', (_req, res) => {
+    const store = getDb();
+    res.json({ jobs: store.cronJobs });
+  });
+
+  app.post('/api/cron', (req, res) => {
+    const { name, schedule, command } = req.body;
+    if (!name || !schedule || !command) {
+      res.status(400).json({ error: 'name, schedule, and command are required' }); return;
+    }
+    const store = getDb();
+    const id = crypto.randomUUID();
+    store.cronJobs.push({ id, name, schedule, command, enabled: true, created_at: new Date().toISOString() });
+    res.status(201).json({ job: { id, name, schedule, command, enabled: true } });
+  });
+
+  app.post('/api/cron/:id/toggle', (req, res) => {
+    const store = getDb();
+    const job = store.cronJobs.find(j => j.id === req.params.id);
+    if (!job) { res.status(404).json({ error: 'Cron job not found' }); return; }
+    job.enabled = typeof req.body.enabled === 'boolean' ? req.body.enabled : !job.enabled;
+    res.json({ job });
+  });
+
+  app.delete('/api/cron/:id', (req, res) => {
+    const store = getDb();
+    const idx = store.cronJobs.findIndex(j => j.id === req.params.id);
+    if (idx === -1) { res.status(404).json({ error: 'Cron job not found' }); return; }
+    store.cronJobs.splice(idx, 1);
+    res.json({ deleted: true });
+  });
+
+  // ── Recipe Run API ────────────────────────────────────────
+
+  app.post('/api/recipes/:id/run', async (req, res) => {
+    const recipe = getRecipe(req.params.id);
+    if (!recipe) { res.status(404).json({ error: 'Recipe not found' }); return; }
+    try {
+      const params = req.body.params || {};
+      const steps: Array<{ stepIndex: number; prompt: string }> = [];
+      for await (const step of runRecipe(req.params.id, params)) {
+        steps.push({ stepIndex: step.stepIndex, prompt: step.prompt });
+      }
+      res.json({ recipe: recipe.name, stepsExecuted: steps.length, steps });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }

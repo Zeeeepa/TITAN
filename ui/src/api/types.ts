@@ -156,6 +156,36 @@ export interface PersonaMeta {
   source?: string;
 }
 
+// ---- Activity ----
+export interface ActivityEvent {
+  timestamp: string;
+  level: string;
+  component: string;
+  message: string;
+  type: string; // tool, agent, autopilot, goal, search, autonomy, router, graph, error, system
+}
+
+export interface ActivityGoalSummary {
+  id: string;
+  title: string;
+  progress: number;
+}
+
+export interface ActivitySummary {
+  activeSessions: number;
+  toolCallsLast24h: number;
+  autopilotRunsToday: number;
+  autopilotEnabled: boolean;
+  autopilotNextRun: string | null;
+  activeGoals: number;
+  goals: ActivityGoalSummary[];
+  lastActivity: string | null;
+  currentModel: string;
+  autonomyMode: string;
+  status: 'idle' | 'processing' | 'autopilot';
+  graphStats: { entities: number; edges: number };
+}
+
 // ---- Models ----
 export interface ModelInfo {
   id: string;

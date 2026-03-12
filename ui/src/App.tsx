@@ -5,6 +5,7 @@ import { ConfigProvider } from '@/hooks/useConfig';
 import { SetupWizard } from '@/components/onboarding/SetupWizard';
 
 const ChatView = lazy(() => import('@/components/chat/ChatView'));
+const ActivityPanel = lazy(() => import('@/components/admin/ActivityPanel'));
 const OverviewPanel = lazy(() => import('@/components/admin/OverviewPanel'));
 const AgentsPanel = lazy(() => import('@/components/admin/AgentsPanel'));
 const SessionsPanel = lazy(() => import('@/components/admin/SessionsPanel'));
@@ -67,6 +68,7 @@ export default function App() {
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
             <Route path="/" element={<ChatView onVoiceOpen={() => setVoiceOpen(true)} />} />
+            <Route path="/activity" element={<AdminPage><ActivityPanel /></AdminPage>} />
             <Route path="/overview" element={<AdminPage><OverviewPanel /></AdminPage>} />
             <Route path="/agents" element={<AdminPage><AgentsPanel /></AdminPage>} />
             <Route path="/sessions" element={<AdminPage><SessionsPanel /></AdminPage>} />

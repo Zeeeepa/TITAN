@@ -32,6 +32,7 @@ interface SidebarProps {
 
 const navItems = [
   { label: 'Chat', icon: MessageSquare, path: '/' },
+  { label: 'Activity', icon: Radio, path: '/activity' },
   { label: 'Overview', icon: Activity, path: '/overview' },
   { label: 'Agents', icon: Users, path: '/agents' },
   { label: 'Sessions', icon: ScrollText, path: '/sessions' },

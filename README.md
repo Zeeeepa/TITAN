@@ -5,16 +5,16 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~112 tools, ~3,591 tests. Now with a gorgeous onboarding wizard. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~117 tools, ~3,691 tests. Autonomous persona, research pipeline, integrations panel, workflow engine. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-112-orange" alt="112 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-117-orange" alt="117 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
-  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C591-brightgreen" alt="3,591 Tests"/></a>
+  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C691-brightgreen" alt="3,691 Tests"/></a>
 </p>
 
 <p align="center">
@@ -58,13 +58,13 @@
 
 ---
 
-> **A Note to Early Adopters (v2026.10.4)**
+> **A Note to Early Adopters (v2026.10.10)**
 >
 > First off — **thank you.** If you installed TITAN before this version, you are a certified pioneer. You survived the Settings panel that showed nothing, the auth system that locked you out of your own agent, and chat responses that confidently told you your CPU was a "high-performance processor" without actually checking. We know. We're sorry. We're also laughing a little.
 >
-> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Four point releases in one day? Yes. We regret nothing. Each one fixed something real, and this one — **v2026.10.4** — is the one we're actually proud of.
+> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Ten point releases? Yes. We regret nothing. Each one fixed something real, and this one — **v2026.10.10** — is the one where TITAN truly becomes autonomous.
 >
-> **What's new:** A beautiful web-based onboarding wizard (your grandma could set this up now — no terminal required), real hardware detection that actually runs `nvidia-smi` instead of guessing, improved tool discovery so the agent stops pretending it can't do things it absolutely can, and a polished Mission Control dashboard that doesn't crash when you look at it funny.
+> **What's new:** An Integrations panel for managing 12 provider API keys and Google OAuth in one place, a full Workflows panel (Goals, Cron jobs, Recipes, Autopilot), autonomous persona with self-initiative, a research pipeline with autoresearch, TopFacts context plugin, checkpoint/resume for long-running tasks, and 17 admin panels in Mission Control. Plus 117 tools, 82 loaded skills, and 3,691 tests.
 >
 > We're getting there. Please hold on. The best is genuinely ahead, and we're building it as fast as humanly (and sometimes inhumanly) possible.
 >
@@ -150,7 +150,7 @@ TITAN queries the income tracker, pulls cost data from provider logs, runs the n
 **"Deploy this to my mini PC"**
 TITAN SSHs into the target machine via the mesh network, pulls the latest code, builds the Docker container, and reports back. All through the `shell` tool with mesh routing.
 
-No custom code required for any of the above. TITAN ships with 37 built-in skills exposing ~112 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
+No custom code required for any of the above. TITAN ships with 82 loaded skills exposing ~117 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
 
 ---
 
@@ -180,8 +180,8 @@ No custom code required for any of the above. TITAN ships with 37 built-in skill
        +----+----+       IRC                mDNS + Tailscale
        |         |       Mattermost         Peer Discovery
     Skills    Providers  Lark/Feishu        WS Transport
-    37 files  34 total   Email (IMAP)
-    ~112 tools (4 native  LINE               Voice
+    82 loaded 34 total   Email (IMAP)
+    ~117 tools (4 native  LINE               Voice
        |       + 30       Zulip             LiveKit WebRTC
     Memory     compat)
     Graph + RAG
@@ -285,7 +285,7 @@ When TITAN detects an ambitious request, it enters a multi-stage loop:
 | **Agents** | Spawn, stop, and monitor up to 5 agent instances |
 | **Settings** | 6-tab live config: AI, Providers, Channels, Security, Gateway, Profile |
 | **Channels** | Connection status for all 15 channel adapters |
-| **Skills** | 38 installed skills with per-skill enable/disable toggles |
+| **Skills** | 82 loaded skills with per-skill enable/disable toggles |
 | **Sessions** | Active sessions with message counts and history |
 | **Learning** | Tool success rates and knowledge base stats |
 | **Autopilot** | Schedule, status, history, and run control |
@@ -293,7 +293,8 @@ When TITAN detects an ambitious request, it enters a multi-stage loop:
 | **Logs** | Color-coded real-time log viewer with filtering |
 | **Mesh** | Peer management — approve, reject, revoke connections |
 | **Memory Graph** | Visual force-directed graph of entities and relationships |
-| **Workflows** | Visual drag-and-drop recipe builder with YAML export/import |
+| **Integrations** | 12 provider API key management + Google OAuth connection manager |
+| **Workflows** | Goals, Cron jobs, Recipes, and Autopilot — full workflow engine with YAML export/import |
 | **Telemetry** | Prometheus metrics — request counts, latency, token usage |
 
 The legacy dashboard is still available at `/legacy`.
@@ -473,7 +474,7 @@ Or add static peers manually: `titan mesh --add "192.168.1.100:48420"`
 
 ## MCP Server Mode
 
-TITAN can act as an **MCP server**, exposing all ~112 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
+TITAN can act as an **MCP server**, exposing all ~117 tools to other AI agents via the [Model Context Protocol](https://modelcontextprotocol.io/). Claude Code, Cursor, Windsurf, or any MCP client can connect and use TITAN's tools.
 
 **HTTP transport** (runs on the gateway port):
 ```json
@@ -537,7 +538,7 @@ print(f"Found {len(results)} results")
 
 ## Built-in Tools
 
-37 skills exposing ~112 tools. All individually toggleable from Mission Control.
+82 loaded skills exposing ~117 tools. All individually toggleable from Mission Control.
 
 | Category | Tools |
 |----------|-------|
@@ -567,11 +568,11 @@ print(f"Found {len(results)} results")
 
 ### Tool Search — Compact Mode
 
-TITAN doesn't dump all 108 tool schemas into every LLM call. It sends only 8 core tools plus `tool_search`. When the LLM needs a capability, it calls `tool_search("email")` and gets the relevant tools added dynamically.
+TITAN doesn't dump all 117 tool schemas into every LLM call. It sends only 8 core tools plus `tool_search`. When the LLM needs a capability, it calls `tool_search("email")` and gets the relevant tools added dynamically.
 
 ```
-Before: 108 tools x ~50 tokens each = ~5,400 input tokens
-After:  10 core tools + tool_search  = ~700 input tokens (87% reduction)
+Before: 117 tools x ~50 tokens each = ~5,850 input tokens
+After:  10 core tools + tool_search  = ~700 input tokens (88% reduction)
 ```
 
 Works with all 34 providers. Especially beneficial for smaller local models where context window is precious.
@@ -730,7 +731,7 @@ The temporal graph is pure TypeScript — no Neo4j, no Docker, no external servi
 
 ```bash
 npm run build          # tsup ESM production build
-npm run test           # vitest (3,591 tests across 108 files)
+npm run test           # vitest (3,691 tests across 114 files)
 npm run test:coverage  # ~82% line coverage
 npm run ci             # typecheck + full test suite
 npm run typecheck      # tsc --noEmit
@@ -746,6 +747,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ### Current (v2026.10.x)
 
+- **v2026.10.10**: Integrations panel (12 provider API keys + Google OAuth), Workflows panel (Goals, Cron, Recipes, Autopilot), autonomous persona, research pipeline with autoresearch, TopFacts context plugin, checkpoint/resume, 17 admin panels, 117 tools, 82 skills, 3,691 tests across 114 files
+- **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, polished Mission Control
 - **v2026.10.0**: Mission Control v2 — React 19 SPA with ChatGPT-style chat, distributed setup support, voice health endpoint, THIRD_PARTY_NOTICES.md
 - **v2026.9.6**: Version sync fix, mini PC deployment update
 - **v2026.9.5**: Visual Workflow Builder — drag-and-drop recipe editor, YAML export/import, node-graph canvas, 7 API endpoints

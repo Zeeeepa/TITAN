@@ -16,6 +16,8 @@ import type {
   PersonaMeta,
   ChatMessage,
   StreamEvent,
+  ActivityEvent,
+  ActivitySummary,
 } from './types';
 
 const BASE = '';
@@ -361,6 +363,22 @@ export async function switchPersona(persona: string): Promise<{ ok: boolean; act
 
 export async function getMetricsSummary(): Promise<Record<string, unknown>> {
   return request('/api/metrics/summary');
+}
+
+// ---- Activity ----
+
+export async function getActivityRecent(filter?: string, limit?: number): Promise<ActivityEvent[]> {
+  const params = new URLSearchParams();
+  if (filter && filter !== 'all') params.set('filter', filter);
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = await request<any>(`/api/activity/recent${qs ? `?${qs}` : ''}`);
+  return raw.events ?? [];
+}
+
+export async function getActivitySummary(): Promise<ActivitySummary> {
+  return request('/api/activity/summary');
 }
 
 // ---- Auth ----

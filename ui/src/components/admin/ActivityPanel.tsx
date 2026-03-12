@@ -1,0 +1,381 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Radio,
+  Pause,
+  Play,
+  Filter,
+  Cpu,
+  Zap,
+  Target,
+  BrainCircuit,
+  Clock,
+  RefreshCw,
+} from 'lucide-react';
+import { getActivityRecent, getActivitySummary } from '@/api/client';
+import type { ActivityEvent, ActivitySummary } from '@/api/types';
+
+const COMPONENT_COLORS: Record<string, string> = {
+  agent: '#6366f1',
+  toolrunner: '#22d3ee',
+  router: '#34d399',
+  graph: '#f59e0b',
+  autopilot: '#818cf8',
+  websearch: '#a78bfa',
+  autonomy: '#ef4444',
+  browse: '#22d3ee',
+  provider: '#34d399',
+  memory: '#f59e0b',
+  goal: '#34d399',
+  search: '#a78bfa',
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  tool: '#22d3ee',
+  agent: '#6366f1',
+  autopilot: '#818cf8',
+  goal: '#34d399',
+  search: '#a78bfa',
+  autonomy: '#ef4444',
+  router: '#34d399',
+  graph: '#f59e0b',
+  error: '#ef4444',
+  system: '#a1a1aa',
+};
+
+const FILTERS = ['All', 'Tools', 'Agent', 'System', 'Errors'] as const;
+type FilterType = (typeof FILTERS)[number];
+
+const filterToQuery: Record<FilterType, string> = {
+  All: 'all',
+  Tools: 'tool',
+  Agent: 'agent',
+  System: 'system',
+  Errors: 'errors',
+};
+
+function getComponentColor(component: string): string {
+  const key = component.toLowerCase().replace(/\s+/g, '');
+  return COMPONENT_COLORS[key] ?? '#a1a1aa';
+}
+
+function getTypeColor(type: string): string {
+  return TYPE_COLORS[type] ?? '#a1a1aa';
+}
+
+function StatusPill({ status }: { status: 'idle' | 'processing' | 'autopilot' }) {
+  const config: Record<string, { label: string; bg: string; text: string; pulse: boolean }> = {
+    idle: { label: 'Idle', bg: '#27272a', text: '#a1a1aa', pulse: false },
+    processing: { label: 'Processing', bg: '#22c55e20', text: '#22c55e', pulse: true },
+    autopilot: { label: 'Autopilot', bg: '#6366f120', text: '#818cf8', pulse: true },
+  };
+  const c = config[status];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={{ backgroundColor: c.bg, color: c.text }}
+    >
+      {c.pulse && (
+        <span
+          className="w-1.5 h-1.5 rounded-full animate-pulse"
+          style={{ backgroundColor: c.text }}
+        />
+      )}
+      {c.label}
+    </span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-[#27272a] bg-[#18181b] px-4 py-3">
+      <div className="rounded-md p-2" style={{ backgroundColor: '#6366f115' }}>
+        <Icon size={16} className="text-[#6366f1]" />
+      </div>
+      <div>
+        <div className="text-xs text-[#a1a1aa]">{label}</div>
+        <div className="text-sm font-semibold text-[#fafafa]">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function EventRow({ event }: { event: ActivityEvent }) {
+  const compColor = getComponentColor(event.component);
+  const typeColor = getTypeColor(event.type);
+  const time = event.timestamp
+    ? new Date(event.timestamp.replace(' ', 'T')).toLocaleTimeString()
+    : '';
+
+  return (
+    <div className="flex items-start gap-3 px-4 py-2.5 border-b border-[#27272a] last:border-b-0 hover:bg-[#27272a30] transition-colors">
+      <span className="shrink-0 font-mono text-[11px] text-[#52525b] pt-0.5 min-w-[68px]">
+        {time}
+      </span>
+      <span
+        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+        style={{ backgroundColor: compColor + '20', color: compColor }}
+      >
+        {event.component}
+      </span>
+      <span
+        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase"
+        style={{ backgroundColor: typeColor + '15', color: typeColor }}
+      >
+        {event.type}
+      </span>
+      <span className="min-w-0 break-all text-sm text-[#fafafa] leading-snug">
+        {event.message}
+      </span>
+    </div>
+  );
+}
+
+function ActivityPanel() {
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [summary, setSummary] = useState<ActivitySummary | null>(null);
+  const [filter, setFilter] = useState<FilterType>('All');
+  const [paused, setPaused] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [evts, sum] = await Promise.all([
+        getActivityRecent(filterToQuery[filter], 200),
+        getActivitySummary(),
+      ]);
+      setEvents(evts);
+      setSummary(sum);
+    } catch {
+      // Silently handle — data will show on next poll
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
+
+  // Initial load
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Auto-refresh every 2s when not paused
+  useEffect(() => {
+    if (!paused) {
+      intervalRef.current = setInterval(fetchData, 2000);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [paused, fetchData]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-16 animate-pulse rounded-xl border border-[#27272a] bg-[#18181b]" />
+        <div className="h-96 animate-pulse rounded-xl border border-[#27272a] bg-[#18181b]" />
+      </div>
+    );
+  }
+
+  const modelName = summary?.currentModel
+    ? summary.currentModel.includes('/')
+      ? summary.currentModel.split('/').slice(1).join('/')
+      : summary.currentModel
+    : '—';
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Radio size={20} className="text-[#6366f1]" />
+          <h2 className="text-lg font-semibold text-[#fafafa]">Activity</h2>
+          {summary && <StatusPill status={summary.status} />}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPaused((p) => !p)}
+            className="flex items-center gap-1.5 rounded-lg border border-[#27272a] bg-[#18181b] px-3 py-1.5 text-xs text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors"
+          >
+            {paused ? <Play size={12} /> : <Pause size={12} />}
+            {paused ? 'Resume' : 'Pause'}
+          </button>
+          <button
+            onClick={fetchData}
+            className="rounded-lg border border-[#27272a] bg-[#18181b] p-1.5 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#27272a] transition-colors"
+            title="Refresh now"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+      </div>
+
+      {/* Stats bar */}
+      {summary && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Active Sessions" value={summary.activeSessions} icon={Cpu} />
+          <StatCard label="Tool Calls (24h)" value={summary.toolCallsLast24h} icon={Zap} />
+          <StatCard label="Active Goals" value={summary.activeGoals} icon={Target} />
+          <StatCard label="Model" value={modelName} icon={BrainCircuit} />
+        </div>
+      )}
+
+      {/* Main content: feed + side panel */}
+      <div className="flex gap-4">
+        {/* Feed */}
+        <div className="flex-1 min-w-0">
+          {/* Filter bar */}
+          <div className="flex items-center gap-2 mb-3">
+            <Filter size={14} className="text-[#52525b]" />
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                style={{
+                  backgroundColor: filter === f ? '#6366f1' : '#27272a',
+                  color: filter === f ? '#ffffff' : '#a1a1aa',
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          {/* Event list */}
+          <div
+            ref={feedRef}
+            className="max-h-[540px] overflow-y-auto rounded-xl border border-[#27272a] bg-[#18181b]"
+          >
+            {events.length === 0 ? (
+              <p className="px-4 py-12 text-center text-[#52525b]">
+                No activity events{filter !== 'All' ? ` matching "${filter}"` : ''}
+              </p>
+            ) : (
+              events.map((event, i) => <EventRow key={i} event={event} />)
+            )}
+          </div>
+        </div>
+
+        {/* Side panel */}
+        {summary && (
+          <div className="hidden lg:block w-64 shrink-0 space-y-3">
+            {/* Autonomy mode */}
+            <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
+              <h3 className="text-xs font-semibold text-[#a1a1aa] uppercase tracking-wider mb-2">
+                Autonomy
+              </h3>
+              <span
+                className="inline-block rounded-full px-2.5 py-1 text-xs font-semibold capitalize"
+                style={{
+                  backgroundColor:
+                    summary.autonomyMode === 'autonomous' ? '#6366f120' : '#27272a',
+                  color: summary.autonomyMode === 'autonomous' ? '#818cf8' : '#a1a1aa',
+                }}
+              >
+                {summary.autonomyMode}
+              </span>
+            </div>
+
+            {/* Goals */}
+            <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
+              <h3 className="text-xs font-semibold text-[#a1a1aa] uppercase tracking-wider mb-2">
+                Active Goals
+              </h3>
+              {summary.goals.length === 0 ? (
+                <p className="text-xs text-[#52525b]">No active goals</p>
+              ) : (
+                <div className="space-y-2">
+                  {summary.goals.map((g) => (
+                    <div key={g.id}>
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="text-[#fafafa] truncate max-w-[140px]">{g.title}</span>
+                        <span className="text-[#a1a1aa]">{g.progress}%</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-[#27272a]">
+                        <div
+                          className="h-1 rounded-full transition-all"
+                          style={{
+                            width: `${g.progress}%`,
+                            backgroundColor: '#6366f1',
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Autopilot */}
+            <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
+              <h3 className="text-xs font-semibold text-[#a1a1aa] uppercase tracking-wider mb-2">
+                Autopilot
+              </h3>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#52525b]">Status</span>
+                  <span
+                    className="font-medium"
+                    style={{ color: summary.autopilotEnabled ? '#34d399' : '#a1a1aa' }}
+                  >
+                    {summary.autopilotEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#52525b]">Runs today</span>
+                  <span className="text-[#fafafa]">{summary.autopilotRunsToday}</span>
+                </div>
+                {summary.autopilotNextRun && (
+                  <div className="flex items-center gap-1 text-[#52525b] pt-1">
+                    <Clock size={10} />
+                    <span>
+                      Next:{' '}
+                      {new Date(summary.autopilotNextRun).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Memory Graph */}
+            <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
+              <h3 className="text-xs font-semibold text-[#a1a1aa] uppercase tracking-wider mb-2">
+                Memory Graph
+              </h3>
+              <div className="flex items-center gap-4 text-xs">
+                <div>
+                  <span className="text-[#52525b]">Entities: </span>
+                  <span className="text-[#fafafa] font-medium">
+                    {summary.graphStats.entities}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#52525b]">Edges: </span>
+                  <span className="text-[#fafafa] font-medium">{summary.graphStats.edges}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default ActivityPanel;

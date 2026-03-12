@@ -1857,6 +1857,127 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // ── Activity Feed ────────────────────────────────────────
+
+  app.get('/api/activity/recent', (req, res) => {
+    try {
+      const logPath = getLogFilePath();
+      if (!logPath || !fs.existsSync(logPath)) {
+        res.json({ events: [] });
+        return;
+      }
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 200;
+      const filter = (req.query.filter as string) || 'all';
+      const stats = fs.statSync(logPath);
+      const readSize = Math.min(stats.size, 200000); // Read last 200KB
+      const fd = fs.openSync(logPath, 'r');
+      const buf = Buffer.alloc(readSize);
+      fs.readSync(fd, buf, 0, readSize, Math.max(0, stats.size - readSize));
+      fs.closeSync(fd);
+      const content = buf.toString('utf-8');
+      const rawLines = content.split('\n').filter(Boolean);
+      const lines = stats.size > readSize ? rawLines.slice(1) : rawLines;
+
+      // Classify log lines into activity event types
+      const classifyEvent = (message: string, component: string): string => {
+        const lc = message.toLowerCase();
+        const cc = component.toLowerCase();
+        if (cc.includes('toolrunner') || lc.includes('executing tool') || lc.includes('tool:')) return 'tool';
+        if (cc.includes('agent') || lc.includes('processing message') || lc.includes('response')) return 'agent';
+        if (cc.includes('autopilot')) return 'autopilot';
+        if (cc.includes('goal')) return 'goal';
+        if (cc.includes('websearch') || cc.includes('browse') || lc.includes('search')) return 'search';
+        if (cc.includes('autonomy') || lc.includes('autonomy')) return 'autonomy';
+        if (cc.includes('router') || cc.includes('provider')) return 'router';
+        if (cc.includes('graph') || cc.includes('memory')) return 'graph';
+        if (lc.includes('error') || lc.includes('fail')) return 'error';
+        return 'system';
+      };
+
+      const events = lines
+        .map((line) => {
+          const match = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+(DEBUG|INFO|WARN|ERROR)\s+(?:\[([^\]]+)\]\s+)?(.*)$/);
+          if (!match) return null;
+          const [, timestamp, level, component = 'System', message] = match;
+          const type = classifyEvent(message, component);
+          return { timestamp, level: level.toLowerCase(), component, message, type };
+        })
+        .filter((e): e is NonNullable<typeof e> => {
+          if (!e) return false;
+          if (e.level === 'debug') return false; // Skip debug noise
+          if (filter === 'all') return true;
+          if (filter === 'errors') return e.level === 'error' || e.level === 'warn';
+          return e.type === filter;
+        })
+        .slice(-limit)
+        .reverse(); // Newest first
+
+      res.json({ events });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.get('/api/activity/summary', (_req, res) => {
+    try {
+      const cfg = loadConfig();
+      const sessions = listSessions();
+      const usage = getUsageStats();
+      const autopilot = getAutopilotStatus();
+      const goals = listGoals();
+
+      // Count tool calls from usage stats
+      const toolCalls = (usage as Record<string, unknown>).toolCalls ?? (usage as Record<string, unknown>).totalToolCalls ?? 0;
+
+      // Determine current status
+      let status: 'idle' | 'processing' | 'autopilot' = 'idle';
+      if (activeLlmRequests > 0) status = 'processing';
+      if (autopilot.isRunning) status = 'autopilot';
+
+      // Get last activity from log
+      let lastActivity: string | null = null;
+      try {
+        const logPath = getLogFilePath();
+        if (logPath && fs.existsSync(logPath)) {
+          const stat = fs.statSync(logPath);
+          lastActivity = stat.mtime.toISOString();
+        }
+      } catch { /* ignore */ }
+
+      // Graph stats
+      let graphStats = { entities: 0, edges: 0 };
+      try {
+        const gd = getGraphData();
+        graphStats = { entities: gd.nodes.length, edges: gd.edges.length };
+      } catch { /* graph may not be initialized */ }
+
+      const activeGoals = goals.filter((g) => g.status !== 'completed' && g.status !== 'failed');
+
+      res.json({
+        activeSessions: sessions.length,
+        toolCallsLast24h: toolCalls,
+        autopilotRunsToday: autopilot.totalRuns ?? 0,
+        autopilotEnabled: autopilot.enabled ?? false,
+        autopilotNextRun: autopilot.nextRunEstimate ?? null,
+        activeGoals: activeGoals.length,
+        goals: activeGoals.slice(0, 5).map((g) => ({
+          id: g.id,
+          title: g.title,
+          progress: g.progress ?? (g.subtasks
+            ? Math.round((g.subtasks.filter((s) => s.status === 'done').length / Math.max(g.subtasks.length, 1)) * 100)
+            : 0),
+        })),
+        lastActivity,
+        currentModel: cfg.agent.model,
+        autonomyMode: cfg.autonomy?.mode ?? 'supervised',
+        status,
+        graphStats,
+      });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   // ── API Documentation ────────────────────────────────────
   app.get('/api/docs', (_req, res) => {
     const spec = {

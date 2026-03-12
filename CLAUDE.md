@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.10
+- **Current version**: v2026.10.11
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -16,9 +16,9 @@
 | Stat | Value |
 |------|-------|
 | Providers | 34 (4 native + 30 OpenAI-compatible) |
-| Tools | ~112 across 37 skill files |
+| Tools | ~117 across 82 loaded skills |
 | Channels | 15 (Discord, Telegram, Slack, WhatsApp, Matrix, IRC, etc.) |
-| Tests | 3,591 across 108 files (vitest) |
+| Tests | 3,691 across 114 files (vitest) |
 | Default model | `anthropic/claude-sonnet-4-20250514` |
 | Gateway port | 48420 |
 
@@ -36,11 +36,11 @@ src/
 ├── memory/       # Memory, learning, graph, relationship, briefings
 ├── mesh/         # P2P mesh networking (mDNS, WebSocket, HMAC)
 ├── providers/    # LLM provider router + 34 providers
-├── skills/       # Builtin skills (36 files, ~112 tools) + dev skills
+├── skills/       # Builtin skills (82 loaded, ~117 tools) + dev skills
 ├── utils/        # Constants, helpers, hardware detection
 └── voice/        # LiveKit WebRTC voice integration
 ui/               # React 19 SPA (Vite + Tailwind CSS 4 + React Router v7)
-tests/            # 108 vitest test files
+tests/            # 114 vitest test files
 ```
 
 ## Build & Run
@@ -68,7 +68,7 @@ npm run typecheck
 ## Testing
 
 ```bash
-npm test                 # Run all 3,591 tests
+npm test                 # Run all 3,691 tests
 npm run test:watch       # Watch mode
 npx vitest run tests/core.test.ts  # Run specific file
 ```
@@ -114,6 +114,10 @@ Key endpoints:
 - `POST /api/model/switch` — Switch active model
 - `GET /api/stats` — System stats
 - `GET /api/voice/health` — Voice subsystem status
+- `GET /api/goals` — List all goals
+- `GET /api/cron` — List cron jobs
+- `POST /api/autopilot/toggle` — Enable/disable autopilot
+- `POST /api/recipes/:id/run` — Execute a saved recipe
 
 ## Mission Control v2 (React SPA)
 
@@ -123,7 +127,7 @@ Key files:
 - `ui/src/App.tsx` — Routes and layout
 - `ui/src/api/client.ts` — API client (transforms server responses)
 - `ui/src/api/types.ts` — TypeScript interfaces
-- `ui/src/components/admin/` — 10 admin panels
+- `ui/src/components/admin/` — 17 admin panels
 - `ui/src/components/chat/` — ChatGPT-style chat interface
 - `ui/src/hooks/useConfig.tsx` — Config + voice health hook
 
@@ -185,6 +189,7 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.11**: Integrations panel (12 provider API keys + Google OAuth), Workflows panel (Goals, Cron, Recipes, Autopilot), autonomous persona, research pipeline, autoresearch, TopFacts plugin, checkpoint/resume, 17 admin panels, 117 tools, 82 skills
 - **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, new admin panels
 - **v2026.10.3**: Settings panel data binding (models API shape, nested config keys)
 - **v2026.10.2**: Auth lockout fix (unconfigured token auth no longer blocks API)

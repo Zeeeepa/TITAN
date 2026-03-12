@@ -4,6 +4,14 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.11] — 2026-03-12
+
+### Added
+- **Activity Panel** — Live real-time feed showing TITAN's actions (tool calls, agent activity, system events, errors) with auto-refresh, filter buttons, pause/resume, status pills (Idle/Processing/Autopilot), and system summary side panel
+- **Activity API** — `GET /api/activity/recent` (parsed gateway log events with filter/limit) and `GET /api/activity/summary` (live system state aggregation)
+
+---
+
 ## [2026.10.10] — 2026-03-12
 
 ### Added

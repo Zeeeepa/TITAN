@@ -4,6 +4,13 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.8] — 2026-03-12
+
+### Fixed
+- **HelpPanel transparency** — Panel used undefined CSS variables making it see-through; replaced with hardcoded hex colors matching dark theme design system
+
+---
+
 ## [2026.10.7] — 2026-03-12
 
 ### Added

@@ -4,6 +4,16 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.9] — 2026-03-12
+
+### Fixed
+- **LearningPanel rewrite** — Panel now fetches from correct API endpoints (`/api/learning`, `/api/stats`, `/api/graphiti`), shows knowledge entries, tool tracking, error patterns, corrections, graph stats, and system metrics. Replaced broken CSS variables with hardcoded hex colors.
+
+### Added
+- **Autonomous operation** — AUTOPILOT.md checklist and SOUL.md persona for fully autonomous agent behavior with 30-minute autopilot cycles
+
+---
+
 ## [2026.10.8] — 2026-03-12
 
 ### Fixed

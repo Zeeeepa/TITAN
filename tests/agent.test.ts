@@ -92,6 +92,7 @@ vi.mock('../src/memory/memory.js', () => ({
 vi.mock('../src/memory/learning.js', () => ({
     recordToolResult: mockRecordToolResultLearning,
     getLearningContext: mockGetLearningContext,
+    learnFact: vi.fn(),
 }));
 
 vi.mock('../src/memory/relationship.js', () => ({
@@ -616,8 +617,8 @@ describe('Agent processMessage', () => {
 
         await processMessage('Tell me something');
 
-        // addEpisode should be called twice: once for user message, once for agent response
-        expect(mockAddEpisode).toHaveBeenCalledTimes(2);
+        // addEpisode should be called: user message (line 224), user context (line 361), agent response (line 722)
+        expect(mockAddEpisode).toHaveBeenCalledTimes(3);
         expect(mockAddEpisode).toHaveBeenCalledWith(
             expect.stringContaining('[TITAN'),
             'agent',

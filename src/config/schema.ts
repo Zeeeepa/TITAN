@@ -261,6 +261,36 @@ export const TeamConfigSchema = z.object({
     maxMembersPerTeam: z.number().default(50),
 });
 
+export const ResearchPipelineConfigSchema = z.object({
+    /** Enable multi-agent research pipeline */
+    enabled: z.boolean().default(true),
+    /** Maximum parallel researcher sub-agents */
+    maxParallelAgents: z.number().default(3),
+    /** Maximum rounds per researcher sub-agent */
+    maxRoundsPerAgent: z.number().default(10),
+    /** Maximum total sources across all sub-agents */
+    maxSources: z.number().default(30),
+    /** Compress intermediate results before synthesis */
+    compressIntermediateResults: z.boolean().default(true),
+    /** Default output format */
+    defaultOutputFormat: z.enum(['report', 'brief', 'raw']).default('report'),
+});
+
+export const AutoresearchConfigSchema = z.object({
+    /** Enable autonomous experimentation engine */
+    enabled: z.boolean().default(true),
+    /** Default max experiments per loop */
+    maxExperiments: z.number().default(20),
+    /** Default time budget in minutes */
+    timeBudgetMinutes: z.number().default(30),
+    /** Timeout per individual experiment in seconds */
+    experimentTimeoutSeconds: z.number().default(300),
+    /** Use git branches for experiment isolation */
+    gitBranching: z.boolean().default(true),
+    /** Directory for experiment results */
+    resultsDir: z.string().default('~/.titan/experiments'),
+});
+
 export const TitanConfigSchema = z.object({
     /** Whether the user has completed the web onboarding wizard */
     onboarded: z.boolean().default(false),
@@ -416,6 +446,8 @@ export const TitanConfigSchema = z.object({
         autoDelegate: z.boolean().default(true),
     }).default({}),
     teams: TeamConfigSchema.default({}),
+    researchPipeline: ResearchPipelineConfigSchema.default({}),
+    autoresearch: AutoresearchConfigSchema.default({}),
     mcp: z.object({
         /** MCP server mode — expose TITAN's tools to other agents */
         server: z.object({

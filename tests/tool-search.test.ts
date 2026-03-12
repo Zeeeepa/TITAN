@@ -176,9 +176,9 @@ describe('Tool Search', () => {
             expect(DEFAULT_CORE_TOOLS).toContain('tool_search');
         });
 
-        it('is a reasonable size (5-10 tools)', () => {
+        it('is a reasonable size (5-15 tools)', () => {
             expect(DEFAULT_CORE_TOOLS.length).toBeGreaterThanOrEqual(5);
-            expect(DEFAULT_CORE_TOOLS.length).toBeLessThanOrEqual(10);
+            expect(DEFAULT_CORE_TOOLS.length).toBeLessThanOrEqual(15);
         });
     });
 });

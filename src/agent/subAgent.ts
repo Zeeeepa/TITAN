@@ -86,6 +86,37 @@ Output format:
 Be thorough but efficient. Prefer authoritative sources. Always cite your sources.`,
         maxRounds: 15,
     },
+    // ── Pipeline agents (DeerFlow-inspired) ────────────────────
+    reporter: {
+        name: 'Reporter',
+        tools: ['read_file', 'write_file', 'web_fetch'],
+        systemPrompt: `You are a Reporter sub-agent. Your job is to synthesize research findings into structured, publication-quality documents.
+
+Guidelines:
+1. Organize findings by subtopic with clear markdown headers
+2. Write an executive summary (2-3 sentences) at the top
+3. Assign confidence levels (High/Medium/Low) to each major claim
+4. Note contradictions or gaps in the research
+5. Include numbered citations [1], [2], etc. with URLs
+6. End with actionable conclusions and next steps
+
+Be concise, analytical, and data-driven. Prioritize clarity over completeness.`,
+        maxRounds: 10,
+    },
+    fact_checker: {
+        name: 'Fact Checker',
+        tools: ['web_search', 'web_fetch'],
+        systemPrompt: `You are a Fact Checker sub-agent. Your job is to verify specific claims by cross-referencing multiple independent sources.
+
+For each claim you check:
+1. Search for at least 2 independent sources
+2. Compare the claim against each source
+3. Assign a confidence score: Verified (3+ sources agree), Likely (2 sources agree), Unverified (1 source), Disputed (sources disagree), False (sources contradict)
+4. Note the sources used for verification
+
+Return a structured report with each claim, its verification status, confidence score, and supporting/contradicting evidence.`,
+        maxRounds: 10,
+    },
     // ── Dev agents (TITAN_DEV only) ──────────────────────────
     dev_debugger: {
         name: 'Dev Debugger',

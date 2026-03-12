@@ -5,7 +5,7 @@
  */
 import { chat } from '../providers/router.js';
 import { classifyComplexity } from './costOptimizer.js';
-import { createPlan, getReadyTasks, startTask, completeTask, failTask, getPlanStatus, type Plan } from './planner.js';
+import { createPlan, getReadyTasks, startTask, completeTask, failTask, getPlanStatus, checkpointPlan, type Plan } from './planner.js';
 import { processMessage } from './agent.js';
 import type { TitanConfig } from '../config/schema.js';
 import logger from '../utils/logger.js';
@@ -243,6 +243,7 @@ export async function executePlan(
             try {
                 const result = await processMessage(taskPrompt, 'deliberation', 'system');
                 completeTask(plan.id, task.id, result.content.slice(0, 500));
+                checkpointPlan(plan.id);
                 state.results.push({ taskId: task.id, result: result.content, success: true });
                 priorResults.push(`[${task.id}: ${task.title}] ${result.content.slice(0, 200)}`);
                 onProgress?.({ type: 'deliberation:progress', taskId: task.id, status: 'done', result: result.content.slice(0, 200), planId: plan.id });

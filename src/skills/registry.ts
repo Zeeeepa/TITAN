@@ -237,6 +237,8 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerDeepResearchSkill } = await import('./builtin/deep_research.js');
     const { registerSystemInfoSkill } = await import('./builtin/system_info.js');
     const { registerPersonaManagerSkill } = await import('./builtin/persona_manager.js');
+    const { registerResearchPipelineSkill } = await import('./builtin/research_pipeline.js');
+    const { registerAutoresearchSkill } = await import('./builtin/autoresearch.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -279,6 +281,8 @@ export async function initBuiltinSkills(): Promise<void> {
         ['deep_research', registerDeepResearchSkill],
         ['system_info', registerSystemInfoSkill],
         ['persona_manager', registerPersonaManagerSkill],
+        ['research_pipeline', registerResearchPipelineSkill],
+        ['autoresearch', registerAutoresearchSkill],
     ];
 
     for (const [name, fn] of registrations) {
@@ -288,6 +292,15 @@ export async function initBuiltinSkills(): Promise<void> {
     // Register planner as an LLM-invocable tool
     const { registerPlannerTool } = await import('../agent/planner.js');
     try { registerPlannerTool(); } catch (e) { logger.warn(COMPONENT, `Failed to register planner: ${(e as Error).message}`); }
+
+    // Register TopFacts context engine plugin (DeerFlow-inspired persistent memory)
+    try {
+        const { createTopFactsPlugin } = await import('../plugins/topFacts.js');
+        const { registerPlugin } = await import('../plugins/registry.js');
+        const topFacts = createTopFactsPlugin();
+        registerPlugin(topFacts);
+        if (topFacts.bootstrap) await topFacts.bootstrap({});
+    } catch (e) { logger.warn(COMPONENT, `Failed to register TopFacts plugin: ${(e as Error).message}`); }
 
     // Register tool_search — meta-tool for discovering tools on demand
     const { getToolSearchHandler } = await import('../agent/toolSearch.js');

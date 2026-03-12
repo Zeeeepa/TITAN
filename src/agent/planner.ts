@@ -229,6 +229,99 @@ export function loadPlans(): void {
     }
 }
 
+// ── Checkpoint/Resume (DeerFlow-inspired crash recovery) ─────────
+
+export interface PlanCheckpoint {
+    planId: string;
+    lastCompletedTaskId: string | null;
+    intermediateResults: Record<string, string>;
+    savedAt: string;
+}
+
+/** Save a checkpoint of the current plan state for crash recovery */
+export function checkpointPlan(planId: string): void {
+    const plan = activePlans.get(planId);
+    if (!plan) return;
+
+    const checkpoint: PlanCheckpoint = {
+        planId,
+        lastCompletedTaskId: plan.tasks.filter(t => t.status === 'done').pop()?.id || null,
+        intermediateResults: Object.fromEntries(
+            plan.tasks.filter(t => t.result).map(t => [t.id, t.result!])
+        ),
+        savedAt: new Date().toISOString(),
+    };
+
+    try {
+        ensureDir(PLANS_DIR);
+        writeFileSync(
+            join(PLANS_DIR, `${planId}.checkpoint.json`),
+            JSON.stringify(checkpoint, null, 2),
+            'utf-8'
+        );
+        logger.debug(COMPONENT, `Checkpoint saved for plan ${planId}`);
+    } catch {
+        // Non-critical — checkpoint failure shouldn't break execution
+    }
+}
+
+/** Load a checkpoint for a plan */
+export function loadCheckpoint(planId: string): PlanCheckpoint | null {
+    const path = join(PLANS_DIR, `${planId}.checkpoint.json`);
+    try {
+        if (existsSync(path)) {
+            return JSON.parse(readFileSync(path, 'utf-8')) as PlanCheckpoint;
+        }
+    } catch {
+        logger.warn(COMPONENT, `Corrupt checkpoint for plan ${planId}, ignoring`);
+    }
+    return null;
+}
+
+/** Resume a plan from its last checkpoint. Returns the plan if resumable, null otherwise. */
+export function resumePlan(planId: string): Plan | null {
+    const plan = activePlans.get(planId);
+    if (!plan || plan.status !== 'active') return null;
+
+    const checkpoint = loadCheckpoint(planId);
+    if (!checkpoint) return null;
+
+    // Restore intermediate results into tasks
+    for (const task of plan.tasks) {
+        if (checkpoint.intermediateResults[task.id] && task.status !== 'done') {
+            task.result = checkpoint.intermediateResults[task.id];
+            task.status = 'done';
+            task.completedAt = checkpoint.savedAt;
+        }
+    }
+
+    // Re-evaluate blocked tasks
+    for (const task of plan.tasks) {
+        if (task.status === 'blocked' || task.status === 'pending') {
+            const allDepsDone = task.dependsOn.every(depId =>
+                plan.tasks.find(t => t.id === depId)?.status === 'done'
+            );
+            if (allDepsDone) task.status = 'pending';
+        }
+    }
+
+    savePlan(plan);
+    logger.info(COMPONENT, `Plan "${plan.goal}" resumed from checkpoint (last completed: ${checkpoint.lastCompletedTaskId})`);
+    return plan;
+}
+
+/** Get all plans with available checkpoints (for resume on startup) */
+export function getResumablePlans(): Array<{ planId: string; goal: string; checkpoint: PlanCheckpoint }> {
+    const resumable: Array<{ planId: string; goal: string; checkpoint: PlanCheckpoint }> = [];
+    for (const [id, plan] of activePlans.entries()) {
+        if (plan.status === 'active') {
+            const cp = loadCheckpoint(id);
+            if (cp) resumable.push({ planId: id, goal: plan.goal, checkpoint: cp });
+        }
+    }
+    return resumable;
+}
+
 /** Register the planner as an LLM-invocable tool */
 export function registerPlannerTool(): void {
     registerTool({

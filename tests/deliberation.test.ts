@@ -30,6 +30,7 @@ vi.mock('../src/agent/planner.js', () => ({
     completeTask: vi.fn(),
     failTask: vi.fn(),
     getPlanStatus: vi.fn(),
+    checkpointPlan: vi.fn(),
 }));
 
 vi.mock('../src/utils/logger.js', () => ({

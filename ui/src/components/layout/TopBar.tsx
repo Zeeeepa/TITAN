@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
-import { Settings } from 'lucide-react';
+import { Settings, HelpCircle } from 'lucide-react';
 import { useConfig } from '@/hooks/useConfig';
+import { HelpPanel } from '@/components/help/HelpPanel';
 
 interface TopBarProps {
   children?: React.ReactNode;
@@ -8,6 +10,7 @@ interface TopBarProps {
 
 export function TopBar({ children }: TopBarProps) {
   const { config, loading } = useConfig();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const isHealthy = Boolean(config);
 
@@ -41,12 +44,23 @@ export function TopBar({ children }: TopBarProps) {
         </div>
       </div>
 
-      <Link
-        to="/settings"
-        className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors"
-      >
-        <Settings size={18} />
-      </Link>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => setHelpOpen(true)}
+          className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors"
+          title="Help"
+        >
+          <HelpCircle size={18} />
+        </button>
+        <Link
+          to="/settings"
+          className="p-1.5 rounded-md text-[var(--text-secondary)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors"
+        >
+          <Settings size={18} />
+        </Link>
+      </div>
+
+      <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

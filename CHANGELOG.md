@@ -4,6 +4,26 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.7] — 2026-03-12
+
+### Added
+- **Research Pipeline** — DeerFlow-inspired multi-agent parallel research with plan decomposition, parallel sub-agent fan-out, synthesis with confidence scoring, and structured reports (`deep_research_pipeline` tool)
+- **Autonomous Experimentation** — Karpathy's autoresearch pattern: bounded iterative experimentation with git-as-memory, keep/discard/crash tracking, results.tsv audit trail (`experiment_loop` tool)
+- **TopFacts Memory Plugin** — DeerFlow-inspired persistent "What I Know About You" facts injected into system prompt via ContextEngine plugin (auto-extracts preferences, corrections, expertise from conversations)
+- **Checkpoint/Resume** — Plans checkpoint after each completed task for crash recovery (`checkpointPlan`, `loadCheckpoint`, `resumePlan`)
+- **Sub-agent templates** — `reporter` and `fact_checker` templates added to SUB_AGENT_TEMPLATES
+- **7 new recipes** — `/research`, `/market-analysis`, `/competitor-intel`, `/tech-report`, `/experiment`, `/optimize`, `/ab-test`
+- **Help Panel** — Context-sensitive "?" help panel with FAQ, glossary, and search in Mission Control
+- **Quick Actions** — Guided workflow prompt cards in empty chat state (Research, Experiment, Brainstorm, Debug, Explain, Market Analysis)
+- **100 new tests** — research-pipeline (15), autoresearch (16), top-facts (20), checkpoint (15), recipes-extended (22), deliberation checkpoint integration
+
+### Fixed
+- **agent.test.ts** — Added missing `learnFact` mock export, fixed `addEpisode` call count assertion
+- **autoresearch** — Fixed `||` to `??` for `timeBudgetMinutes`/`maxExperiments` so `0` values are respected
+- **tool-search.test.ts** — Updated `DEFAULT_CORE_TOOLS` bound for new tools
+
+---
+
 ## [2026.10.6] — 2026-03-10
 
 ### Added

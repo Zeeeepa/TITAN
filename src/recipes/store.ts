@@ -143,6 +143,113 @@ export function getBuiltinRecipes(): Recipe[] {
             tags: ['productivity', 'daily', 'briefing'],
             createdAt: now,
         },
+        // ── Research Pipeline Recipes (DeerFlow-inspired) ──────────
+        {
+            id: 'research',
+            name: 'Deep Research',
+            description: 'Research any topic with parallel agents and get a structured report',
+            slashCommand: 'research',
+            parameters: {
+                topic: { description: 'The topic or question to research', required: true },
+            },
+            steps: [
+                { prompt: 'Use the deep_research_pipeline tool to research: {{topic}}. Use standard depth with full report output.', tool: 'deep_research_pipeline' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['research', 'ai'],
+            createdAt: now,
+        },
+        {
+            id: 'market-analysis',
+            name: 'Market Analysis',
+            description: 'Analyze a market with competitive landscape and trends',
+            slashCommand: 'market-analysis',
+            parameters: {
+                market: { description: 'The market or industry to analyze', required: true },
+            },
+            steps: [
+                { prompt: 'Use the deep_research_pipeline tool to research: "Comprehensive market analysis of {{market}}: market size, growth trends, key players, competitive landscape, opportunities, and challenges in 2026". Use 4 sub-questions for thorough coverage.', tool: 'deep_research_pipeline' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['research', 'business'],
+            createdAt: now,
+        },
+        {
+            id: 'competitor-intel',
+            name: 'Competitor Intelligence',
+            description: 'Research a competitor with detailed analysis',
+            slashCommand: 'competitor-intel',
+            parameters: {
+                company: { description: 'The company to research', required: true },
+            },
+            steps: [
+                { prompt: 'Use the deep_research_pipeline tool to research: "Competitive intelligence report on {{company}}: products, pricing, market position, strengths, weaknesses, recent news, and strategic direction". Use 4 sub-questions.', tool: 'deep_research_pipeline' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['research', 'business'],
+            createdAt: now,
+        },
+        {
+            id: 'tech-report',
+            name: 'Tech Deep Dive',
+            description: 'Technical deep-dive report on a technology',
+            slashCommand: 'tech-report',
+            parameters: {
+                technology: { description: 'The technology to research', required: true },
+            },
+            steps: [
+                { prompt: 'Use the deep_research_pipeline tool to research: "Technical deep-dive on {{technology}}: architecture, capabilities, ecosystem, adoption, pros/cons, comparisons, and future outlook". Use deep depth.', tool: 'deep_research_pipeline' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['research', 'technology'],
+            createdAt: now,
+        },
+        // ── Experiment Recipes (Autoresearch-inspired) ──────────────
+        {
+            id: 'experiment',
+            name: 'Experiment Loop',
+            description: 'Start an autonomous experiment loop to optimize something',
+            slashCommand: 'experiment',
+            parameters: {
+                goal: { description: 'What to optimize', required: true },
+            },
+            steps: [
+                { prompt: 'Help me set up an experiment loop. My goal is: {{goal}}. Ask me what file to modify, what command to run for evaluation, and what metric to measure. Then use the experiment_loop tool to start.', tool: 'experiment_loop' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['experimentation', 'optimization'],
+            createdAt: now,
+        },
+        {
+            id: 'optimize',
+            name: 'Optimize',
+            description: 'Iteratively optimize a file or configuration',
+            slashCommand: 'optimize',
+            parameters: {
+                description: { description: 'What to optimize and how', required: true },
+            },
+            steps: [
+                { prompt: 'I want to optimize: {{description}}. Identify the target file, determine an appropriate eval command and metric, then use the experiment_loop tool to run iterative optimization experiments.' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['experimentation', 'optimization'],
+            createdAt: now,
+        },
+        {
+            id: 'ab-test',
+            name: 'A/B Test',
+            description: 'A/B test different approaches with measured results',
+            slashCommand: 'ab-test',
+            parameters: {
+                variants: { description: 'Description of the variants to test', required: true },
+            },
+            steps: [
+                { prompt: 'I want to A/B test: {{variants}}. Help me set up a controlled experiment using the experiment_loop tool. Define clear metrics and run each variant systematically.' },
+            ],
+            author: 'Tony Elliott',
+            tags: ['experimentation', 'testing'],
+            createdAt: now,
+        },
     ];
 }
 

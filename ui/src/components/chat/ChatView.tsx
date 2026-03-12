@@ -7,6 +7,7 @@ import { useConfig } from '@/hooks/useConfig';
 import { MessageBubble } from './MessageBubble';
 import { StreamingMessage } from './StreamingMessage';
 import { ChatInput } from './ChatInput';
+import { QuickActions } from './QuickActions';
 
 interface ChatViewProps {
   onVoiceOpen?: () => void;
@@ -209,6 +210,7 @@ function ChatView({ onVoiceOpen }: ChatViewProps) {
           </button>
         ))}
       </div>
+      <QuickActions onSelectAction={handleSend} visible={true} />
     </div>
   );
 

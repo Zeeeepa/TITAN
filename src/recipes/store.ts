@@ -250,6 +250,26 @@ export function getBuiltinRecipes(): Recipe[] {
             tags: ['experimentation', 'testing'],
             createdAt: now,
         },
+        // ── Web Automation Recipes ──────────────────────────────
+        {
+            id: 'fill-form',
+            name: 'Fill Web Form',
+            description: 'Fill a web form with your data — reads fields, fills, verifies, handles CAPTCHA',
+            slashCommand: 'fill-form',
+            parameters: {
+                url: { description: 'URL of the form to fill', required: true },
+                data: { description: 'JSON mapping field labels to values', required: true },
+            },
+            steps: [
+                {
+                    prompt: 'Use the smart_form_fill tool to fill the form at {{url}} with data: {{data}}. Set submit=true. If CAPTCHA is detected, tell me to complete it manually.',
+                    tool: 'smart_form_fill',
+                },
+            ],
+            author: 'Tony Elliott',
+            tags: ['web', 'forms', 'automation'],
+            createdAt: now,
+        },
     ];
 }
 

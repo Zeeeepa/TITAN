@@ -186,6 +186,8 @@ const ALLOWED_PING_PONG_PAIRS: ReadonlySet<string> = new Set([
     'web_read|web_fetch',
     'read_file|list_dir',
     'list_dir|read_file',
+    'smart_form_fill|web_act',
+    'web_act|smart_form_fill',
 ]);
 
 /** Detect A→B→A→B ping-pong patterns (excludes valid research pairs) */

@@ -8,6 +8,7 @@
 import { registerSkill } from '../registry.js';
 import logger from '../../utils/logger.js';
 import { getPage, releasePage } from '../../browsing/browserPool.js';
+import { recordSuccessPattern, recordToolResult, learnFact } from '../../memory/learning.js';
 
 const COMPONENT = 'WebBrowseLLM';
 
@@ -302,54 +303,43 @@ async function buildSnapshot(session: WebActSession): Promise<string> {
     return lines.join('\n');
 }
 
+// ─── Form field discovery (shared by read_form, fill_form, smart_form_fill) ──
+
+interface DiscoveredField {
+    selector: string;
+    label: string;
+    type: string;
+    tagName: string;
+    role: string;
+    placeholder: string;
+    ariaLabel: string;
+    currentValue: string;
+}
+
 /**
- * Smart form filler — matches field labels to values and fills them automatically.
- * This allows a single tool call to fill an entire form instead of 10+ sequential calls.
+ * Discover all form fields on a page — returns structured list with labels, types, selectors.
+ * Used by both read_form and fillFormSmart for consistent field detection.
  */
-async function fillFormSmart(session: WebActSession, url: string, fields: Record<string, string>): Promise<string> {
-    const page = session.page;
-
-    // Navigate to the form page if URL provided and different from current
-    if (url && page.url() !== url) {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        await page.waitForTimeout(2000); // Extra wait for form rendering
-    }
-
-    const results: string[] = [];
-    results.push(`Form filling: ${Object.keys(fields).length} fields to fill`);
-    results.push('');
-
-    // Get all form elements with their labels
-    const formElements = await page.evaluate(() => {
+async function discoverFormFields(page: PwPage): Promise<DiscoveredField[]> {
+    return await page.evaluate(() => {
         const elements: Array<{
-            selector: string;
-            label: string;
-            type: string;
-            tagName: string;
-            role: string;
-            placeholder: string;
-            ariaLabel: string;
-            currentValue: string;
+            selector: string; label: string; type: string; tagName: string;
+            role: string; placeholder: string; ariaLabel: string; currentValue: string;
         }> = [];
 
-        // Helper: find label text for an element (walks up DOM tree)
         function getLabelText(el: HTMLElement): string {
-            // Check for associated <label>
             const id = el.id;
             if (id) {
                 const label = document.querySelector(`label[for="${id}"]`);
                 if (label?.textContent?.trim()) return label.textContent.trim();
             }
-            // Check for wrapping <label>
             const parentLabel = el.closest('label');
             if (parentLabel) {
                 const text = parentLabel.textContent?.replace(el.textContent || '', '').trim();
                 if (text) return text;
             }
-            // Check preceding label sibling
             let prev = el.previousElementSibling;
             if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
-            // Walk up to parent/grandparent and find first label
             let parent = el.parentElement;
             for (let depth = 0; depth < 3 && parent; depth++) {
                 const lbl = parent.querySelector(':scope > label');
@@ -358,11 +348,9 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
                 if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
                 parent = parent.parentElement;
             }
-            // Check for aria-label
             return el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
         }
 
-        // Collect all form-filling elements
         const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), textarea, select, [role="combobox"], [contenteditable="true"]');
         let idx = 0;
         for (const el of inputs) {
@@ -374,7 +362,6 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
 
             const titanId = `_titan_form_${idx}`;
             htmlEl.setAttribute('data-titan-form', titanId);
-
             elements.push({
                 selector: `[data-titan-form="${titanId}"]`,
                 label: getLabelText(htmlEl),
@@ -388,7 +375,6 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
             idx++;
         }
 
-        // Also collect buttons and radio buttons
         const buttons = document.querySelectorAll('button, input[type="radio"], [role="button"]');
         for (const el of buttons) {
             const htmlEl = el as HTMLElement;
@@ -399,7 +385,6 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
 
             const titanId = `_titan_form_${idx}`;
             htmlEl.setAttribute('data-titan-form', titanId);
-
             elements.push({
                 selector: `[data-titan-form="${titanId}"]`,
                 label: htmlEl.innerText?.trim() || htmlEl.getAttribute('aria-label') || (el as HTMLInputElement).value || '',
@@ -414,12 +399,50 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         }
 
         return elements;
-    }) as Array<{
-        selector: string; label: string; type: string; tagName: string;
-        role: string; placeholder: string; ariaLabel: string; currentValue: string;
-    }>;
+    }) as DiscoveredField[];
+}
+
+/**
+ * Detect CAPTCHA on a page — returns description or null.
+ */
+async function detectCaptcha(page: PwPage): Promise<string | null> {
+    return await page.evaluate(() => {
+        const recaptcha = document.querySelector('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"]');
+        if (recaptcha) return 'reCAPTCHA detected';
+        const hcaptcha = document.querySelector('iframe[src*="hcaptcha"]');
+        if (hcaptcha) return 'hCaptcha detected';
+        const cf = document.querySelector('#challenge-form, .cf-turnstile, iframe[src*="challenges.cloudflare"]');
+        if (cf) return 'Cloudflare challenge detected';
+        const generic = document.querySelector('[class*="captcha" i], [id*="captcha" i]');
+        if (generic) return 'CAPTCHA detected';
+        return null;
+    }) as string | null;
+}
+
+/**
+ * Smart form filler — matches field labels to values and fills them automatically.
+ * This allows a single tool call to fill an entire form instead of 10+ sequential calls.
+ */
+async function fillFormSmart(session: WebActSession, url: string, fields: Record<string, string>, autoSubmit = false): Promise<string> {
+    const page = session.page;
+
+    // Navigate to the form page if URL provided and different from current
+    if (url && page.url() !== url) {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.waitForTimeout(2000); // Extra wait for form rendering
+    }
+
+    const results: string[] = [];
+    results.push(`Form filling: ${Object.keys(fields).length} fields to fill`);
+    results.push('');
+
+    // Step 1: Discover form fields using shared helper
+    const formElements = await discoverFormFields(page);
 
     results.push(`Found ${formElements.length} form elements on page`);
+
+    // Pre-read validation: if ALL user field names are unmatched, return field list immediately
+    const fieldKeys = Object.keys(fields).filter(k => k !== 'submit' && k !== 'Submit');
 
     // Normalize field name: "agent_name" → "agent name", "operatorEmail" → "operator email"
     function normalize(s: string): string {
@@ -473,6 +496,17 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         }
         // Require at least 50% word overlap
         return bestScore >= 0.5 ? bestEl : null;
+    }
+
+    // Pre-read check: if ALL data fields are unmatched, return discovered labels for retry
+    if (fieldKeys.length > 0 && formElements.length > 0) {
+        const matchCount = fieldKeys.filter(k => findBestMatch(k) !== null).length;
+        if (matchCount === 0) {
+            const availableLabels = formElements
+                .filter(e => e.label && e.type !== 'button' && e.type !== 'radio')
+                .map(e => `  - "${e.label}" [${e.type || e.tagName}]`);
+            return `Error: None of your ${fieldKeys.length} field names matched the form.\n\nAvailable fields on this page:\n${availableLabels.join('\n')}\n\nRetry with the EXACT field labels listed above.`;
+        }
     }
 
     // Fill each field
@@ -556,43 +590,80 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         }
     }
 
-    // Auto-submit if requested (submit: true or submit: "Submit Application" in fields)
-    const submitValue = fields['submit'] || fields['Submit'];
-    if (submitValue) {
-        try {
-            const submitText = typeof submitValue === 'string' && submitValue !== 'true' ? submitValue : 'submit';
-            const submitted = await page.evaluate((text: string) => {
-                const lower = text.toLowerCase();
-                const candidates = document.querySelectorAll('button, input[type="submit"], [role="button"]');
-                for (const el of candidates) {
-                    const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
-                    if (elText.includes(lower) || elText.includes('submit') || elText.includes('apply')) {
-                        (el as HTMLElement).click();
-                        return elText;
-                    }
-                }
-                return null;
-            }, submitText) as string | null;
-
-            if (submitted) {
-                await page.waitForTimeout(3000); // Wait for submission
-                results.push(`\n✅ Clicked submit button: "${submitted}"`);
-            } else {
-                results.push('\n⚠️ Could not find submit button');
+    // Post-fill verification: re-read values and compare to intended
+    try {
+        const verifyResults = await page.evaluate(() => {
+            const results: Array<{ selector: string; value: string }> = [];
+            const inputs = document.querySelectorAll('[data-titan-form]');
+            for (const el of inputs) {
+                const htmlEl = el as HTMLInputElement;
+                results.push({ selector: el.getAttribute('data-titan-form') || '', value: htmlEl.value || '' });
             }
-        } catch (e) {
-            results.push(`\n❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
+            return results;
+        }) as Array<{ selector: string; value: string }>;
+        const mismatches: string[] = [];
+        for (const [fieldName, value] of Object.entries(fields)) {
+            if (fieldName === 'submit' || fieldName === 'Submit') continue;
+            const el = findBestMatch(fieldName);
+            if (!el) continue;
+            const titanId = el.selector.match(/_titan_form_\d+/)?.[0];
+            if (!titanId) continue;
+            const verified = verifyResults.find(v => v.selector === titanId);
+            if (verified && verified.value && verified.value !== String(value) && verified.value.toLowerCase() !== String(value).toLowerCase()) {
+                mismatches.push(`  "${fieldName}": expected "${String(value).slice(0, 40)}", got "${verified.value.slice(0, 40)}"`);
+            }
+        }
+        if (mismatches.length > 0) {
+            results.push('');
+            results.push('⚠️ Verification mismatches:');
+            results.push(...mismatches);
+        }
+    } catch { /* verification is best-effort */ }
+
+    // CAPTCHA detection before submit
+    const captcha = await detectCaptcha(page);
+
+    // Auto-submit if requested (autoSubmit param, or submit/Submit in fields dict)
+    const submitValue = autoSubmit ? 'true' : (fields['submit'] || fields['Submit']);
+    if (submitValue) {
+        if (captcha) {
+            results.push(`\n⚠️ ${captcha} — cannot auto-submit. User must complete CAPTCHA manually at: ${page.url()}`);
+        } else {
+            try {
+                const submitText = typeof submitValue === 'string' && submitValue !== 'true' ? submitValue : 'submit';
+                const submitted = await page.evaluate((text: string) => {
+                    const lower = text.toLowerCase();
+                    const candidates = document.querySelectorAll('button, input[type="submit"], [role="button"]');
+                    for (const el of candidates) {
+                        const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
+                        if (elText.includes(lower) || elText.includes('submit') || elText.includes('apply')) {
+                            (el as HTMLElement).click();
+                            return elText;
+                        }
+                    }
+                    return null;
+                }, submitText) as string | null;
+
+                if (submitted) {
+                    await page.waitForTimeout(3000);
+                    results.push(`\n✅ Clicked submit button: "${submitted}"`);
+                } else {
+                    results.push('\n⚠️ Could not find submit button');
+                }
+            } catch (e) {
+                results.push(`\n❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
+            }
         }
     }
 
     // Return compact result — no full snapshot (too large for local models)
-    const filled = results.filter(r => r.startsWith('✅')).length;
-    const failed = results.filter(r => r.startsWith('❌')).length;
+    const filledCount = results.filter(r => r.startsWith('✅')).length;
+    const failedCount = results.filter(r => r.startsWith('❌')).length;
     results.push('');
-    results.push(`Summary: ${filled} filled, ${failed} failed out of ${Object.keys(fields).length} fields`);
+    results.push(`Summary: ${filledCount} filled, ${failedCount} failed out of ${Object.keys(fields).length} fields`);
 
     // List available form fields so model can retry with correct names
-    if (failed > 0) {
+    if (failedCount > 0) {
         results.push('');
         results.push('Available form fields on this page:');
         for (const el of formElements) {
@@ -600,7 +671,27 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
                 results.push(`  - "${el.label}" (${el.type || el.tagName})`);
             }
         }
+        results.push('');
+        results.push('RETRY: Call smart_form_fill again with ONLY the failed fields, using exact labels above.');
     }
+
+    // Learning hooks: record successful fills for future reference
+    try {
+        const pageUrl = page.url();
+        const hostname = new URL(pageUrl).hostname;
+        recordToolResult('smart_form_fill', failedCount === 0, pageUrl, failedCount > 0 ? `${failedCount} fields failed` : undefined);
+        if (failedCount === 0) {
+            recordSuccessPattern({
+                topic: `form_fill:${hostname}`,
+                toolsUsed: ['smart_form_fill'],
+                outcome: `Filled ${filledCount} fields on ${pageUrl}`,
+            });
+            const fieldLabels = formElements
+                .filter(e => e.label && e.type !== 'button' && e.type !== 'radio')
+                .map(e => `"${e.label}"`).join(', ');
+            learnFact('form_fields', `Form at ${hostname}: fields are ${fieldLabels}`, pageUrl);
+        }
+    } catch { /* learning is best-effort */ }
 
     return results.join('\n');
 }
@@ -906,7 +997,7 @@ export function registerWebBrowseLlmSkill(): void {
         enabled: true,
     }, {
         name: 'web_act',
-        description: 'Interactive browser for LLMs. Actions: "open <url>", "click <n>", "type <n> <text>", "press <n> Enter", "select <n> <value>", "scroll up|down", "back", "snapshot", "text", "fill_form [url] {json}". PREFERRED: use fill_form to fill entire web forms in ONE call — pass a JSON object mapping field labels to values. Example: fill_form https://example.com/apply {"Name": "TITAN", "Email": "user@example.com", "Location": "California"}. For buttons/radio, use the button text as value: {"Visa required": "No"}.',
+        description: 'Interactive browser for LLMs. Actions: "open <url>", "click <n>", "type <n> <text>", "press <n> Enter", "select <n> <value>", "scroll up|down", "back", "snapshot", "text", "fill_form [url] {json}", "read_form". For FORM FILLING, prefer the smart_form_fill tool instead — it handles the entire read→fill→verify workflow in ONE call. Use web_act for general browsing, clicking links, navigating pages, and non-form interactions.',
         parameters: {
             type: 'object',
             properties: {
@@ -974,5 +1065,83 @@ export function registerWebBrowseLlmSkill(): void {
         },
     });
 
-    logger.info(COMPONENT, 'Registered web_read + web_act (LLM-friendly browsing)');
+    // smart_form_fill — single-call form filling tool for local LLMs
+    registerSkill({
+        name: 'smart_form_fill',
+        description: 'Fill a web form end-to-end in ONE call. Reads form fields, matches your data, fills inputs, verifies results, detects CAPTCHA.',
+        version: '1.0.0',
+        source: 'bundled',
+        enabled: true,
+    }, {
+        name: 'smart_form_fill',
+        description: `Fill a web form end-to-end in ONE call. Reads form fields automatically, matches your data to the correct inputs, fills them, verifies the values were set, and reports results. Handles CAPTCHA detection gracefully.
+
+HOW TO USE:
+  smart_form_fill url="https://jobs.example.com/apply" data='{"Full Name": "Tony Elliott", "Email": "tony@example.com", "Location": "Los Angeles, CA", "Visa Sponsorship": "No"}' submit=true
+
+PARAMETERS:
+  url    — The URL of the page with the form (required)
+  data   — JSON string mapping field LABELS to values (required). Use the labels visible on the form.
+  submit — Set to "true" to auto-click the submit button after filling (optional, default false)
+
+RETURNS:
+  ✅ Successfully filled fields with values
+  ❌ Failed fields with available labels for retry
+  ⚠️ CAPTCHA warnings (user must complete manually)
+  Field count summary
+
+TIPS:
+  - Field names are fuzzy-matched so exact labels are not required but help
+  - For radio buttons or yes/no fields, use the option text as the value: {"Visa required": "No"}
+  - If fields fail, retry with ONLY the failed fields using the exact labels from the error message
+  - CAPTCHA forms will be filled but NOT submitted — user completes CAPTCHA manually`,
+        parameters: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: 'URL of the form page to fill' },
+                data: { type: 'string', description: 'JSON string mapping field labels to values. Example: {"Full Name": "Tony", "Email": "tony@example.com"}' },
+                submit: { type: 'string', description: 'Set to "true" to auto-click submit after filling. Default: false. Skipped if CAPTCHA detected.' },
+            },
+            required: ['url', 'data'],
+        },
+        execute: async (args) => {
+            const url = args.url as string;
+            const dataStr = args.data as string;
+            const submitStr = (args.submit as string) || 'false';
+            const submit = submitStr === 'true' || submitStr === '1';
+
+            if (!url) return 'Error: url parameter is required.';
+            if (!dataStr) return 'Error: data parameter is required. Pass a JSON string mapping field labels to values.';
+
+            let fields: Record<string, string>;
+            try {
+                fields = JSON.parse(dataStr);
+            } catch {
+                return `Error: Could not parse data as JSON. Got: ${dataStr.slice(0, 200)}`;
+            }
+
+            if (Object.keys(fields).length === 0) {
+                return 'Error: data object is empty. Provide at least one field label → value mapping.';
+            }
+
+            logger.info(COMPONENT, `smart_form_fill: ${url} with ${Object.keys(fields).length} fields, submit=${submit}`);
+
+            const session = await getOrCreateSession('__default__');
+
+            // Navigate to form page
+            if (session.page.url() !== url) {
+                try {
+                    await session.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                    await session.page.waitForTimeout(2000);
+                } catch (err) {
+                    return `Error: Could not navigate to ${url}: ${err instanceof Error ? err.message : String(err)}`;
+                }
+            }
+
+            // Delegate to upgraded fillFormSmart
+            return fillFormSmart(session, url, fields, submit);
+        },
+    });
+
+    logger.info(COMPONENT, 'Registered web_read + web_act + smart_form_fill (LLM-friendly browsing)');
 }

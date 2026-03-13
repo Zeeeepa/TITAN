@@ -43,9 +43,9 @@ describe('Recipes — Builtin Collection', () => {
     });
 
     describe('getBuiltinRecipes()', () => {
-        it('should return all 13 builtin recipes', () => {
+        it('should return all 14 builtin recipes', () => {
             const recipes = getBuiltinRecipes();
-            expect(recipes.length).toBe(13);
+            expect(recipes.length).toBe(14);
         });
 
         it('should include the 7 new recipes', () => {
@@ -240,7 +240,7 @@ describe('Recipes — Builtin Collection', () => {
 
         it('steps referencing tools should name valid tool strings', () => {
             const recipes = getBuiltinRecipes();
-            const validTools = ['deep_research_pipeline', 'experiment_loop'];
+            const validTools = ['deep_research_pipeline', 'experiment_loop', 'smart_form_fill'];
 
             for (const recipe of recipes) {
                 for (const step of recipe.steps) {

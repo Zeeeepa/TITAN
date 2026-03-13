@@ -53,6 +53,11 @@ export const SecurityConfigSchema = z.object({
         smart_form_fill: 60000,
         shell: 60000,
         code_exec: 120000,
+        self_improve_start: 1800000,     // 30 minutes — runs full experiment loop
+        self_improve_apply: 60000,
+        train_prepare: 300000,           // 5 minutes — scans session history
+        train_start: 7200000,            // 2 hours — GPU fine-tuning
+        train_deploy: 600000,            // 10 minutes — GGUF conversion + Ollama import
     }),
     /** Automatic retry for transient tool failures */
     toolRetry: z.object({

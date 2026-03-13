@@ -245,8 +245,15 @@ Rubric: ${rubric}`,
             });
 
             // Parse judge score
-            const jsonStr = judgeResponse.content.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
-            const parsed = JSON.parse(jsonStr);
+            if (!judgeResponse.content || judgeResponse.content.trim().length === 0) {
+                details.push(`  ${tc.prompt}: 0/${tc.maxScore || 10} — judge returned empty response`);
+                continue;
+            }
+            let judgeJson = judgeResponse.content.trim();
+            const judgeMatch = judgeJson.match(/\{[\s\S]*\}/);
+            if (judgeMatch) judgeJson = judgeMatch[0];
+            else judgeJson = judgeJson.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
+            const parsed = JSON.parse(judgeJson);
             const score = Math.min(parsed.score || 0, tc.maxScore || 10);
             totalScore += score;
             details.push(`  ${tc.prompt}: ${score}/${tc.maxScore || 10} — ${parsed.reason || 'no reason'}`);
@@ -405,10 +412,31 @@ Rules:
                 maxTokens: 1024,
             });
 
-            const jsonStr = response.content.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
-            const parsed = JSON.parse(jsonStr);
-            const searchStr = parsed.modification?.search || '';
-            const replaceStr = parsed.modification?.replace ?? '';
+            if (!response.content || response.content.trim().length === 0) {
+                logger.warn(COMPONENT, `Experiment ${i}: empty response from LLM — skipping`);
+                session.crashes++;
+                continue;
+            }
+
+            // Extract JSON from potential markdown code blocks or mixed content
+            let jsonStr = response.content.trim();
+            const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+            if (jsonMatch) jsonStr = jsonMatch[0];
+            else {
+                jsonStr = jsonStr.replace(/^```(?:json)?\s*/m, '').replace(/\s*```$/m, '').trim();
+            }
+
+            let parsed: Record<string, unknown>;
+            try {
+                parsed = JSON.parse(jsonStr);
+            } catch {
+                logger.warn(COMPONENT, `Experiment ${i}: invalid JSON response — skipping`);
+                session.crashes++;
+                continue;
+            }
+
+            const searchStr = (parsed.modification as Record<string, string>)?.search || '';
+            const replaceStr = (parsed.modification as Record<string, string>)?.replace ?? '';
 
             if (!searchStr || !currentContent.includes(searchStr)) {
                 session.crashes++;

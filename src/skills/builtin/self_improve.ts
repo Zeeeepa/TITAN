@@ -203,7 +203,8 @@ async function runEval(area: ImprovementArea): Promise<{ score: number; details:
     const currentPrompt = existsSync(promptPath) ? readFileSync(promptPath, 'utf-8') : '';
 
     const config = loadConfig();
-    const judgeModel = config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
+    const aliases = config.agent?.modelAliases as Record<string, string> | undefined;
+    const judgeModel = aliases?.local || aliases?.fast || config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
 
     let totalScore = 0;
     let maxPossible = 0;
@@ -368,7 +369,9 @@ async function selfImproveStart(args: Record<string, unknown>): Promise<string> 
     const startTime = Date.now();
     const timeBudgetMs = budgetMinutes * 60 * 1000;
     const originalContent = readFileSync(promptPath, 'utf-8');
-    const model = config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
+    // Use local/fast model alias for structured JSON tasks — main model may not handle JSON well
+    const aliases = config.agent?.modelAliases as Record<string, string> | undefined;
+    const model = aliases?.local || aliases?.fast || config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
 
     for (let i = 1; i <= maxExperiments; i++) {
         if (Date.now() - startTime >= timeBudgetMs) {

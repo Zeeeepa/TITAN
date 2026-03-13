@@ -203,8 +203,7 @@ async function runEval(area: ImprovementArea): Promise<{ score: number; details:
     const currentPrompt = existsSync(promptPath) ? readFileSync(promptPath, 'utf-8') : '';
 
     const config = loadConfig();
-    const aliases = config.agent?.modelAliases as Record<string, string> | undefined;
-    const judgeModel = aliases?.local || aliases?.fast || config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
+    const judgeModel = config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
 
     let totalScore = 0;
     let maxPossible = 0;
@@ -233,12 +232,12 @@ async function runEval(area: ImprovementArea): Promise<{ score: number; details:
                     {
                         role: 'system',
                         content: `You are a response quality judge. Score the AI response on a scale of 0-${tc.maxScore || 10}.
-Return ONLY a JSON object: {"score": <number>, "reason": "<brief reason>"}
-Rubric: ${rubric}`,
+Rubric: ${rubric}
+Respond with ONLY a JSON object, no other text: {"score": <number>, "reason": "<brief reason>"}`,
                     },
                     {
                         role: 'user',
-                        content: `User prompt: "${tc.prompt}"\n\nAI response: "${response.content}"`,
+                        content: `/no_think\nUser prompt: "${tc.prompt}"\n\nAI response: "${response.content}"\n\nRespond with only JSON:`,
                     },
                 ],
                 temperature: 0,
@@ -369,9 +368,7 @@ async function selfImproveStart(args: Record<string, unknown>): Promise<string> 
     const startTime = Date.now();
     const timeBudgetMs = budgetMinutes * 60 * 1000;
     const originalContent = readFileSync(promptPath, 'utf-8');
-    // Use local/fast model alias for structured JSON tasks — main model may not handle JSON well
-    const aliases = config.agent?.modelAliases as Record<string, string> | undefined;
-    const model = aliases?.local || aliases?.fast || config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
+    const model = config.agent?.model || 'anthropic/claude-sonnet-4-20250514';
 
     for (let i = 1; i <= maxExperiments; i++) {
         if (Date.now() - startTime >= timeBudgetMs) {
@@ -389,27 +386,27 @@ async function selfImproveStart(args: Record<string, unknown>): Promise<string> 
                 messages: [
                     {
                         role: 'system',
-                        content: `You are optimizing a prompt file to improve an AI agent's ${area.label.toLowerCase()}.
-Current score: ${session.bestScore}/100 (baseline: ${session.baselineScore}/100)
-Experiment ${i} of ${maxExperiments}.
-Area: ${area.description}
+                        content: `You are a prompt optimization expert. Your task: improve this AI agent prompt for better ${area.label.toLowerCase()}.
 
-Propose ONE specific modification to improve the prompt.
-Return ONLY valid JSON:
-{
-  "hypothesis": "what you expect this change to do",
-  "modification": {
-    "search": "exact string to find",
-    "replace": "replacement string"
-  }
-}
+CONTEXT:
+- Current score: ${session.bestScore}/100 (baseline: ${session.baselineScore}/100)
+- Experiment: ${i}/${maxExperiments}
+- Area: ${area.description}
 
-Rules:
-- "search" must be an EXACT substring of the current content
-- Make small, targeted changes
-- Learn from the current score to guide improvements`,
+INSTRUCTIONS:
+1. Read the current prompt below
+2. Identify ONE specific improvement
+3. Respond with ONLY a JSON object (no markdown, no explanation)
+
+REQUIRED FORMAT:
+{"hypothesis":"what this change will improve","modification":{"search":"exact substring to find in the prompt","replace":"the replacement text"}}
+
+RULES:
+- "search" must be an EXACT substring that appears in the current prompt
+- Make small, targeted changes — one sentence or phrase at a time
+- Do NOT wrap in code blocks or add any text outside the JSON`,
                     },
-                    { role: 'user', content: `Current prompt:\n${currentContent}` },
+                    { role: 'user', content: `/no_think\nCurrent prompt content:\n---\n${currentContent}\n---\nRespond with only JSON:` },
                 ],
                 temperature: 0.7,
                 maxTokens: 1024,

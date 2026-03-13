@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>TITAN — Feature Showcase</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #09090b;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+  }
+
+  body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(139, 92, 246, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* ═══ ORB ═══ */
+  #orb-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: opacity 2s ease;
+    z-index: 6;
+  }
+  #orb-container.visible { opacity: 1; }
+  #orb-container.top-small {
+    top: 12%;
+    transform: translate(-50%, -50%) scale(0.35);
+    transition: all 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #orb-container.center-full {
+    top: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    transition: all 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  canvas { display: block; }
+
+  /* ═══ SUBTITLE ═══ */
+  #subtitle {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    color: rgba(250, 250, 250, 0.92);
+    font-size: 28px;
+    font-weight: 300;
+    letter-spacing: 0.01em;
+    line-height: 1.6;
+    max-width: 950px;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    z-index: 10;
+    text-shadow: 0 2px 30px rgba(0,0,0,0.9);
+  }
+  #subtitle.visible { opacity: 1; }
+
+  /* ═══ BIG TAGLINES (cinematic text between sections) ═══ */
+  #tagline {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-size: 90px;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #a78bfa, #6366f1, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    background-size: 200% 200%;
+    animation: tagline-shimmer 3s ease infinite;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+    transition: opacity 0.5s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 15;
+    white-space: nowrap;
+    text-shadow: none;
+  }
+  #tagline.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  @keyframes tagline-shimmer {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  /* ═══ IMPACT TEXT (smaller punch lines under taglines) ═══ */
+  #impact-text {
+    position: absolute;
+    top: 58%;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(161, 161, 170, 0.7);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 15;
+    white-space: nowrap;
+  }
+  #impact-text.visible { opacity: 1; }
+
+  /* ═══ SCREEN SHAKE ═══ */
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-2px, -1px); }
+    30% { transform: translate(2px, 1px); }
+    50% { transform: translate(-1px, 2px); }
+    70% { transform: translate(1px, -2px); }
+    90% { transform: translate(-2px, 1px); }
+  }
+  body.shake { animation: shake 0.3s ease; }
+
+  /* ═══ PULSE RING (behind orb on beats) ═══ */
+  .pulse-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 400px;
+    height: 400px;
+    border-radius: 50%;
+    border: 2px solid rgba(139, 92, 246, 0.4);
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+  .pulse-ring.fire {
+    animation: ring-expand 1.2s ease-out forwards;
+  }
+  @keyframes ring-expand {
+    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.6; }
+    100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+  }
+
+  /* ═══ FLASH TRANSITION ═══ */
+  #flash {
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 25;
+    transition: opacity 0.15s ease;
+  }
+  #flash.pop { opacity: 0.12; }
+  #flash.hard-pop { opacity: 0.25; }
+
+  /* ═══ DRAMATIC VIGNETTE PULSE ═══ */
+  #vignette.intense {
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 100%);
+    transition: background 1s ease;
+  }
+
+  /* ═══ DASHBOARD MOCKUPS ═══ */
+  #dashboard-showcase {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    z-index: 8;
+    pointer-events: none;
+  }
+  #dashboard-showcase.visible { opacity: 1; }
+
+  .dash-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 920px;
+    background: rgba(12, 12, 18, 0.95);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 16px;
+    overflow: hidden;
+    opacity: 0;
+    z-index: 8;
+    box-shadow:
+      0 0 100px rgba(139, 92, 246, 0.12),
+      0 25px 80px rgba(0, 0, 0, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  /* Slide-in from left */
+  .dash-panel.from-left {
+    transform: translate(-60%, -50%) translateX(-120px);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dash-panel.from-left.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateX(0);
+  }
+  /* Slide-in from right */
+  .dash-panel.from-right {
+    transform: translate(-40%, -50%) translateX(120px);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dash-panel.from-right.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateX(0);
+  }
+  /* Scale up from center */
+  .dash-panel.from-center {
+    transform: translate(-50%, -50%) scale(0.88);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dash-panel.from-center.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* Slide up from bottom */
+  .dash-panel.from-bottom {
+    transform: translate(-50%, -40%) translateY(80px);
+    transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .dash-panel.from-bottom.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) translateY(0);
+  }
+
+  .panel-bar {
+    height: 40px;
+    background: rgba(18, 18, 26, 0.98);
+    border-bottom: 1px solid rgba(139, 92, 246, 0.12);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 7px;
+  }
+  .panel-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .panel-dot.r { background: #ef4444; }
+  .panel-dot.y { background: #eab308; }
+  .panel-dot.g { background: #22c55e; }
+  .panel-title {
+    margin-left: 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(161, 161, 170, 0.6);
+    letter-spacing: 0.06em;
+  }
+  .panel-body { padding: 24px; }
+
+  /* ─── Chat ─── */
+  .chat-messages { display: flex; flex-direction: column; gap: 14px; }
+  .chat-bubble {
+    max-width: 78%;
+    padding: 14px 18px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .chat-bubble.show { opacity: 1; transform: translateY(0); }
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.18));
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    color: #e2e8f0;
+  }
+  .chat-bubble.ai {
+    align-self: flex-start;
+    background: rgba(26, 26, 40, 0.85);
+    border: 1px solid rgba(63, 63, 70, 0.25);
+    color: #d4d4d8;
+  }
+  .chat-bubble .label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.12em; margin-bottom: 5px; display: block;
+  }
+  .chat-bubble.user .label { color: #a78bfa; }
+  .chat-bubble.ai .label { color: #22d3ee; }
+  .chat-input-bar {
+    margin-top: 18px; height: 44px; border-radius: 12px;
+    border: 1px solid rgba(63, 63, 70, 0.25);
+    background: rgba(20, 20, 30, 0.8);
+    display: flex; align-items: center; padding: 0 16px;
+    color: rgba(113, 113, 122, 0.5); font-size: 14px;
+  }
+
+  /* ─── Use Case Grid ─── */
+  .usecase-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .usecase-grid .tool-card { padding: 16px 14px; }
+  .usecase-grid .tool-name { font-size: 13px; line-height: 1.4; color: #d4d4d8; }
+
+  /* ─── Tools Grid ─── */
+  .tools-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .tool-card {
+    background: rgba(20, 20, 30, 0.7);
+    border: 1px solid rgba(63, 63, 70, 0.18);
+    border-radius: 12px;
+    padding: 18px 12px;
+    text-align: center;
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .tool-card.show { opacity: 1; transform: translateY(0) scale(1); }
+  .tool-icon { font-size: 30px; margin-bottom: 8px; }
+  .tool-name { font-size: 12px; font-weight: 500; color: #a1a1aa; letter-spacing: 0.04em; }
+  .tools-count {
+    text-align: center; margin-top: 18px; font-size: 15px;
+    color: rgba(139, 92, 246, 0.8); font-weight: 600; letter-spacing: 0.06em;
+  }
+
+  /* ─── Voice Grid ─── */
+  .voice-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .voice-card {
+    background: rgba(20, 20, 30, 0.7);
+    border: 1px solid rgba(63, 63, 70, 0.18);
+    border-radius: 14px;
+    padding: 16px 10px;
+    text-align: center;
+    opacity: 0;
+    transform: scale(0.88);
+    transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .voice-card.show { opacity: 1; transform: scale(1); }
+  .voice-card.active {
+    border-color: rgba(139, 92, 246, 0.5);
+    background: rgba(139, 92, 246, 0.08);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.1);
+  }
+  .voice-avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    margin: 0 auto 8px;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(99, 102, 241, 0.15));
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+  }
+  .voice-name { font-size: 13px; font-weight: 600; color: #d4d4d8; margin-bottom: 2px; }
+  .voice-style { font-size: 11px; color: #71717a; font-weight: 400; }
+
+  /* ─── Stats ─── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+  .stat-card {
+    background: rgba(20, 20, 30, 0.7);
+    border: 1px solid rgba(63, 63, 70, 0.18);
+    border-radius: 14px;
+    padding: 22px 16px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 38px; font-weight: 800;
+    background: linear-gradient(135deg, #a78bfa, #6366f1);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    font-size: 11px; color: #71717a; margin-top: 6px;
+    text-transform: uppercase; letter-spacing: 0.12em; font-weight: 500;
+  }
+
+  /* ═══ FEATURE PILLS ═══ */
+  #features {
+    position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+    max-width: 1100px; opacity: 0; transition: opacity 0.8s ease; z-index: 10;
+  }
+  #features.visible { opacity: 1; }
+  .pill {
+    padding: 8px 22px; border-radius: 999px; font-size: 14px; font-weight: 500;
+    letter-spacing: 0.04em;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    background: rgba(139, 92, 246, 0.06);
+    color: rgba(167, 139, 250, 0.9);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  .pill.show { opacity: 1; transform: translateY(0); }
+
+  /* ═══ FINAL REVEAL ═══ */
+  #title-reveal {
+    position: absolute; bottom: 230px; width: 100%; text-align: center;
+    font-size: 80px; font-weight: 800;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    background: linear-gradient(135deg, #a78bfa, #6366f1, #22d3ee);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    opacity: 0; transform: scale(0.85);
+    transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 10;
+  }
+  #title-reveal.visible { opacity: 1; transform: scale(1); }
+
+  #available {
+    position: absolute; bottom: 175px; width: 100%; text-align: center;
+    font-size: 20px; font-weight: 400;
+    letter-spacing: 0.25em; text-transform: uppercase;
+    color: rgba(161, 161, 170, 0.8);
+    opacity: 0; transition: opacity 0.8s ease; z-index: 10;
+  }
+  #available.visible { opacity: 1; }
+
+  #npm-badge {
+    position: absolute; bottom: 110px; width: 100%; text-align: center;
+    opacity: 0; transition: opacity 0.8s ease; z-index: 10;
+  }
+  #npm-badge.visible { opacity: 1; }
+  #npm-badge code {
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 22px;
+    padding: 10px 32px; border-radius: 12px;
+    background: rgba(34, 211, 238, 0.06);
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    color: #22d3ee; letter-spacing: 0.05em;
+  }
+
+  /* ═══ CLICK TO START ═══ */
+  #start-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; flex-direction: column;
+    gap: 16px; z-index: 30;
+    background: rgba(9, 9, 11, 0.8); cursor: pointer;
+    transition: opacity 0.6s ease;
+  }
+  #start-overlay.hidden { opacity: 0; pointer-events: none; }
+  #start-overlay h1 {
+    font-size: 56px; font-weight: 300; color: #fafafa; letter-spacing: 0.12em;
+  }
+  #start-overlay p { font-size: 16px; color: #52525b; }
+
+  /* ═══ RECORD BUTTON ═══ */
+  #record-btn {
+    margin-top: 24px;
+    padding: 12px 36px;
+    border-radius: 12px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+  }
+  #record-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+  #rec-indicator {
+    position: fixed;
+    top: 56px;
+    right: 20px;
+    z-index: 50;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  #rec-indicator.active { display: flex; }
+  #rec-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    animation: rec-pulse 1s ease infinite;
+  }
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ═══ CINEMATIC ═══ */
+  .cine-bar {
+    position: absolute; left: 0; right: 0; height: 44px;
+    background: #000; z-index: 20;
+  }
+  .cine-bar.top { top: 0; }
+  .cine-bar.bottom { bottom: 0; }
+
+  #vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.7) 100%);
+    pointer-events: none; z-index: 5;
+  }
+
+  #particles {
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 2;
+  }
+
+  /* ═══ SCAN LINE OVERLAY ═══ */
+  #scanlines {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 19;
+    opacity: 0.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="cine-bar top"></div>
+<div class="cine-bar bottom"></div>
+<div id="vignette"></div>
+<div id="scanlines"></div>
+<div id="flash"></div>
+<canvas id="particles"></canvas>
+
+<div id="orb-container">
+  <canvas id="orb" width="800" height="800"></canvas>
+</div>
+
+<div id="tagline"></div>
+<div id="impact-text"></div>
+<div id="subtitle"></div>
+<div class="pulse-ring" id="pulse1"></div>
+<div class="pulse-ring" id="pulse2"></div>
+<div class="pulse-ring" id="pulse3"></div>
+
+<!-- ═══ Dashboard Mockup Panels ═══ -->
+<div id="dashboard-showcase">
+
+  <!-- Chat Panel -->
+  <div class="dash-panel from-left" id="panel-chat">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; Mission Control</span>
+    </div>
+    <div class="panel-body">
+      <div class="chat-messages">
+        <div class="chat-bubble user">
+          <span class="label">You</span>
+          <span class="typed-text">Find the best flights to Tokyo next month and compare prices</span>
+        </div>
+        <div class="chat-bubble ai">
+          <span class="label">TITAN</span>
+          <span class="typed-text">I found 8 options across 4 airlines. The best deal is a direct flight for $487 on March 15th. I've saved a comparison to your desktop. Want me to book it?</span>
+        </div>
+        <div class="chat-bubble user">
+          <span class="label">You</span>
+          <span class="typed-text">Yes, and draft an email to my team about the trip</span>
+        </div>
+        <div class="chat-bubble ai">
+          <span class="label">TITAN</span>
+          <span class="typed-text">Done. Flight booked, confirmation sent to your inbox. Team email drafted and ready to send.</span>
+        </div>
+      </div>
+      <div class="chat-input-bar">Ask TITAN anything...</div>
+    </div>
+  </div>
+
+  <!-- Tools Panel -->
+  <div class="dash-panel from-right" id="panel-tools">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; Skills &amp; Tools</span>
+    </div>
+    <div class="panel-body">
+      <div class="tools-grid">
+        <div class="tool-card"><div class="tool-icon">🌐</div><div class="tool-name">Web Browser</div></div>
+        <div class="tool-card"><div class="tool-icon">💻</div><div class="tool-name">Code Runner</div></div>
+        <div class="tool-card"><div class="tool-icon">📧</div><div class="tool-name">Email</div></div>
+        <div class="tool-card"><div class="tool-icon">📁</div><div class="tool-name">File Manager</div></div>
+        <div class="tool-card"><div class="tool-icon">🏠</div><div class="tool-name">Smart Home</div></div>
+        <div class="tool-card"><div class="tool-icon">🎤</div><div class="tool-name">Voice Chat</div></div>
+        <div class="tool-card"><div class="tool-icon">🔍</div><div class="tool-name">Deep Research</div></div>
+        <div class="tool-card"><div class="tool-icon">📊</div><div class="tool-name">Data Analysis</div></div>
+        <div class="tool-card"><div class="tool-icon">🗓️</div><div class="tool-name">Calendar</div></div>
+        <div class="tool-card"><div class="tool-icon">📝</div><div class="tool-name">Writing</div></div>
+        <div class="tool-card"><div class="tool-icon">🎨</div><div class="tool-name">Image Gen</div></div>
+        <div class="tool-card"><div class="tool-icon">🔧</div><div class="tool-name">System Tools</div></div>
+      </div>
+      <div class="tools-count">100+ tools &mdash; and growing every week</div>
+    </div>
+  </div>
+
+  <!-- Stats Panel -->
+  <div class="dash-panel from-center" id="panel-stats">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; Overview</span>
+    </div>
+    <div class="panel-body">
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value" data-target="112" data-suffix="">0</div><div class="stat-label">Tools</div></div>
+        <div class="stat-card"><div class="stat-value" data-target="34" data-suffix="">0</div><div class="stat-label">AI Providers</div></div>
+        <div class="stat-card"><div class="stat-value" data-target="15" data-suffix="">0</div><div class="stat-label">Channels</div></div>
+        <div class="stat-card"><div class="stat-value" data-target="10" data-suffix="">0</div><div class="stat-label">Voices</div></div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-value" data-target="100" data-suffix="%">0</div><div class="stat-label">Local</div></div>
+        <div class="stat-card"><div class="stat-value" data-target="100" data-suffix="%">0</div><div class="stat-label">Private</div></div>
+        <div class="stat-card"><div class="stat-value no-count">$0</div><div class="stat-label">Monthly Fee</div></div>
+        <div class="stat-card"><div class="stat-value no-count">&infin;</div><div class="stat-label">Possibilities</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Business Use Cases Panel -->
+  <div class="dash-panel from-left" id="panel-business">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; For Your Business</span>
+    </div>
+    <div class="panel-body">
+      <div class="usecase-grid">
+        <div class="tool-card"><div class="tool-icon">📊</div><div class="tool-name">Analyze sales data and spot trends instantly</div></div>
+        <div class="tool-card"><div class="tool-icon">📧</div><div class="tool-name">Draft &amp; send customer emails automatically</div></div>
+        <div class="tool-card"><div class="tool-icon">📅</div><div class="tool-name">Schedule meetings across time zones</div></div>
+        <div class="tool-card"><div class="tool-icon">📝</div><div class="tool-name">Generate reports while you sleep</div></div>
+        <div class="tool-card"><div class="tool-icon">🔒</div><div class="tool-name">Your data stays on YOUR servers</div></div>
+        <div class="tool-card"><div class="tool-icon">💰</div><div class="tool-name">Zero monthly fees, unlimited usage</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Regular Users Panel -->
+  <div class="dash-panel from-right" id="panel-personal">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; For You</span>
+    </div>
+    <div class="panel-body">
+      <div class="usecase-grid">
+        <div class="tool-card"><div class="tool-icon">✈️</div><div class="tool-name">Find &amp; book the best flights for you</div></div>
+        <div class="tool-card"><div class="tool-icon">🏠</div><div class="tool-name">Control your smart home with your voice</div></div>
+        <div class="tool-card"><div class="tool-icon">🔍</div><div class="tool-name">Research anything &mdash; no tab overload</div></div>
+        <div class="tool-card"><div class="tool-icon">💬</div><div class="tool-name">Have a real conversation, not a text wall</div></div>
+        <div class="tool-card"><div class="tool-icon">🧠</div><div class="tool-name">It remembers you &mdash; every conversation</div></div>
+        <div class="tool-card"><div class="tool-icon">🎤</div><div class="tool-name">Talk to it like a friend, not a search bar</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Voice Panel -->
+  <div class="dash-panel from-bottom" id="panel-voice">
+    <div class="panel-bar">
+      <div class="panel-dot r"></div>
+      <div class="panel-dot y"></div>
+      <div class="panel-dot g"></div>
+      <span class="panel-title">TITAN &mdash; Choose Your Voice</span>
+    </div>
+    <div class="panel-body">
+      <div class="voice-grid">
+        <div class="voice-card active"><div class="voice-avatar">💜</div><div class="voice-name">Heart</div><div class="voice-style">Warm</div></div>
+        <div class="voice-card"><div class="voice-avatar">✨</div><div class="voice-name">Bella</div><div class="voice-style">Elegant</div></div>
+        <div class="voice-card"><div class="voice-avatar">⚡</div><div class="voice-name">Nova</div><div class="voice-style">Energetic</div></div>
+        <div class="voice-card"><div class="voice-avatar">🌊</div><div class="voice-name">River</div><div class="voice-style">Natural</div></div>
+        <div class="voice-card"><div class="voice-avatar">🔥</div><div class="voice-name">Fenrir</div><div class="voice-style">Bold</div></div>
+        <div class="voice-card"><div class="voice-avatar">🎯</div><div class="voice-name">Adam</div><div class="voice-style">Confident</div></div>
+        <div class="voice-card"><div class="voice-avatar">💎</div><div class="voice-name">Emma</div><div class="voice-style">Refined</div></div>
+        <div class="voice-card"><div class="voice-avatar">☁️</div><div class="voice-name">Sky</div><div class="voice-style">Calm</div></div>
+        <div class="voice-card"><div class="voice-avatar">🎭</div><div class="voice-name">Puck</div><div class="voice-style">Playful</div></div>
+        <div class="voice-card"><div class="voice-avatar">🎙️</div><div class="voice-name">Michael</div><div class="voice-style">Steady</div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="features">
+  <span class="pill">Browse the Web</span>
+  <span class="pill">Write Code</span>
+  <span class="pill">Send Emails</span>
+  <span class="pill">Manage Files</span>
+  <span class="pill">Smart Home</span>
+  <span class="pill">Voice Chat</span>
+  <span class="pill">100+ Tools</span>
+  <span class="pill">Runs Locally</span>
+  <span class="pill">Always Private</span>
+</div>
+
+<div id="title-reveal">TITAN</div>
+<div id="available">Available Now</div>
+<div id="npm-badge"><code>npm install -g titan-agent</code></div>
+
+<div id="rec-indicator"><div id="rec-dot"></div>REC</div>
+
+<div id="start-overlay">
+  <h1>TITAN</h1>
+  <p>Click anywhere to start (play only)</p>
+  <button id="record-btn">Record with Sound</button>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// TAB RECORDING (getDisplayMedia + MediaRecorder)
+// ════════════════════════════════════════════════════
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+
+async function startTabRecording() {
+  try {
+    // Request tab capture with audio — Chrome will show a
+    // one-click "Share this tab" confirmation
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'browser',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 },
+      },
+      audio: true,
+      preferCurrentTab: true,
+    });
+
+    recordedChunks = [];
+
+    // Use VP9 + Opus for best quality WebM
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+      ? 'video/webm;codecs=vp9,opus'
+      : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : 'video/webm';
+
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 8_000_000, // 8 Mbps for crisp visuals
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      // Auto-download the recording
+      const blob = new Blob(recordedChunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `TITAN-Teaser-${Date.now()}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Clean up
+      stream.getTracks().forEach(t => t.stop());
+      document.getElementById('rec-indicator').classList.remove('active');
+      isRecording = false;
+    };
+
+    // If user manually stops sharing via the Chrome UI bar
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    });
+
+    // Start recording — collect data every second
+    mediaRecorder.start(1000);
+    isRecording = true;
+    // Hide REC indicator and record button so they don't appear in the capture
+    document.getElementById('rec-indicator').classList.add('active');
+    document.getElementById('rec-indicator').style.display = 'none';
+    document.getElementById('record-btn').style.display = 'none';
+    return true;
+  } catch (err) {
+    console.error('Recording failed:', err);
+    alert('Recording failed: ' + err.message + '\n\nMake sure you click "Share" on the tab sharing dialog and check the "Share tab audio" box.');
+    return false;
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+}
+
+// ════════════════════════════════════════════════════
+// AUDIO
+// ════════════════════════════════════════════════════
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const analyser = audioCtx.createAnalyser();
+analyser.fftSize = 256;
+analyser.smoothingTimeConstant = 0.7;
+const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+// ── Choose audio set: swap 'hype' ↔ 'v2' when new recordings are ready ──
+const AUDIO_SET = 'v2';
+
+const segmentSets = {
+  hype: [
+    { src: 'audio/titan-hype-01.mp3', sub: 'What if you had an AI that actually worked for you? Not some company. Not the cloud. Just you.' },
+    { src: 'audio/titan-hype-02.mp3', sub: 'Meet TITAN. Your own personal AI that lives on your computer. It browses the web for you. Writes code. Sends emails. Controls your smart home. Manages your files. And it does it all without ever leaving your machine.' },
+    { src: 'audio/titan-hype-03.mp3', sub: 'No monthly fees. No limits on what you can ask. And when you run local models, your data never leaves your machine. Just pure, unlimited AI power, right at your fingertips.' },
+    { src: 'audio/titan-hype-04.mp3', sub: 'And yes, I can talk to you, just like this. Pick a voice you love, and let\'s get to work.' },
+    { src: 'audio/titan-hype-05.mp3', sub: 'TITAN. Your AI. Your rules. There are no more limits.' },
+  ],
+  v2: [
+    { src: 'audio/titan-v2-01.mp3', sub: 'So you\u2019re paying twenty bucks a month to talk to an AI that can\u2019t open links, forgot your name, and just told you it hit its daily limit. Very futuristic.' },
+    { src: 'audio/titan-v2-02.mp3', sub: 'What if your AI actually worked for you? On your machine. No cloud. No waiting. No\u2026 "I\u2019m sorry, but I can\u2019t help with that."' },
+    { src: 'audio/titan-v2-03.mp3', sub: 'Meet TITAN. It browses the web \u2014 actually browses it. Writes code. Sends emails. Books flights. Over a hundred tools. Thirty-four AI providers. Running on your hardware. Like a proper AI should.' },
+    { src: 'audio/titan-v2-04.mp3', sub: 'For businesses: it analyzes your data, drafts your emails, and generates reports \u2014 while your data stays on YOUR servers. For you: it books flights, controls your home, and has real conversations. No tech degree required.' },
+    { src: 'audio/titan-v2-05.mp3', sub: 'No subscriptions. And when you run local models, your data never leaves your house. No company deciding what you\u2019re allowed to ask. This is AI without a permission slip.' },
+    { src: 'audio/titan-v2-06.mp3', sub: 'Ten voices. Pick your favorite. I\u2019m not a text box \u2014 I\u2019m your co-pilot. And I actually remember what we talked about yesterday.' },
+    { src: 'audio/titan-v2-07.mp3', sub: 'TITAN. Your AI. Your rules. Built by one developer who thought you deserved better. And unlike most AI\u2026 I won\u2019t apologize for it.' },
+  ],
+};
+
+const segments = segmentSets[AUDIO_SET];
+
+let audioBuffers = [];
+
+async function loadAudio() {
+  for (const seg of segments) {
+    const resp = await fetch(seg.src);
+    const buf = await resp.arrayBuffer();
+    const decoded = await audioCtx.decodeAudioData(buf);
+    audioBuffers.push(decoded);
+  }
+}
+
+function playSegment(index) {
+  return new Promise((resolve) => {
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffers[index];
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    source.onended = resolve;
+    source.start(0);
+  });
+}
+
+function getAudioLevel() {
+  analyser.getByteFrequencyData(dataArray);
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+  return (sum / dataArray.length) / 255;
+}
+
+// ════════════════════════════════════════════════════
+// FLUID ORB
+// ════════════════════════════════════════════════════
+
+const canvas = document.getElementById('orb');
+const ctx = canvas.getContext('2d');
+const SIZE = 800;
+const DPR = 2;
+canvas.width = SIZE * DPR;
+canvas.height = SIZE * DPR;
+canvas.style.width = SIZE + 'px';
+canvas.style.height = SIZE + 'px';
+
+const logo = new Image();
+logo.src = '../titan-logo.png';
+let logoLoaded = false;
+logo.onload = () => { logoLoaded = true; };
+
+let time = 0;
+let audioLevel = 0.1;
+let currentColor = [100, 100, 140];
+let targetColor = [100, 100, 140];
+
+const PALETTES = {
+  idle:      { primary: [100, 100, 140], glow: 'rgba(100, 100, 200, 0.15)' },
+  user:      { primary: [34, 211, 238],  glow: 'rgba(34, 211, 238, 0.25)' },
+  assistant: { primary: [139, 92, 246],  glow: 'rgba(139, 92, 246, 0.3)' },
+};
+
+let currentSpeaker = 'idle';
+
+function setSpeaker(who) {
+  currentSpeaker = who;
+  targetColor = [...PALETTES[who].primary];
+}
+
+function drawOrb() {
+  time += 0.016;
+  const t = time;
+  const w = SIZE * DPR;
+  const h = SIZE * DPR;
+  ctx.clearRect(0, 0, w, h);
+
+  const rawLevel = getAudioLevel();
+  if (currentSpeaker === 'assistant') {
+    audioLevel += (Math.max(rawLevel * 1.8, 0.15) - audioLevel) * 0.15;
+  } else {
+    audioLevel += (0.12 - audioLevel) * 0.06;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    currentColor[i] += (targetColor[i] - currentColor[i]) * 0.035;
+  }
+  const [cr, cg, cb] = currentColor.map(Math.round);
+  const level = audioLevel;
+
+  const orbEl = document.getElementById('orb-container');
+  orbEl.style.filter = `drop-shadow(0 0 ${25 + level * 60}px ${PALETTES[currentSpeaker].glow})`;
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const baseR = w * 0.32;
+
+  for (let layer = 4; layer >= 0; layer--) {
+    const layerScale = 1 + layer * 0.12 + level * layer * 0.1;
+    const alpha = (0.07 - layer * 0.012) + level * 0.04;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    const pts = 150;
+    for (let i = 0; i <= pts; i++) {
+      const angle = (i / pts) * Math.PI * 2;
+      const n1 = Math.sin(angle * 3 + t * 1.2 + layer) * 0.08;
+      const n2 = Math.sin(angle * 5 - t * 0.8 + layer * 2) * 0.05;
+      const n3 = Math.sin(angle * 7 + t * 2.1) * 0.04 * level;
+      const audioWobble = Math.sin(angle * 2 + t * 3) * level * 0.15;
+      const r = baseR * layerScale * (1 + n1 + n2 + n3 + audioWobble);
+      const x = Math.cos(angle) * r;
+      const y = Math.sin(angle) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, baseR * layerScale * 1.3);
+    grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, ${alpha * 2.5})`);
+    grad.addColorStop(0.5, `rgba(${cr}, ${cg}, ${cb}, ${alpha})`);
+    grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  const mainPts = 180;
+  for (let i = 0; i <= mainPts; i++) {
+    const angle = (i / mainPts) * Math.PI * 2;
+    const n1 = Math.sin(angle * 3 + t * 1.5) * 0.04;
+    const n2 = Math.sin(angle * 5 - t * 1.0) * 0.025;
+    const audioWobble = Math.sin(angle * 4 + t * 3.5) * level * 0.07;
+    const breathe = Math.sin(t * 0.8) * 0.02;
+    const r = baseR * (1 + n1 + n2 + audioWobble + breathe);
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+
+  const mainGrad = ctx.createRadialGradient(-baseR * 0.2, -baseR * 0.2, baseR * 0.1, 0, 0, baseR * 1.1);
+  mainGrad.addColorStop(0, `rgba(${Math.min(255, cr + 80)}, ${Math.min(255, cg + 80)}, ${Math.min(255, cb + 80)}, 0.95)`);
+  mainGrad.addColorStop(0.5, `rgba(${cr}, ${cg}, ${cb}, 0.88)`);
+  mainGrad.addColorStop(1, `rgba(${Math.max(0, cr - 40)}, ${Math.max(0, cg - 40)}, ${Math.max(0, cb - 40)}, 0.82)`);
+  ctx.fillStyle = mainGrad;
+  ctx.fill();
+
+  const hlGrad = ctx.createRadialGradient(-baseR * 0.25, -baseR * 0.3, 0, -baseR * 0.1, -baseR * 0.15, baseR * 0.5);
+  hlGrad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+  hlGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.1)');
+  hlGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = hlGrad;
+  ctx.fill();
+  ctx.restore();
+
+  if (logoLoaded) {
+    const logoSize = baseR * 0.85;
+    const logoX = cx - logoSize / 2;
+    const logoY = cy - logoSize / 2;
+    const floatY = Math.sin(t * 1.2) * 4 * DPR;
+    const floatX = Math.cos(t * 0.9) * 3 * DPR;
+    ctx.save();
+    ctx.globalAlpha = 0.92 + level * 0.08;
+    ctx.shadowColor = `rgba(${cr}, ${cg}, ${cb}, ${0.5 + level * 0.3})`;
+    ctx.shadowBlur = 25 + level * 40;
+    ctx.beginPath();
+    ctx.arc(cx + floatX, cy + floatY, logoSize / 2 + 4, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(logo, logoX + floatX, logoY + floatY, logoSize, logoSize);
+    ctx.restore();
+  }
+
+  if (level > 0.08) {
+    const count = Math.floor(level * 18);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + t * 0.25;
+      const dist = baseR * (1.25 + Math.sin(t * 2 + i * 1.7) * 0.3 + level * 0.25);
+      const px = cx + Math.cos(angle) * dist;
+      const py = cy + Math.sin(angle) * dist;
+      const pSize = (2 + Math.sin(t * 3 + i) * 1.2) * DPR;
+      const pAlpha = 0.35 + Math.sin(t * 2 + i * 0.5) * 0.2;
+      ctx.beginPath();
+      ctx.arc(px, py, pSize, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${pAlpha})`;
+      ctx.fill();
+    }
+  }
+
+  requestAnimationFrame(drawOrb);
+}
+
+// ════════════════════════════════════════════════════
+// AMBIENT PARTICLES
+// ════════════════════════════════════════════════════
+
+const pCanvas = document.getElementById('particles');
+const pCtx = pCanvas.getContext('2d');
+pCanvas.width = window.innerWidth * 2;
+pCanvas.height = window.innerHeight * 2;
+pCanvas.style.width = '100vw';
+pCanvas.style.height = '100vh';
+
+const ambientParticles = [];
+for (let i = 0; i < 60; i++) {
+  ambientParticles.push({
+    x: Math.random() * pCanvas.width,
+    y: Math.random() * pCanvas.height,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: (Math.random() - 0.5) * 0.2 - 0.18,
+    size: Math.random() * 2.2 + 0.4,
+    alpha: Math.random() * 0.14 + 0.03,
+    hue: Math.random() > 0.5 ? '139, 92, 246' : '99, 102, 241',
+  });
+}
+
+function drawParticles() {
+  pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+  for (const p of ambientParticles) {
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.y < -10) p.y = pCanvas.height + 10;
+    if (p.x < -10) p.x = pCanvas.width + 10;
+    if (p.x > pCanvas.width + 10) p.x = -10;
+    pCtx.beginPath();
+    pCtx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+    pCtx.fillStyle = `rgba(${p.hue}, ${p.alpha})`;
+    pCtx.fill();
+  }
+  requestAnimationFrame(drawParticles);
+}
+
+// ════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════
+
+const subEl = document.getElementById('subtitle');
+const featEl = document.getElementById('features');
+const pills = document.querySelectorAll('.pill');
+const titleEl = document.getElementById('title-reveal');
+const availEl = document.getElementById('available');
+const npmEl = document.getElementById('npm-badge');
+const orbCont = document.getElementById('orb-container');
+const dashEl = document.getElementById('dashboard-showcase');
+const tagEl = document.getElementById('tagline');
+const flashEl = document.getElementById('flash');
+
+const impactEl = document.getElementById('impact-text');
+const vignetteEl = document.getElementById('vignette');
+
+function showSub(text) { subEl.textContent = text; subEl.classList.add('visible'); }
+function hideSub() { subEl.classList.remove('visible'); }
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function flash() {
+  flashEl.classList.add('pop');
+  await wait(120);
+  flashEl.classList.remove('pop');
+}
+
+async function hardFlash() {
+  flashEl.classList.add('hard-pop');
+  document.body.classList.add('shake');
+  await wait(200);
+  flashEl.classList.remove('hard-pop');
+  document.body.classList.remove('shake');
+}
+
+// Fire expanding pulse rings from the orb
+let pulseIndex = 0;
+function firePulseRing() {
+  const ring = document.getElementById(`pulse${(pulseIndex % 3) + 1}`);
+  ring.classList.remove('fire');
+  void ring.offsetWidth; // reflow to restart animation
+  ring.classList.add('fire');
+  pulseIndex++;
+}
+
+async function showTagline(text, duration, subtext) {
+  tagEl.textContent = text;
+  tagEl.classList.add('visible');
+  if (subtext) {
+    await wait(400);
+    impactEl.textContent = subtext;
+    impactEl.classList.add('visible');
+  }
+  await wait(duration);
+  tagEl.classList.remove('visible');
+  impactEl.classList.remove('visible');
+  await wait(300);
+}
+
+function showPanel(id) {
+  document.getElementById(id).classList.add('visible');
+}
+
+async function hidePanel(id) {
+  document.getElementById(id).classList.remove('visible');
+  await wait(200);
+}
+
+async function cascadeCards(selector) {
+  const cards = document.querySelectorAll(selector);
+  for (const card of cards) {
+    await wait(60);
+    card.classList.add('show');
+  }
+}
+
+async function cascadeBubbles() {
+  const bubbles = document.querySelectorAll('#panel-chat .chat-bubble');
+  for (const b of bubbles) {
+    await wait(350);
+    b.classList.add('show');
+  }
+}
+
+function animateCounters() {
+  const counters = document.querySelectorAll('.stat-value[data-target]');
+  counters.forEach(el => {
+    const target = parseInt(el.dataset.target);
+    const suffix = el.dataset.suffix || '';
+    const duration = 1200;
+    const startTime = performance.now();
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(eased * target);
+      el.textContent = current + suffix;
+      if (progress < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+// ════════════════════════════════════════════════════
+// SHOWCASE SEQUENCE
+// ════════════════════════════════════════════════════
+
+async function beginShowcase(withRecording = false) {
+  if (withRecording) {
+    const ok = await startTabRecording();
+    if (!ok) return; // user cancelled or error
+    // Brief pause so the Chrome share-tab UI disappears
+    // before the showcase starts
+    await wait(1500);
+  }
+
+  document.getElementById('start-overlay').classList.add('hidden');
+
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  drawOrb();
+  drawParticles();
+  await loadAudio();
+
+  // ─── Seg 0: THE SARCASTIC HOOK ───
+  // Dark, tense opening — "paying twenty bucks..."
+  vignetteEl.classList.add('intense');
+  await wait(800);
+
+  orbCont.classList.add('visible');
+  setSpeaker('idle');
+  firePulseRing();
+  await wait(1500);
+
+  setSpeaker('assistant');
+  showSub(segments[0].sub);
+  await playSegment(0);
+  hideSub();
+
+  await wait(300);
+
+  // ─── Seg 1: THE FLIP ───
+  // "What if your AI actually worked for you?"
+  await hardFlash();
+  firePulseRing();
+
+  showSub(segments[1].sub);
+  await playSegment(1);
+  hideSub();
+
+  // YOUR AI tagline punch
+  await hardFlash();
+  firePulseRing();
+  await showTagline('YOUR AI', 1500, 'not theirs');
+  vignetteEl.classList.remove('intense');
+
+  await wait(400);
+
+  // ─── Seg 2: THE POWER ───
+  // "Meet TITAN. It browses the web..." + dashboard
+  orbCont.classList.add('top-small');
+  await wait(600);
+  dashEl.classList.add('visible');
+  await wait(200);
+
+  // Chat panel slides in — bubbles cascade
+  showPanel('panel-chat');
+  await wait(300);
+  cascadeBubbles();
+  showSub(segments[2].sub);
+  await playSegment(2);
+  hideSub();
+  await hidePanel('panel-chat');
+
+  // HARD flash into tools
+  await hardFlash();
+  firePulseRing();
+
+  // Tools panel slides in from right
+  showPanel('panel-tools');
+  await cascadeCards('#panel-tools .tool-card');
+  await wait(1800);
+  await hidePanel('panel-tools');
+
+  // UNSTOPPABLE tagline
+  await hardFlash();
+  firePulseRing();
+  await showTagline('UNSTOPPABLE', 1200, '112 tools \u2022 34 providers \u2022 your hardware');
+
+  await wait(300);
+
+  // ─── Seg 3: THE AUDIENCE ───
+  // "For businesses... For you..." + dual panels
+  showPanel('panel-business');
+  await cascadeCards('#panel-business .tool-card');
+  showSub(segments[3].sub);
+  await playSegment(3);
+  hideSub();
+  await hidePanel('panel-business');
+  await flash();
+
+  // Personal panel
+  showPanel('panel-personal');
+  await cascadeCards('#panel-personal .tool-card');
+  await wait(2000);
+  await hidePanel('panel-personal');
+
+  // FOR EVERYONE tagline
+  await hardFlash();
+  firePulseRing();
+  await showTagline('FOR EVERYONE', 1200, 'businesses \u2022 creators \u2022 you');
+
+  await wait(300);
+
+  // ─── Seg 4: THE FREEDOM ───
+  // "No subscriptions..." + stats panel
+  showPanel('panel-stats');
+  animateCounters();
+  await wait(300);
+  showSub(segments[4].sub);
+  await playSegment(4);
+  hideSub();
+  await hidePanel('panel-stats');
+
+  // NO LIMITS tagline
+  await hardFlash();
+  firePulseRing();
+  await showTagline('NO LIMITS', 1600, 'no subscriptions \u2022 no cloud \u2022 no leash');
+
+  await wait(300);
+
+  // ─── Seg 5: THE VOICE ───
+  // "Ten voices. Pick your favorite..." + voice panel
+  showPanel('panel-voice');
+  await cascadeCards('.voice-card');
+  await wait(200);
+  showSub(segments[5].sub);
+  await playSegment(5);
+  hideSub();
+  await hidePanel('panel-voice');
+
+  // YOUR VOICE tagline
+  await flash();
+  firePulseRing();
+  await showTagline('YOUR VOICE', 1000);
+
+  // Clean up dashboard, restore orb
+  dashEl.classList.remove('visible');
+  orbCont.classList.remove('top-small');
+  orbCont.classList.add('center-full');
+  await wait(800);
+
+  // ─── Seg 6: THE CLOSER ───
+  // "TITAN. Your AI. Your rules. Built by one developer..."
+  vignetteEl.classList.add('intense');
+  await wait(500);
+
+  // YOUR RULES tagline
+  await hardFlash();
+  firePulseRing();
+  await showTagline('YOUR RULES', 1400, 'your machine \u2022 your data \u2022 your AI');
+  vignetteEl.classList.remove('intense');
+  await wait(200);
+
+  // Final narration — the killer closer
+  showSub(segments[6].sub);
+  await playSegment(6);
+  hideSub();
+
+  // ─── FINAL REVEAL ───
+  setSpeaker('idle');
+  await hardFlash();
+  firePulseRing();
+  firePulseRing();
+  await wait(300);
+
+  titleEl.classList.add('visible');
+  await wait(900);
+  availEl.classList.add('visible');
+  await wait(700);
+  npmEl.classList.add('visible');
+
+  // Feature pills cascade as finale
+  await wait(500);
+  featEl.classList.add('visible');
+  for (let i = 0; i < pills.length; i++) {
+    await wait(80);
+    pills[i].classList.add('show');
+    if (i % 3 === 0) firePulseRing(); // pulse every 3rd pill
+  }
+
+  // Hold final frame for 3 seconds, then auto-stop recording
+  if (isRecording) {
+    await wait(3000);
+    stopRecording();
+  }
+}
+
+// ════════════════════════════════════════════════════
+// EVENT HANDLERS
+// ════════════════════════════════════════════════════
+
+// Click overlay background = play only (no recording)
+document.getElementById('start-overlay').addEventListener('click', (e) => {
+  // Don't trigger if the record button was clicked
+  if (e.target.id === 'record-btn') return;
+  beginShowcase(false);
+});
+
+// Record button = start recording then play
+document.getElementById('record-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  beginShowcase(true);
+});
+</script>
+</body>
+</html>

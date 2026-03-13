@@ -48,6 +48,7 @@ const mockPage = {
 const mockContext = {
     newPage: vi.fn().mockResolvedValue(mockPage),
     close: vi.fn(),
+    addInitScript: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockBrowser = {

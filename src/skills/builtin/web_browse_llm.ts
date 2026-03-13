@@ -33,6 +33,7 @@ interface PwPage {
     waitForLoadState(state?: string): Promise<void>;
     $$(sel: string): Promise<Array<{ hover(): Promise<void> }>>;
     isClosed(): boolean;
+    waitForSelector(sel: string, opts?: { timeout?: number }): Promise<unknown>;
     $eval(sel: string, fn: (el: unknown) => unknown): Promise<unknown>;
 }
 
@@ -142,7 +143,7 @@ async function webRead(url: string, maxTokens: number): Promise<string> {
 
 // ─── web_act: Interactive browser with numbered elements ──────────
 
-interface WebActSession {
+export interface WebActSession {
     page: PwPage;
     lastUsed: number;
     elements: Map<number, string>; // id -> CSS selector
@@ -324,7 +325,7 @@ interface DiscoveredField {
  * Discover all form fields on a page — returns structured list with labels, types, selectors.
  * Used by both read_form and fillFormSmart for consistent field detection.
  */
-async function discoverFormFields(page: PwPage): Promise<DiscoveredField[]> {
+export async function discoverFormFields(page: PwPage): Promise<DiscoveredField[]> {
     return await page.evaluate(() => {
         const elements: Array<{
             selector: string; label: string; type: string; tagName: string;
@@ -409,7 +410,7 @@ async function discoverFormFields(page: PwPage): Promise<DiscoveredField[]> {
 /**
  * Detect CAPTCHA on a page — returns description or null.
  */
-async function detectCaptcha(page: PwPage): Promise<string | null> {
+export async function detectCaptcha(page: PwPage): Promise<string | null> {
     return await page.evaluate(() => {
         const recaptcha = document.querySelector('iframe[src*="recaptcha"], iframe[src*="google.com/recaptcha"]');
         if (recaptcha) return 'reCAPTCHA detected';
@@ -427,20 +428,38 @@ async function detectCaptcha(page: PwPage): Promise<string | null> {
  * Smart form filler — matches field labels to values and fills them automatically.
  * This allows a single tool call to fill an entire form instead of 10+ sequential calls.
  */
-async function fillFormSmart(session: WebActSession, url: string, fields: Record<string, string>, autoSubmit = false): Promise<string> {
+export async function fillFormSmart(session: WebActSession, url: string, fields: Record<string, string>, autoSubmit = false): Promise<string> {
     const page = session.page;
+    const pageErrors: string[] = [];
 
     // Navigate to the form page if URL provided and different from current
     if (url && page.url() !== url) {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        // Monitor for network/console errors during page load
+        try {
+            const realPage = page as unknown as import('playwright').Page;
+            realPage.on('pageerror', (err) => pageErrors.push(`JS Error: ${err.message}${err.stack ? '\n  Stack: ' + err.stack.split('\n').slice(1, 4).join('\n  ') : ''}`));
+            realPage.on('requestfailed', (req) => pageErrors.push(`Network fail: ${req.url().slice(0, 150)} → ${req.failure()?.errorText || 'unknown'}`));
+            realPage.on('console', (msg) => {
+                const text = msg.text().slice(0, 300);
+                if (msg.type() === 'error') pageErrors.push(`Console error: ${text}`);
+                else if (msg.type() === 'warning') pageErrors.push(`Console warn: ${text}`);
+            });
+        } catch { /* page type mismatch is non-fatal */ }
+
+        await page.goto(url, { waitUntil: 'networkidle', timeout: 45_000 });
         // Wait for JS-rendered forms (SPA frameworks like React/Ashby need extra time)
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(3000);
         // Try to wait for form inputs to appear (best-effort)
         try {
-            await page.waitForSelector('input, textarea, select, [role="combobox"]', { timeout: 10_000 });
-            await page.waitForTimeout(1000); // Extra buffer after first input appears
+            await page.waitForSelector('input, textarea, select, [role="combobox"], [contenteditable]', { timeout: 15_000 });
+            await page.waitForTimeout(2000); // Extra buffer after first input appears
         } catch {
-            logger.warn(COMPONENT, 'fillFormSmart: No form inputs found after 10s wait');
+            logger.warn(COMPONENT, 'fillFormSmart: No form inputs found after 15s wait');
+            // Last resort: scroll down and try again (some SPAs lazy-load forms)
+            try {
+                await page.evaluate(() => window.scrollTo(0, 500));
+                await page.waitForTimeout(3000);
+            } catch { /* best-effort */ }
         }
     }
 
@@ -455,6 +474,25 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
     const results: string[] = [];
     results.push(`Form filling: ${Object.keys(fields).length} fields to fill`);
     results.push('');
+
+    // Quick page state check
+    try {
+        const pageState = await page.evaluate(() => ({
+            url: location.href,
+            title: document.title,
+            inputCount: document.querySelectorAll('input, textarea, select').length,
+        })) as any;
+        logger.info(COMPONENT, `fillFormSmart: page="${pageState.title}", inputs=${pageState.inputCount}`);
+    } catch { /* non-fatal */ }
+
+    // Log any network/JS errors captured during page load
+    if (pageErrors.length > 0) {
+        logger.warn(COMPONENT, `fillFormSmart: ${pageErrors.length} page errors during load:`);
+        for (const err of pageErrors.slice(0, 20)) {
+            logger.warn(COMPONENT, `  ${err}`);
+        }
+        results.push(`⚠️ ${pageErrors.length} page errors detected during load (check logs)`);
+    }
 
     // Step 1: Discover form fields using shared helper
     const formElements = await discoverFormFields(page);
@@ -651,34 +689,47 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
 
     // Auto-submit if requested (autoSubmit param, or submit/Submit in fields dict)
     const submitValue = autoSubmit ? 'true' : (fields['submit'] || fields['Submit']);
-    if (submitValue) {
-        if (captcha) {
-            results.push(`\n⚠️ ${captcha} — cannot auto-submit. User must complete CAPTCHA manually at: ${page.url()}`);
-        } else {
-            try {
-                const submitText = typeof submitValue === 'string' && submitValue !== 'true' ? submitValue : 'submit';
-                const submitted = await page.evaluate((text: string) => {
-                    const lower = text.toLowerCase();
-                    const candidates = document.querySelectorAll('button, input[type="submit"], [role="button"]');
-                    for (const el of candidates) {
-                        const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
-                        if (elText.includes(lower) || elText.includes('submit') || elText.includes('apply')) {
-                            (el as HTMLElement).click();
-                            return elText;
-                        }
-                    }
-                    return null;
-                }, submitText) as string | null;
-
-                if (submitted) {
-                    await page.waitForTimeout(3000);
-                    results.push(`\n✅ Clicked submit button: "${submitted}"`);
-                } else {
-                    results.push('\n⚠️ Could not find submit button');
-                }
-            } catch (e) {
-                results.push(`\n❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
+    let captchaSolved = false;
+    if (submitValue && captcha) {
+        // Try CapSolver if configured
+        try {
+            const { solveCaptcha } = await import('../../browsing/captchaSolver.js');
+            const solveResult = await solveCaptcha(page as unknown as import('playwright').Page);
+            if (solveResult.solved) {
+                results.push(`\n✅ ${solveResult.type} solved via CapSolver`);
+                captchaSolved = true;
+            } else {
+                results.push(`\n⚠️ ${captcha} — CapSolver: ${solveResult.error || 'failed'}. User must complete CAPTCHA manually at: ${page.url()}`);
             }
+        } catch {
+            results.push(`\n⚠️ ${captcha} — cannot auto-submit. User must complete CAPTCHA manually at: ${page.url()}`);
+        }
+    }
+
+    if (submitValue && (!captcha || captchaSolved)) {
+        try {
+            const submitText = typeof submitValue === 'string' && submitValue !== 'true' ? submitValue : 'submit';
+            const submitted = await page.evaluate((text: string) => {
+                const lower = text.toLowerCase();
+                const candidates = document.querySelectorAll('button, input[type="submit"], [role="button"]');
+                for (const el of candidates) {
+                    const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
+                    if (elText.includes(lower) || elText.includes('submit') || elText.includes('apply')) {
+                        (el as HTMLElement).click();
+                        return elText;
+                    }
+                }
+                return null;
+            }, submitText) as string | null;
+
+            if (submitted) {
+                await page.waitForTimeout(3000);
+                results.push(`\n✅ Clicked submit button: "${submitted}"`);
+            } else {
+                results.push('\n⚠️ Could not find submit button');
+            }
+        } catch (e) {
+            results.push(`\n❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
         }
     }
 

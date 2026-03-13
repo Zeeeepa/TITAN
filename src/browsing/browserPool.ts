@@ -119,16 +119,17 @@ try {
     }
 } catch {}
 
-// 9. Prevent stack trace fingerprinting (Playwright functions have unique names)
-const originalError = Error;
-Error = class extends originalError {
-    constructor(...args) {
-        super(...args);
-        if (this.stack) {
-            this.stack = this.stack.replace(/__playwright/g, '__chrome');
-        }
-    }
-};
+// 9. Prevent stack trace fingerprinting (hide Playwright references in stack traces)
+// NOTE: We patch Error.prepareStackTrace instead of replacing the Error constructor,
+// because replacing Error breaks ES6 class inheritance on many sites
+// (causes "Class constructor Error cannot be invoked without 'new'")
+if (typeof Error.prepareStackTrace === 'undefined' || true) {
+    const origPrepare = Error.prepareStackTrace;
+    Error.prepareStackTrace = function(err, stack) {
+        const result = origPrepare ? origPrepare(err, stack) : err.stack;
+        return typeof result === 'string' ? result.replace(/__playwright/g, '__chrome') : result;
+    };
+}
 `;
 
 /** Lazy-loaded Playwright types */
@@ -200,8 +201,29 @@ export async function getSharedBrowser(): Promise<Browser> {
             mkdirSync(BROWSER_STATE_DIR, { recursive: true });
         } catch { /* exists */ }
 
+        // Use headed mode on machines with displays for better site compatibility
+        // (many sites detect headless browsers and refuse to render)
+        const useHeadless = !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+        logger.info(COMPONENT, `Browser mode: ${useHeadless ? 'headless' : 'headed'} (DISPLAY=${process.env.DISPLAY || 'unset'})`);
+
+        // Prefer system Chrome over Playwright's bundled Chromium — it's newer,
+        // has better JS compatibility (fixes "Class constructor X cannot be invoked without 'new'"),
+        // and sites trust it more. Falls back to bundled Chromium if not installed.
+        let useChannel: string | undefined;
+        try {
+            const { execSync } = await import('child_process');
+            const hasChrome = execSync('which google-chrome-stable google-chrome 2>/dev/null', { encoding: 'utf8' }).trim();
+            if (hasChrome) {
+                useChannel = 'chrome';
+                logger.info(COMPONENT, 'Using system Chrome (channel: chrome)');
+            }
+        } catch {
+            logger.info(COMPONENT, 'System Chrome not found, using bundled Chromium');
+        }
+
         browser = await playwright.chromium.launch({
-            headless: true,
+            headless: useHeadless,
+            channel: useChannel,
             args: [
                 '--no-sandbox',
                 '--disable-blink-features=AutomationControlled',

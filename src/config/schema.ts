@@ -297,6 +297,17 @@ export const AutoresearchConfigSchema = z.object({
     resultsDir: z.string().default('~/.titan/experiments'),
 });
 
+export const CapsolverConfigSchema = z.object({
+    /** Enable CapSolver CAPTCHA solving */
+    enabled: z.boolean().default(false),
+    /** CapSolver API key */
+    apiKey: z.string().optional(),
+    /** Timeout for solving in milliseconds */
+    timeoutMs: z.number().default(120_000),
+    /** Preferred reCAPTCHA v3 minimum score (0.1–0.9) */
+    minScore: z.number().min(0.1).max(0.9).default(0.7),
+});
+
 export const TitanConfigSchema = z.object({
     /** Whether the user has completed the web onboarding wizard */
     onboarded: z.boolean().default(false),
@@ -461,6 +472,7 @@ export const TitanConfigSchema = z.object({
             enabled: z.boolean().default(false),
         }).default({}),
     }).default({}),
+    capsolver: CapsolverConfigSchema.default({}),
     x: z.object({
         /** Enable X/Twitter integration */
         enabled: z.boolean().default(false),
@@ -477,6 +489,7 @@ export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type MeshConfig = z.infer<typeof MeshConfigSchema>;
 export type AutopilotConfig = TitanConfig['autopilot'];
+export type CapsolverConfig = z.infer<typeof CapsolverConfigSchema>;
 export type TunnelConfig = z.infer<typeof TunnelConfigSchema>;
 export type VoiceConfig = z.infer<typeof VoiceConfigSchema>;
 export type TeachingConfig = z.infer<typeof TeachingConfigSchema>;

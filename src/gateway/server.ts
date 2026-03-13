@@ -1979,6 +1979,59 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // ── API Documentation ────────────────────────────────────
+  // ── Browser automation endpoints ─────────────────────────
+  app.post('/api/browser/form-fill', async (req, res) => {
+    const { url, data, submit } = req.body;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ success: false, error: 'url is required (string)' });
+    }
+    if (!data || typeof data !== 'object') {
+      return res.status(400).json({ success: false, error: 'data is required (Record<string, string>)' });
+    }
+    try {
+      const { getPage, releasePage } = await import('../browsing/browserPool.js');
+      const { fillFormSmart } = await import('../skills/builtin/web_browse_llm.js');
+      const page = await getPage();
+      const session = { page, lastUsed: Date.now(), elements: new Map<number, string>() };
+      try {
+        const result = await fillFormSmart(session as any, url, data as Record<string, string>, submit ?? false);
+        const lines = result.split('\n');
+        const fieldsMatched = lines.filter((l: string) => l.startsWith('✅')).length;
+        const fieldsFailed = lines.filter((l: string) => l.startsWith('❌'))
+          .map((l: string) => l.replace(/^❌\s*/, '').split(':')[0]?.trim() || '');
+        res.json({ success: fieldsFailed.length === 0, result, fieldsMatched, fieldsFailed });
+      } finally {
+        await releasePage(page);
+      }
+    } catch (e) {
+      logger.error(COMPONENT, `form-fill error: ${(e as Error).message}`);
+      res.status(500).json({ success: false, error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/browser/solve-captcha', async (req, res) => {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ solved: false, error: 'url is required (string)' });
+    }
+    try {
+      const { getPage, releasePage } = await import('../browsing/browserPool.js');
+      const { solveCaptcha } = await import('../browsing/captchaSolver.js');
+      const page = await getPage();
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.waitForTimeout(3000);
+        const result = await solveCaptcha(page);
+        res.json(result);
+      } finally {
+        await releasePage(page);
+      }
+    } catch (e) {
+      logger.error(COMPONENT, `solve-captcha error: ${(e as Error).message}`);
+      res.status(500).json({ solved: false, error: (e as Error).message });
+    }
+  });
+
   app.get('/api/docs', (_req, res) => {
     const spec = {
       openapi: '3.0.0',

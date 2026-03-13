@@ -49,6 +49,7 @@ const navItems = [
   { label: 'Workflows', icon: GitBranch, path: '/workflows' },
   { label: 'Memory', icon: Network, path: '/memory-graph' },
   { label: 'Personas', icon: UserCircle, path: '/personas' },
+  { label: 'Self-Improve', icon: Brain, path: '/self-improve' },
 ] as const;
 
 interface VersionInfo {

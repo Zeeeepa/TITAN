@@ -1584,6 +1584,63 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ deleted: true });
   });
 
+  // ── Self-Improvement API ────────────────────────────────────
+  app.get('/api/self-improve/history', (_req, res) => {
+    try {
+      const { existsSync, readFileSync } = require('fs');
+      const { join } = require('path');
+      const { TITAN_HOME } = require('../utils/constants.js');
+      const historyPath = join(TITAN_HOME, 'self-improve', 'history.jsonl');
+      if (!existsSync(historyPath)) {
+        res.json({ sessions: [] });
+        return;
+      }
+      const lines = readFileSync(historyPath, 'utf-8').split('\n').filter((l: string) => l.trim());
+      const sessions = lines.map((l: string) => {
+        try { return JSON.parse(l); } catch { return null; }
+      }).filter(Boolean);
+      res.json({ sessions });
+    } catch (e) {
+      res.json({ sessions: [] });
+    }
+  });
+
+  app.get('/api/self-improve/config', (_req, res) => {
+    const cfg = loadConfig();
+    res.json((cfg as Record<string, unknown>).selfImprove || {});
+  });
+
+  app.get('/api/training/runs', (_req, res) => {
+    try {
+      const { existsSync, readdirSync, readFileSync } = require('fs');
+      const { join } = require('path');
+      const { TITAN_HOME } = require('../utils/constants.js');
+      const runsDir = join(TITAN_HOME, 'training-runs');
+      if (!existsSync(runsDir)) {
+        res.json({ runs: [] });
+        return;
+      }
+      const dirs = readdirSync(runsDir, { withFileTypes: true })
+        .filter((d: { isDirectory: () => boolean }) => d.isDirectory())
+        .map((d: { name: string }) => d.name);
+      const runs = dirs.map((dir: string) => {
+        const metaPath = join(runsDir, dir, 'meta.json');
+        const resultsPath = join(runsDir, dir, 'results.json');
+        if (!existsSync(metaPath)) return null;
+        const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+        if (existsSync(resultsPath)) {
+          const results = JSON.parse(readFileSync(resultsPath, 'utf-8'));
+          meta.status = results.status || 'completed';
+          meta.finalLoss = results.final_loss;
+        }
+        return meta;
+      }).filter(Boolean);
+      res.json({ runs });
+    } catch {
+      res.json({ runs: [] });
+    }
+  });
+
   // ── Recipe Run API ────────────────────────────────────────
 
   app.post('/api/recipes/:id/run', async (req, res) => {

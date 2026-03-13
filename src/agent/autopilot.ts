@@ -284,6 +284,11 @@ export async function runAutopilotNow(): Promise<AutopilotResult> {
             return await runGoalBasedAutopilot(config, startTime);
         }
 
+        // ── Self-improve mode: run autonomous self-improvement experiments ──
+        if (autopilotMode === 'self-improve') {
+            return await runSelfImproveAutopilot(config, startTime);
+        }
+
         // Get previous run summary for context
         const history = getRunHistory(1);
         const prevSummary = history.length > 0 ? history[history.length - 1].summary : undefined;
@@ -444,6 +449,58 @@ async function runGoalBasedAutopilot(config: TitanConfig, startTime: number): Pr
         appendRun(run);
         return { run, delivered: false };
     }
+}
+
+// ─── Self-improve autopilot ──────────────────────────────────────
+
+async function runSelfImproveAutopilot(config: TitanConfig, startTime: number): Promise<AutopilotResult> {
+    const siConfig = (config as Record<string, unknown>).selfImprove as Record<string, unknown> | undefined;
+    const areas = (siConfig?.areas as string[]) || ['prompts', 'tool-selection', 'response-quality', 'error-recovery'];
+    const budgetMinutes = (siConfig?.budgetMinutes as number) || 30;
+    const budgetPerArea = Math.floor(budgetMinutes / areas.length);
+
+    logger.info(COMPONENT, `Self-improve autopilot: targeting ${areas.length} areas with ${budgetPerArea} min each`);
+
+    const results: string[] = [];
+    let totalKeeps = 0;
+    let totalDiscards = 0;
+
+    for (const area of areas) {
+        try {
+            const prompt = `Run a self-improvement experiment. Use the self_improve_start tool with area="${area}" and budgetMinutes=${budgetPerArea}. Report the results.`;
+            const response = await processMessage(prompt, 'autopilot-self-improve', 'system', {
+                model: config.autopilot.model,
+            });
+            results.push(`**${area}**: ${response.content.slice(0, 200)}`);
+        } catch (e) {
+            results.push(`**${area}**: Error — ${(e as Error).message}`);
+        }
+    }
+
+    const duration = Date.now() - startTime;
+    const summary = `Self-improvement run: ${areas.join(', ')}\n${results.join('\n')}`;
+    const classification = classifyResult(summary);
+
+    const run: AutopilotRun = {
+        timestamp: new Date().toISOString(),
+        duration,
+        tokensUsed: 0,
+        cost: 0,
+        classification,
+        summary: summary.slice(0, 500),
+        toolsUsed: ['self_improve_start'],
+    };
+    lastRun = run;
+    appendRun(run);
+    pruneHistory(config.autopilot.maxRunHistory);
+
+    let delivered = false;
+    if (classification !== 'ok') {
+        delivered = await deliverResult(config, run);
+    }
+
+    logger.info(COMPONENT, `Self-improve autopilot complete: ${classification} (${duration}ms)`);
+    return { run, delivered };
 }
 
 // ─── Delivery ───────────────────────────────────────────────────

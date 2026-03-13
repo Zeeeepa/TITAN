@@ -247,6 +247,8 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerSlackSkill } = await import('./builtin/slack.js');
     const { registerRevenueCatKBSkill } = await import('./builtin/revenuecat_kb.js');
     const { registerWeeklyReportSkill } = await import('./builtin/weekly_report.js');
+    const { registerSelfImproveSkill } = await import('./builtin/self_improve.js');
+    const { registerModelTrainerSkill } = await import('./builtin/model_trainer.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -299,6 +301,8 @@ export async function initBuiltinSkills(): Promise<void> {
         ['slack', registerSlackSkill],
         ['revenuecat_kb', registerRevenueCatKBSkill],
         ['weekly_report', registerWeeklyReportSkill],
+        ['self_improve', registerSelfImproveSkill],
+        ['model_trainer', registerModelTrainerSkill],
     ];
 
     for (const [name, fn] of registrations) {

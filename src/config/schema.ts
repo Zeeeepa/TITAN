@@ -432,8 +432,8 @@ export const TitanConfigSchema = z.object({
             start: z.number().min(0).max(23).default(0),
             end: z.number().min(0).max(23).default(23),
         }).optional(),
-        /** Autopilot mode: 'checklist' (AUTOPILOT.md) or 'goals' (goal-based) */
-        mode: z.enum(['checklist', 'goals']).default('checklist'),
+        /** Autopilot mode: 'checklist' (AUTOPILOT.md), 'goals' (goal-based), or 'self-improve' (autonomous self-improvement) */
+        mode: z.enum(['checklist', 'goals', 'self-improve']).default('checklist'),
         /** Goal-based autopilot settings */
         goals: z.object({
             /** Maximum active goals */
@@ -498,6 +498,42 @@ export const TitanConfigSchema = z.object({
             /** Enable MCP server (HTTP transport on gateway port) */
             enabled: z.boolean().default(false),
         }).default({}),
+    }).default({}),
+    selfImprove: z.object({
+        /** Enable autonomous self-improvement */
+        enabled: z.boolean().default(true),
+        /** How many self-improvement runs per day (1-12) */
+        runsPerDay: z.number().min(1).max(12).default(1),
+        /** Cron expressions for scheduled runs */
+        schedule: z.array(z.string()).default(['0 2 * * *']),
+        /** Time budget per run in minutes (5-120) */
+        budgetMinutes: z.number().min(5).max(120).default(30),
+        /** Which improvement areas to target */
+        areas: z.array(z.string()).default(['prompts', 'tool-selection', 'response-quality', 'error-recovery']),
+        /** Auto-apply successful experiments without human approval */
+        autoApply: z.boolean().default(false),
+        /** Maximum total GPU/compute minutes per day (safety cap) */
+        maxDailyBudgetMinutes: z.number().default(120),
+        /** Skip runs on weekends */
+        pauseOnWeekends: z.boolean().default(false),
+        /** Send notification on successful improvement */
+        notifyOnSuccess: z.boolean().default(true),
+        /** Notification channel */
+        notifyChannel: z.string().default('cli'),
+    }).default({}),
+    training: z.object({
+        /** Enable local model training/fine-tuning */
+        enabled: z.boolean().default(false),
+        /** Directory for training data */
+        dataDir: z.string().default('~/.titan/training-data'),
+        /** Training time budget in minutes */
+        budgetMinutes: z.number().default(30),
+        /** Training method */
+        method: z.enum(['lora', 'qlora', 'full']).default('lora'),
+        /** Base model to fine-tune */
+        baseModel: z.string().default('qwen3.5:35b'),
+        /** Auto-deploy trained model to Ollama */
+        autoDeploy: z.boolean().default(false),
     }).default({}),
     capsolver: CapsolverConfigSchema.default({}),
     x: z.object({

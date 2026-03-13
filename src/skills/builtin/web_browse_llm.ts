@@ -433,7 +433,15 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
     // Navigate to the form page if URL provided and different from current
     if (url && page.url() !== url) {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-        await page.waitForTimeout(2000); // Extra wait for form rendering
+        // Wait for JS-rendered forms (SPA frameworks like React/Ashby need extra time)
+        await page.waitForTimeout(5000);
+        // Try to wait for form inputs to appear (best-effort)
+        try {
+            await page.waitForSelector('input, textarea, select, [role="combobox"]', { timeout: 10_000 });
+            await page.waitForTimeout(1000); // Extra buffer after first input appears
+        } catch {
+            logger.warn(COMPONENT, 'fillFormSmart: No form inputs found after 10s wait');
+        }
     }
 
     // Warm up for reCAPTCHA v3 scoring — natural mouse movements, scrolling, hovering
@@ -452,6 +460,10 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
     const formElements = await discoverFormFields(page);
 
     results.push(`Found ${formElements.length} form elements on page`);
+    logger.info(COMPONENT, `fillFormSmart: discovered ${formElements.length} fields on ${url}`);
+    for (const el of formElements) {
+        logger.debug(COMPONENT, `  field: "${el.label}" type=${el.type} tag=${el.tagName} role=${el.role}`);
+    }
 
     // Pre-read validation: if ALL user field names are unmatched, return field list immediately
     const fieldKeys = Object.keys(fields).filter(k => k !== 'submit' && k !== 'Submit');
@@ -675,6 +687,10 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
     const failedCount = results.filter(r => r.startsWith('❌')).length;
     results.push('');
     results.push(`Summary: ${filledCount} filled, ${failedCount} failed out of ${Object.keys(fields).length} fields`);
+    logger.info(COMPONENT, `fillFormSmart result: ${filledCount} filled, ${failedCount} failed out of ${Object.keys(fields).length} fields`);
+    for (const r of results.filter(r => r.startsWith('✅') || r.startsWith('❌') || r.startsWith('⚠️'))) {
+        logger.info(COMPONENT, `  ${r}`);
+    }
 
     // List available form fields so model can retry with correct names
     if (failedCount > 0) {
@@ -1056,7 +1072,25 @@ export function registerWebBrowseLlmSkill(): void {
                     }
                     return fillFormSmart(session, formUrl || session.page.url(), fields, doSubmit);
                 }
-                return 'Error: smart_form_fill requires data. Pass form_data as JSON string.';
+                // No data provided — discover fields and return them so the model can retry
+                logger.info(COMPONENT, 'web_act smart_form_fill redirect: no data provided, discovering fields');
+                if (formUrl && session.page.url() !== formUrl) {
+                    try {
+                        await session.page.goto(formUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                        await session.page.waitForTimeout(2000);
+                    } catch (err) {
+                        return `Error navigating to form: ${err instanceof Error ? err.message : String(err)}`;
+                    }
+                }
+                const discoveredFields = await discoverFormFields(session.page);
+                if (discoveredFields.length === 0) {
+                    return 'No form fields found on this page. Try navigating to the form URL first.';
+                }
+                const fieldList = discoveredFields.map(f => {
+                    const desc = f.label || f.placeholder || f.ariaLabel || f.selector;
+                    return `  - "${desc}" (${f.type || f.tagName}${f.role ? `, role=${f.role}` : ''})`;
+                }).join('\n');
+                return `Found ${discoveredFields.length} form fields on the page:\n${fieldList}\n\nNow call smart_form_fill with these EXACT parameters:\n  smart_form_fill url="${formUrl || session.page.url()}" data='{"FIELD_LABEL": "value", ...}' submit=false\n\nUse the exact field labels listed above as keys in the data JSON.`;
             }
 
             if (cmd === 'read_form') {
@@ -1148,7 +1182,8 @@ TIPS:
         },
         execute: async (args) => {
             const url = args.url as string;
-            const dataStr = args.data as string;
+            // Accept multiple parameter names — local models frequently hallucinate the param name
+            const dataStr = (args.data || args.form_data || args.form_data_string || args.formData || args.fields) as string;
             const submitStr = (args.submit as string) || 'false';
             const submit = submitStr === 'true' || submitStr === '1';
 

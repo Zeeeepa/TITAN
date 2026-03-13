@@ -4,6 +4,27 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.20] — 2026-03-13
+
+### Added
+- **Autonomous Self-Improvement System** — TITAN now experiments on its own prompts, tool selection, response quality, and error recovery. Uses LLM-as-judge evaluation against benchmark test suites. Proposes changes, evaluates, keeps improvements, discards regressions. Inspired by Karpathy's autoresearch pattern.
+  - `self_improve_start` — Launch an improvement session targeting a specific area
+  - `self_improve_status` — Check current session progress
+  - `self_improve_apply` — Apply successful experiment results to live config
+  - `self_improve_history` — View history of all improvement sessions and outcomes
+- **Local Model Training Pipeline** — LoRA fine-tuning on local GPU via unsloth, with GGUF conversion and Ollama deployment
+  - `train_prepare` — Extract high-quality instruction/response pairs from session history, scored by tool success rates
+  - `train_start` — Launch LoRA fine-tuning as background process (budget-limited)
+  - `train_status` — Monitor training progress (loss, epoch, ETA)
+  - `train_deploy` — Convert to GGUF, import to Ollama as `titan-custom`, optionally switch active model
+- **Self-Improvement Config** — `selfImprove` section: `runsPerDay` (1-12), `schedule` (cron array), `budgetMinutes` (5-120), `maxDailyBudgetMinutes` safety cap, `areas` toggle, `autoApply`, `pauseOnWeekends`, `notifyOnSuccess`
+- **Training Config** — `training` section: `enabled`, `dataDir`, `budgetMinutes`, `method` (lora/qlora/full), `baseModel`, `autoDeploy`
+- **Autopilot Self-Improve Mode** — `autopilot.mode: "self-improve"` iterates configured areas with budget enforcement
+- **Mission Control Self-Improvement Panel** — Stats cards, session history, training runs, schedule settings (runs/day slider, cron presets, budget sliders, area toggles), manual trigger buttons
+- **Self-Improve API Endpoints** — `GET /api/self-improve/history`, `GET /api/self-improve/config`, `GET /api/training/runs`
+
+---
+
 ## [2026.10.19] — 2026-03-13
 
 ### Added

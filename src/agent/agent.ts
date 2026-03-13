@@ -289,8 +289,17 @@ export async function processMessage(
             } else if (planned.stage === 'executing') {
                 const executed = await executePlan(planned, config);
                 const content = formatPlanResults(executed);
+                // Collect tools used across all plan task results
+                const planToolsUsed = new Set<string>(['deliberation']);
+                for (const r of executed.results) {
+                    if (r.result) {
+                        // Extract tool names from result text patterns like "[ToolRunner] Executing tool: X"
+                        const toolMatches = r.result.match(/\btool[_\s]?(?:call|use|exec)[^:]*:\s*(\w+)/gi);
+                        if (toolMatches) toolMatches.forEach(m => { const t = m.split(':').pop()?.trim(); if (t) planToolsUsed.add(t); });
+                    }
+                }
                 addMessage(session, 'assistant', content, { model: config.agent.model, tokenCount: 0 });
-                return { content, sessionId: session.id, toolsUsed: ['deliberation'], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
+                return { content, sessionId: session.id, toolsUsed: [...planToolsUsed], tokenUsage: { prompt: 0, completion: 0, total: 0 }, model: config.agent.model, durationMs: Date.now() - startTime };
             } else {
                 // Planning failed, fall through to normal processing
                 logger.warn(COMPONENT, `Deliberation failed, falling through: ${planned.error || 'unknown error'}`);

@@ -30,9 +30,13 @@ const activeDeliberations: Map<string, DeliberationState> = new Map();
 
 /** Check if deliberation should be triggered for this message */
 export function shouldDeliberate(message: string, config: TitanConfig): boolean {
-    if (!config.deliberation.enabled) return false;
+    // Only trigger deliberation when explicitly requested with /plan prefix
+    // Auto-detection requires BOTH deliberation.enabled AND deliberation.autoDetect to be true
+    logger.info(COMPONENT, `shouldDeliberate check: enabled=${config.deliberation?.enabled}, autoDetect=${config.deliberation?.autoDetect}`);
+    if (!config.deliberation?.enabled) return false;
     if (message.trim().toLowerCase().startsWith('/plan')) return true;
-    if (!config.deliberation.autoDetect) return false;
+    // autoDetect defaults to false — only enable if explicitly set to true in config
+    if (config.deliberation?.autoDetect !== true) return false;
     const complexity = classifyComplexity(message);
     // In autonomous mode with autoDeliberate, trigger on 'moderate' complexity too
     const autonomy = config.autonomy as Record<string, unknown> | undefined;
@@ -237,7 +241,7 @@ export async function executePlan(
                 `**Instructions:** ${task.description}`,
                 priorResults.length > 0 ? `\n**Results from previous steps:**\n${priorResults.join('\n')}` : '',
                 ``,
-                `Execute this step now. Be thorough and report your results.`,
+                `Execute this step now using your available tools. You MUST use tool calls (web_search, web_fetch, shell, read_file, write_file, memory, etc.) to accomplish real work — do NOT hallucinate or fabricate results. If a step requires searching the web, call web_search. If it requires reading a URL, call web_fetch. Be thorough and report your actual results.`,
             ].join('\n');
 
             try {

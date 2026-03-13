@@ -189,8 +189,8 @@ export const BrainConfigSchema = z.object({
 export const DeliberationConfigSchema = z.object({
     /** Enable deliberative reasoning for complex requests */
     enabled: z.boolean().default(true),
-    /** Auto-detect ambitious requests that need deliberation */
-    autoDetect: z.boolean().default(true),
+    /** Auto-detect ambitious requests that need deliberation (default: false — use /plan explicitly) */
+    autoDetect: z.boolean().default(false),
     /** Model override for reasoning phase (falls back to agent.modelAliases.reasoning) */
     reasoningModel: z.string().optional(),
     /** Require user approval before executing a plan */

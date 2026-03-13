@@ -176,7 +176,19 @@ function countNoProgressPolls(history: ToolCallRecord[]): number {
     return count;
 }
 
-/** Detect A→B→A→B ping-pong patterns */
+/** Tool pairs that are normal research patterns, not loops */
+const ALLOWED_PING_PONG_PAIRS: ReadonlySet<string> = new Set([
+    'web_search|web_fetch',
+    'web_fetch|web_search',
+    'web_search|web_read',
+    'web_read|web_search',
+    'web_fetch|web_read',
+    'web_read|web_fetch',
+    'read_file|list_dir',
+    'list_dir|read_file',
+]);
+
+/** Detect A→B→A→B ping-pong patterns (excludes valid research pairs) */
 function detectPingPong(history: ToolCallRecord[]): string | null {
     if (history.length < 6) return null;
 
@@ -187,10 +199,21 @@ function detectPingPong(history: ToolCallRecord[]): string | null {
 
     // Verify alternating pattern
     const isAlternating = last6.every((r, i) => r.toolName === tools[i % 2]);
-    if (isAlternating) {
-        return `${tools[0]} ↔ ${tools[1]} repeated 3+ times`;
+    if (!isAlternating) return null;
+
+    // Allow known research patterns (web_search ↔ web_fetch is normal)
+    const pairKey = `${tools[0]}|${tools[1]}`;
+    if (ALLOWED_PING_PONG_PAIRS.has(pairKey)) {
+        // Only flag if args are also identical (true loop, not research)
+        const argsHashes = last6.map(r => r.argsHash);
+        const uniqueArgs = new Set(argsHashes);
+        if (uniqueArgs.size > 2) {
+            // Different args each time = genuine research, not a loop
+            return null;
+        }
     }
-    return null;
+
+    return `${tools[0]} ↔ ${tools[1]} repeated 3+ times`;
 }
 
 /** Reset loop detection for a session */

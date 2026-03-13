@@ -4,6 +4,22 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.18] — 2026-03-13
+
+### Added
+- **Tool Retry with Error Classification** — Automatic retry for transient, timeout, and rate-limit errors with exponential backoff (1s/2s/4s). Permanent errors fail immediately. Per-tool timeout overrides (browser ops 60s, code exec 120s, web search 45s)
+- **Dynamic Execution Budget** — Round limits scale with task complexity: simple (10), medium (15), complex (25). Autonomous mode gets 1.5x multiplier. Graceful degradation injects wrap-up prompt 2 rounds before limit
+- **Auto-Deliberation** — In autonomous mode, complex task detection auto-enables deliberative reasoning without requiring `/plan` prefix
+- **Learning-Driven Tool Selection** — Tools with <30% success rate (10+ uses) tagged `[LOW RELIABILITY]`, >90% tagged `[HIGHLY RELIABLE]` in LLM-visible descriptions. Error resolution patterns recorded when alternative tools succeed
+- **Sub-Agent Depth 2** — Configurable nesting depth (default 2) replaces hard block. Max rounds reduced 30% per depth level. Output validation checks for empty/too-short/error responses
+- **Goal Dependency Graph** — `dependsOn` field on subtasks with DFS cycle detection. `getReadyTasks()` respects dependency ordering
+- **Smarter Context Summarization** — Older tool results (>500 chars) compressed to 150-char summaries. Last 5 tool results kept at full fidelity
+- **Checkpoint/Resume** — Agent state serialized when round budget exhausted. `exhaustedBudget` flag and `checkpoint` field in AgentResponse
+- **Configurable Initiative Rate Limits** — `autonomy.initiativeIntervalMs` replaces hardcoded 60s interval
+- **React-Compatible Form Filling** — `pressSequentially()` replaces `page.fill()` for React SPA compatibility in `fillFormSmart()`
+
+---
+
 ## [2026.10.17] — 2026-03-13
 
 ### Added

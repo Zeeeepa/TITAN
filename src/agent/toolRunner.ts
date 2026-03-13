@@ -11,6 +11,35 @@ import { isToolSkillEnabled } from '../skills/registry.js';
 
 const COMPONENT = 'ToolRunner';
 
+/** Error classification for retry decisions */
+export type ErrorClass = 'transient' | 'permanent' | 'timeout' | 'rate_limit';
+
+/** Classify an error to determine if retry is appropriate */
+export function classifyError(error: Error, _toolName: string): ErrorClass {
+    const msg = error.message.toLowerCase();
+
+    // Timeout errors
+    if (msg.includes('timed out') || msg.includes('timeout') || msg.includes('etimedout')) {
+        return 'timeout';
+    }
+
+    // Rate limit errors
+    if (msg.includes('rate limit') || msg.includes('429') || msg.includes('too many requests') || msg.includes('quota exceeded')) {
+        return 'rate_limit';
+    }
+
+    // Transient network/connection errors
+    if (msg.includes('econnrefused') || msg.includes('econnreset') || msg.includes('epipe') ||
+        msg.includes('enotfound') || msg.includes('fetch failed') || msg.includes('network error') ||
+        msg.includes('socket hang up') || msg.includes('connection closed') ||
+        msg.includes('503') || msg.includes('502') || msg.includes('500')) {
+        return 'transient';
+    }
+
+    // Everything else is permanent (bad args, not found, permission denied, etc.)
+    return 'permanent';
+}
+
 /** Tool execution result */
 export interface ToolResult {
     toolCallId: string;
@@ -18,6 +47,10 @@ export interface ToolResult {
     content: string;
     success: boolean;
     durationMs: number;
+    /** Number of retry attempts made (0 = first try succeeded/failed) */
+    retryCount?: number;
+    /** Error classification if the tool failed */
+    errorClass?: ErrorClass;
 }
 
 /** A registered tool handler */
@@ -108,61 +141,104 @@ export async function executeTool(toolCall: ToolCall, channel?: string): Promise
         };
     }
 
+    // Parse arguments
+    let args: Record<string, unknown> = {};
     try {
-        // Parse arguments
-        let args: Record<string, unknown> = {};
+        args = JSON.parse(toolCall.function.arguments);
+    } catch {
+        args = {};
+    }
+
+    logger.info(COMPONENT, `Executing tool: ${handler.name}`);
+
+    // Autonomy gate: check if the tool is permitted under current mode
+    const autonomyResult = await checkAutonomy(handler.name, args, channel);
+    if (!autonomyResult.allowed) {
+        return {
+            toolCallId: toolCall.id,
+            name: handler.name,
+            content: 'Action blocked by autonomy policy: ' + (autonomyResult.reason || 'Not permitted'),
+            success: false,
+            durationMs: Date.now() - startTime,
+        };
+    }
+
+    // Per-tool timeout lookup
+    const toolTimeouts = (config.security as Record<string, unknown>).toolTimeouts as Record<string, number> | undefined;
+    const baseTimeout = toolTimeouts?.[handler.name] || config.security.commandTimeout || 30000;
+
+    // Retry config
+    const retryConfig = (config.security as Record<string, unknown>).toolRetry as { enabled?: boolean; maxRetries?: number; backoffBaseMs?: number } | undefined;
+    const retryEnabled = retryConfig?.enabled !== false;
+    const maxRetries = retryConfig?.maxRetries ?? 3;
+    const backoffBase = retryConfig?.backoffBaseMs ?? 1000;
+
+    let lastError: Error | null = null;
+    let lastErrorClass: ErrorClass = 'permanent';
+
+    for (let attempt = 0; attempt <= (retryEnabled ? maxRetries : 0); attempt++) {
         try {
-            args = JSON.parse(toolCall.function.arguments);
-        } catch {
-            args = {};
-        }
+            // On timeout retry, double the timeout
+            const timeout = (attempt > 0 && lastErrorClass === 'timeout') ? baseTimeout * 2 : baseTimeout;
 
-        logger.info(COMPONENT, `Executing tool: ${handler.name}`);
+            const result = await Promise.race([
+                handler.execute(args),
+                new Promise<string>((_, reject) =>
+                    setTimeout(() => reject(new Error(`Tool "${handler.name}" timed out after ${timeout}ms`)), timeout)
+                ),
+            ]);
 
-        // Autonomy gate: check if the tool is permitted under current mode
-        const autonomyResult = await checkAutonomy(handler.name, args, channel);
-        if (!autonomyResult.allowed) {
+            const durationMs = Date.now() - startTime;
+            if (attempt > 0) {
+                logger.info(COMPONENT, `Tool ${handler.name} succeeded on retry ${attempt} in ${durationMs}ms`);
+            } else {
+                logger.info(COMPONENT, `Tool ${handler.name} completed in ${durationMs}ms`);
+            }
+
             return {
                 toolCallId: toolCall.id,
                 name: handler.name,
-                content: 'Action blocked by autonomy policy: ' + (autonomyResult.reason || 'Not permitted'),
-                success: false,
-                durationMs: Date.now() - startTime,
+                content: result.length > 50000 ? result.slice(0, 50000) + '\n\n[Output truncated at 50KB]' : result,
+                success: true,
+                durationMs,
+                retryCount: attempt,
             };
+        } catch (error) {
+            lastError = error as Error;
+            lastErrorClass = classifyError(lastError, handler.name);
+
+            // Don't retry permanent errors
+            if (lastErrorClass === 'permanent') {
+                break;
+            }
+
+            // Don't retry if this was the last attempt
+            if (attempt >= maxRetries || !retryEnabled) {
+                break;
+            }
+
+            // Exponential backoff: 1s, 2s, 4s (capped at 8s)
+            const delay = Math.min(backoffBase * Math.pow(2, attempt), 8000);
+            logger.warn(COMPONENT, `Tool ${handler.name} failed (${lastErrorClass}, attempt ${attempt + 1}/${maxRetries + 1}): ${lastError.message} — retrying in ${delay}ms`);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-
-        // Execute with timeout
-        const timeout = config.security.commandTimeout || 30000;
-        const result = await Promise.race([
-            handler.execute(args),
-            new Promise<string>((_, reject) =>
-                setTimeout(() => reject(new Error(`Tool "${handler.name}" timed out after ${timeout}ms`)), timeout)
-            ),
-        ]);
-
-        const durationMs = Date.now() - startTime;
-        logger.info(COMPONENT, `Tool ${handler.name} completed in ${durationMs}ms`);
-
-        return {
-            toolCallId: toolCall.id,
-            name: handler.name,
-            content: result.length > 50000 ? result.slice(0, 50000) + '\n\n[Output truncated at 50KB]' : result,
-            success: true,
-            durationMs,
-        };
-    } catch (error) {
-        const durationMs = Date.now() - startTime;
-        const errorMsg = (error as Error).message;
-        logger.error(COMPONENT, `Tool ${handler.name} failed: ${errorMsg}`);
-
-        return {
-            toolCallId: toolCall.id,
-            name: handler.name,
-            content: `Error: ${errorMsg}`,
-            success: false,
-            durationMs,
-        };
     }
+
+    // All retries exhausted or permanent error
+    const durationMs = Date.now() - startTime;
+    const errorMsg = lastError?.message || 'Unknown error';
+    const retryCount = retryEnabled ? Math.min(maxRetries, lastErrorClass === 'permanent' ? 0 : maxRetries) : 0;
+    logger.error(COMPONENT, `Tool ${handler.name} failed (${lastErrorClass}${retryCount > 0 ? `, ${retryCount} retries` : ''}): ${errorMsg}`);
+
+    return {
+        toolCallId: toolCall.id,
+        name: handler.name,
+        content: `Error: ${errorMsg}`,
+        success: false,
+        durationMs,
+        retryCount,
+        errorClass: lastErrorClass,
+    };
 }
 
 /** Execute multiple tool calls (in parallel where possible, with write-conflict detection) */

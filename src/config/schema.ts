@@ -43,6 +43,23 @@ export const SecurityConfigSchema = z.object({
     deniedTools: z.array(z.string()).default([]),
     maxConcurrentTasks: z.number().default(5),
     commandTimeout: z.number().default(30000),
+    /** Per-tool timeout overrides (ms) — keys are tool names */
+    toolTimeouts: z.record(z.string(), z.number()).default({
+        browser_auto_nav: 60000,
+        browser_navigate: 60000,
+        web_fetch: 45000,
+        web_search: 45000,
+        web_act: 60000,
+        smart_form_fill: 60000,
+        shell: 60000,
+        code_exec: 120000,
+    }),
+    /** Automatic retry for transient tool failures */
+    toolRetry: z.object({
+        enabled: z.boolean().default(true),
+        maxRetries: z.number().default(3),
+        backoffBaseMs: z.number().default(1000),
+    }).default({}),
     fileSystemAllowlist: z.array(z.string()).default([]),
     networkAllowlist: z.array(z.string()).default(['*']),
     shield: z.object({
@@ -106,6 +123,10 @@ export const AgentConfigSchema = z.object({
     reflectionEnabled: z.boolean().default(true),
     /** Reflect every N rounds (default: 3) */
     reflectionInterval: z.number().default(3),
+    /** Enable dynamic tool-round budget based on task complexity */
+    dynamicBudget: z.boolean().default(true),
+    /** Hard cap on tool rounds (even with dynamic budget) */
+    maxToolRoundsHard: z.number().default(50),
     /** Enable automatic model switching when tool calling fails (self-healing) */
     selfHealEnabled: z.boolean().default(true),
     /** Number of consecutive tool call failures before auto-switching models (2-10) */
@@ -449,6 +470,10 @@ export const TitanConfigSchema = z.object({
         circuitBreakerOverride: z.number().default(50),
         /** Auto-trigger deliberation without approval in autonomous mode */
         autoDeliberate: z.boolean().default(true),
+        /** Minimum interval between initiative actions (ms) */
+        initiativeIntervalMs: z.number().default(60000),
+        /** Enable event-driven proactive initiative (follow-ups, monitoring) */
+        proactiveInitiative: z.boolean().default(false),
     }).default({}),
     subAgents: z.object({
         /** Enable sub-agent spawning */
@@ -461,6 +486,8 @@ export const TitanConfigSchema = z.object({
         defaultModel: z.string().default('fast'),
         /** Auto-delegate complex tasks to sub-agents */
         autoDelegate: z.boolean().default(true),
+        /** Maximum nesting depth for sub-agents (1 = no sub-sub-agents, 2 = one level of nesting) */
+        maxDepth: z.number().default(2),
     }).default({}),
     teams: TeamConfigSchema.default({}),
     researchPipeline: ResearchPipelineConfigSchema.default({}),

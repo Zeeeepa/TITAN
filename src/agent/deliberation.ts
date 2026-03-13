@@ -35,12 +35,13 @@ export function shouldDeliberate(message: string, config: TitanConfig): boolean 
     logger.info(COMPONENT, `shouldDeliberate check: enabled=${config.deliberation?.enabled}, autoDetect=${config.deliberation?.autoDetect}`);
     if (!config.deliberation?.enabled) return false;
     if (message.trim().toLowerCase().startsWith('/plan')) return true;
-    // autoDetect defaults to false — only enable if explicitly set to true in config
-    if (config.deliberation?.autoDetect !== true) return false;
-    const complexity = classifyComplexity(message);
-    // In autonomous mode with autoDeliberate, trigger on 'moderate' complexity too
+    // In autonomous mode, implicitly enable auto-detection — the agent should think for itself
     const autonomy = config.autonomy as Record<string, unknown> | undefined;
     const isAutonomous = autonomy?.mode === 'autonomous';
+    const autoDetectEffective = isAutonomous || (config.deliberation?.autoDetect === true);
+    if (!autoDetectEffective) return false;
+    const complexity = classifyComplexity(message);
+    // In autonomous mode with autoDeliberate, trigger on 'moderate' complexity too
     const autoDelib = autonomy?.autoDeliberate as boolean;
     if (isAutonomous && autoDelib) {
         return complexity === 'ambitious' || complexity === 'moderate';

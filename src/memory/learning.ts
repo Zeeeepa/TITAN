@@ -267,6 +267,36 @@ export function getLearningContext(): string {
     return parts.join('\n');
 }
 
+/** Get per-tool reliability warnings/boosts for tool description injection */
+export function getToolWarnings(): Record<string, string> {
+    const k = loadKnowledgeBase();
+    const warnings: Record<string, string> = {};
+
+    for (const [tool, stats] of Object.entries(k.toolSuccessRates)) {
+        if (stats.total < 10) continue; // Need enough data to be meaningful
+        const rate = stats.success / stats.total;
+        if (rate < 0.3) {
+            warnings[tool] = `[LOW RELIABILITY: ${Math.round(rate * 100)}% success rate over ${stats.total} uses]`;
+        } else if (rate > 0.9) {
+            warnings[tool] = `[HIGHLY RELIABLE: ${Math.round(rate * 100)}% success rate]`;
+        }
+    }
+
+    return warnings;
+}
+
+/** Record when a tool failure is resolved by using a different tool */
+export function recordErrorResolution(errorPattern: string, resolution: string): void {
+    const k = loadKnowledgeBase();
+    const pattern = errorPattern.slice(0, 200);
+    if (k.errorPatterns[pattern]) {
+        k.errorPatterns[pattern].resolution = resolution;
+    } else {
+        k.errorPatterns[pattern] = { count: 1, lastSeen: new Date().toISOString(), resolution };
+    }
+    debouncedSave();
+}
+
 /** Get stats about the learning system */
 export function getLearningStats(): {
     knowledgeEntries: number;

@@ -25,6 +25,8 @@ export interface Subtask {
     error?: string;
     completedAt?: string;
     retries: number;
+    /** Subtask IDs within the same goal that must complete before this one can start */
+    dependsOn?: string[];
 }
 
 export interface Goal {
@@ -96,9 +98,45 @@ export function createGoal(options: {
     schedule?: string;
     budgetLimit?: number;
     tags?: string[];
-    subtasks?: Array<{ title: string; description: string }>;
+    subtasks?: Array<{ title: string; description: string; dependsOn?: string[] }>;
 }): Goal {
     const goals = loadGoals();
+
+    const subtasks: Subtask[] = (options.subtasks || []).map((st, i) => ({
+        id: `st-${i + 1}`,
+        title: st.title,
+        description: st.description,
+        status: 'pending' as SubtaskStatus,
+        retries: 0,
+        dependsOn: st.dependsOn,
+    }));
+
+    // Validate no circular dependencies (DFS cycle check)
+    if (subtasks.some(st => st.dependsOn?.length)) {
+        const idSet = new Set(subtasks.map(st => st.id));
+        const adjList = new Map<string, string[]>();
+        for (const st of subtasks) {
+            adjList.set(st.id, (st.dependsOn || []).filter(d => idSet.has(d)));
+        }
+        const visited = new Set<string>();
+        const inStack = new Set<string>();
+        const hasCycle = (node: string): boolean => {
+            if (inStack.has(node)) return true;
+            if (visited.has(node)) return false;
+            visited.add(node);
+            inStack.add(node);
+            for (const dep of adjList.get(node) || []) {
+                if (hasCycle(dep)) return true;
+            }
+            inStack.delete(node);
+            return false;
+        };
+        for (const st of subtasks) {
+            if (hasCycle(st.id)) {
+                throw new Error(`Circular dependency detected in subtask ${st.id}`);
+            }
+        }
+    }
 
     const goal: Goal = {
         id: uuid().slice(0, 8),
@@ -106,13 +144,7 @@ export function createGoal(options: {
         description: options.description,
         status: 'active',
         priority: options.priority || goals.length + 1,
-        subtasks: (options.subtasks || []).map((st, i) => ({
-            id: `st-${i + 1}`,
-            title: st.title,
-            description: st.description,
-            status: 'pending' as SubtaskStatus,
-            retries: 0,
-        })),
+        subtasks,
         schedule: options.schedule,
         budgetLimit: options.budgetLimit,
         totalCost: 0,
@@ -273,8 +305,18 @@ export function getReadyTasks(): Array<{ goal: Goal; subtask: Subtask }> {
         // Check budget
         if (goal.budgetLimit && goal.totalCost >= goal.budgetLimit) continue;
 
+        // Build a set of completed subtask IDs for dependency checking
+        const completedIds = new Set(
+            goal.subtasks.filter(st => st.status === 'done' || st.status === 'skipped').map(st => st.id)
+        );
+
         for (const subtask of goal.subtasks) {
-            if (subtask.status === 'pending') {
+            if (subtask.status !== 'pending') continue;
+
+            // Check all dependencies are satisfied
+            const deps = subtask.dependsOn || [];
+            const depsReady = deps.every(depId => completedIds.has(depId));
+            if (depsReady) {
                 ready.push({ goal, subtask });
             }
         }

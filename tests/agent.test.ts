@@ -37,6 +37,8 @@ const mockRunSubAgent = vi.hoisted(() => vi.fn());
 const mockInitGraph = vi.hoisted(() => vi.fn());
 const mockAddEpisode = vi.hoisted(() => vi.fn());
 const mockGetGraphContext = vi.hoisted(() => vi.fn());
+const mockGetToolWarnings = vi.hoisted(() => vi.fn());
+const mockRecordErrorResolution = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 
@@ -93,6 +95,8 @@ vi.mock('../src/memory/learning.js', () => ({
     recordToolResult: mockRecordToolResultLearning,
     getLearningContext: mockGetLearningContext,
     learnFact: vi.fn(),
+    getToolWarnings: mockGetToolWarnings,
+    recordErrorResolution: mockRecordErrorResolution,
 }));
 
 vi.mock('../src/memory/relationship.js', () => ({
@@ -237,6 +241,7 @@ beforeEach(async () => {
     mockGetToolDefinitions.mockReturnValue([]);
     mockSearchMemories.mockResolvedValue([]);
     mockGetLearningContext.mockReturnValue('');
+    mockGetToolWarnings.mockReturnValue({});
     mockBuildPersonalContext.mockReturnValue('');
     mockGetGraphContext.mockReturnValue('');
     mockAddEpisode.mockResolvedValue({ id: 'ep-1', content: '', source: '', createdAt: '', entities: [] });

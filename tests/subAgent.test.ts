@@ -70,16 +70,16 @@ describe('SubAgent', () => {
                 isNested: true,
             });
             expect(result.success).toBe(false);
-            expect(result.content).toContain('max depth');
+            expect(result.content).toContain('nesting depth limit');
         });
 
         it('completes when LLM returns no tool calls', async () => {
-            mockChat.mockResolvedValue({ content: 'Task completed.', toolCalls: [] });
+            mockChat.mockResolvedValue({ content: 'Research completed successfully with detailed findings about AI trends.', toolCalls: [] });
 
             const result = await spawnSubAgent({ name: 'Explorer', task: 'Research AI' });
 
             expect(result.success).toBe(true);
-            expect(result.content).toBe('Task completed.');
+            expect(result.content).toBe('Research completed successfully with detailed findings about AI trends.');
             expect(result.rounds).toBe(1);
         });
 
@@ -89,7 +89,7 @@ describe('SubAgent', () => {
                     content: '',
                     toolCalls: [{ id: 'tc1', function: { name: 'web_search', arguments: '{"q":"AI"}' } }],
                 })
-                .mockResolvedValueOnce({ content: 'Done researching.', toolCalls: [] });
+                .mockResolvedValueOnce({ content: 'Done researching AI trends and compiling the results into a report.', toolCalls: [] });
 
             mockExecuteTools.mockResolvedValue([
                 { name: 'web_search', content: 'Results: AI trends...', toolCallId: 'tc1' },
@@ -112,31 +112,32 @@ describe('SubAgent', () => {
                 { name: 'web_search', content: 'results', toolCallId: 'tc1' },
             ]);
 
-            const result = await spawnSubAgent({ name: 'Test', task: 'Loop', maxRounds: 2 });
+            const result = await spawnSubAgent({ name: 'Test', task: 'Loop', maxRounds: 5 });
 
-            expect(result.rounds).toBe(2);
-            expect(mockChat).toHaveBeenCalledTimes(2);
+            expect(result.rounds).toBe(5);
+            expect(mockChat).toHaveBeenCalledTimes(5);
         });
 
-        it('filters tools to whitelist and excludes spawn_agent', async () => {
+        it('allows spawn_agent at depth 0 when maxDepth >= 2 (nesting enabled)', async () => {
             mockChat.mockResolvedValue({ content: 'Done', toolCalls: [] });
 
             await spawnSubAgent({
                 name: 'Explorer',
                 task: 'Search',
                 tools: ['web_search', 'spawn_agent'],
+                depth: 0,
             });
 
             const callArgs = mockChat.mock.calls[0][0];
             const toolNames = callArgs.tools.map((t: any) => t.function.name);
             expect(toolNames).toContain('web_search');
-            expect(toolNames).not.toContain('spawn_agent');
+            expect(toolNames).toContain('spawn_agent'); // Allowed at depth 0 (maxDepth default = 2)
         });
 
-        it('excludes spawn_agent even when no whitelist', async () => {
+        it('excludes spawn_agent at max depth', async () => {
             mockChat.mockResolvedValue({ content: 'Done', toolCalls: [] });
 
-            await spawnSubAgent({ name: 'Test', task: 'Do something' });
+            await spawnSubAgent({ name: 'Test', task: 'Do something', depth: 1 }); // depth 1, maxDepth 2: can't nest further
 
             const callArgs = mockChat.mock.calls[0][0];
             const toolNames = callArgs.tools.map((t: any) => t.function.name);

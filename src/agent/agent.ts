@@ -8,7 +8,7 @@ import { loadConfig } from '../config/config.js';
 import { getOrCreateSession, addMessage, getContextMessages } from './session.js';
 import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
-import { recordToolResult, getLearningContext, learnFact } from '../memory/learning.js';
+import { recordToolResult, getLearningContext, learnFact, getToolWarnings, recordErrorResolution } from '../memory/learning.js';
 import { buildPersonalContext } from '../memory/relationship.js';
 import { getTeachingContext, isCorrection } from './teaching.js';
 import { recordToolUsage, recordCorrection } from './userProfile.js';
@@ -34,6 +34,33 @@ import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js'
 const COMPONENT = 'Agent';
 const MAX_TOOL_ROUNDS = 10;
 const MAX_MODEL_SWITCHES = 2; // Safety: max 2 in-flight model switches per request
+
+/** Estimate the round budget based on task complexity */
+function estimateRoundBudget(message: string, config: import('../config/schema.js').TitanConfig): number {
+    const agentConfig = config.agent as Record<string, unknown>;
+    if (agentConfig.dynamicBudget === false) return MAX_TOOL_ROUNDS;
+
+    const hardCap = (agentConfig.maxToolRoundsHard as number) || 50;
+    const words = message.split(/\s+/).length;
+    const isMultiStep = /\b(then|after that|next|step \d|finally|first.*then|and also|additionally)\b/i.test(message);
+    const isComplex = /\b(research|analyze|investigate|compare|build|implement|create.*and|deploy|automat)/i.test(message);
+
+    let budget: number;
+    if (words < 20 && !isMultiStep && !isComplex) {
+        budget = 10;  // Short, simple queries
+    } else if (words < 60 || isMultiStep) {
+        budget = 15;  // Medium complexity
+    } else {
+        budget = 25;  // Complex multi-step tasks
+    }
+
+    // Autonomous mode multiplier
+    if (config.autonomy.mode === 'autonomous') {
+        budget = Math.ceil(budget * 1.5);
+    }
+
+    return Math.min(budget, hardCap);
+}
 
 /** Find a fallback model for tool calling when the current model fails */
 function findToolCapableFallback(failedModel: string, failedModels: Set<string>, config: import('../config/schema.js').TitanConfig): string | null {
@@ -83,8 +110,10 @@ function ensureSpawnAgentRegistered(): void {
                 tools: template.tools,
                 systemPrompt: template.systemPrompt,
                 model: args.model as string | undefined,
+                depth: 0, // Top-level spawn from agent
             });
-            return `[Sub-Agent: ${result.success ? 'SUCCESS' : 'FAILED'}] (${result.rounds} rounds, ${result.durationMs}ms)\n${result.content}`;
+            const validTag = result.validated ? '' : ' [OUTPUT UNVALIDATED]';
+            return `[Sub-Agent: ${result.success ? 'SUCCESS' : 'FAILED'}${validTag}] (${result.rounds} rounds, ${result.durationMs}ms)\n${result.content}`;
         },
     });
 }
@@ -192,6 +221,10 @@ export interface AgentResponse {
     tokenUsage: { prompt: number; completion: number; total: number };
     model: string;
     durationMs: number;
+    /** True if the agent hit the round limit before completing the task */
+    exhaustedBudget?: boolean;
+    /** Serialized checkpoint for resuming a task that hit the round limit */
+    checkpoint?: string;
 }
 
 /** Read a workspace prompt file if it exists */
@@ -349,11 +382,13 @@ export async function processMessage(
         ensureSpawnAgentRegistered();
     }
 
-    // ── Determine effective limits based on autonomy mode ─────
+    // ── Determine effective limits based on autonomy mode + dynamic budget ─────
     const isAutonomous = config.autonomy.mode === 'autonomous';
-    const effectiveMaxRounds = isAutonomous
+    const dynamicBudget = estimateRoundBudget(message, config);
+    const autonomyOverride = isAutonomous
         ? (config.autonomy as Record<string, unknown>).maxToolRoundsOverride as number || 25
         : MAX_TOOL_ROUNDS;
+    const effectiveMaxRounds = Math.max(dynamicBudget, autonomyOverride);
     const reflectionEnabled = config.agent.reflectionEnabled ?? true;
     const reflectionInterval = config.agent.reflectionInterval ?? 3;
 
@@ -486,6 +521,17 @@ export async function processMessage(
     const historyMessages = getContextMessages(session);
     const tools = getToolDefinitions();
 
+    // ── Learning feedback: inject reliability tags into tool descriptions ──
+    const toolWarnings = getToolWarnings();
+    if (Object.keys(toolWarnings).length > 0) {
+        for (const tool of tools) {
+            const warning = toolWarnings[tool.function.name];
+            if (warning) {
+                tool.function.description = `${warning} ${tool.function.description}`;
+            }
+        }
+    }
+
     const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         ...historyMessages,
@@ -502,6 +548,12 @@ export async function processMessage(
     let modelSwitchCount = 0;
     let selfHealExhausted = false;
     const failedModels = new Set<string>();
+
+    // ── Learning: track failed tools for error resolution recording ──
+    let lastFailedTool: { name: string; error: string } | null = null;
+
+    // ── Checkpoint: track if budget was exhausted ──
+    let budgetExhausted = false;
 
     // ── Cost optimizer: smart model routing ─────────────────
     let { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
@@ -592,8 +644,14 @@ export async function processMessage(
     for (let round = 0; round < effectiveMaxRounds; round++) {
         logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools: [${activeTools.map(t => t.function.name).join(', ')}]`);
 
-        // ── Reflection: periodic self-assessment (replaces forced summarization) ───
-        if (!isAutonomous && round >= 5) {
+        // ── Graceful degradation: wrap-up prompt when approaching round limit ───
+        if (round >= effectiveMaxRounds - 2 && round >= 3) {
+            messages.push({
+                role: 'user',
+                content: `IMPORTANT: You are approaching the tool execution limit (round ${round + 1}/${effectiveMaxRounds}). Wrap up your current work: summarize progress so far and provide a clear response. If the task is incomplete, describe what remains.`,
+            });
+            logger.info(COMPONENT, `[Round ${round + 1}] Graceful degradation: injecting wrap-up prompt (${effectiveMaxRounds - round - 1} rounds remaining)`);
+        } else if (!isAutonomous && round >= 5) {
             // In supervised mode, keep the forced summarization for backward compat
             messages.push({
                 role: 'user',
@@ -735,7 +793,7 @@ export async function processMessage(
                 response.toolCalls = [rescuedToolCall];
                 // Don't break — fall through to the tool execution path below
             } else {
-                const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
+                const stallEvent = checkResponse(session.id, response.content, round, effectiveMaxRounds);
                 if (stallEvent) {
                     const nudge = getNudgeMessage(stallEvent);
                     logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
@@ -832,6 +890,14 @@ export async function processMessage(
             const success = !result.content.toLowerCase().includes('error:');
             recordToolResult(result.name, success, undefined, success ? undefined : result.content.slice(0, 200));
             recordToolUsage(result.name);
+
+            // Track error resolutions: when a previous tool failed and this one succeeded
+            if (success && lastFailedTool) {
+                recordErrorResolution(lastFailedTool.error, `Resolved by using ${result.name} instead of ${lastFailedTool.name}`);
+                lastFailedTool = null;
+            } else if (!success) {
+                lastFailedTool = { name: result.name, error: result.content.slice(0, 200) };
+            }
         }
 
         // Break outer agent loop if loop detection triggered
@@ -863,6 +929,7 @@ export async function processMessage(
         // If this is the last round, add a note
         if (round === effectiveMaxRounds - 1) {
             finalContent = stripToolJson(response.content || 'I completed the tool operations. Let me know if you need anything else.');
+            budgetExhausted = true;
         }
     }
 
@@ -898,6 +965,20 @@ export async function processMessage(
         );
     }
 
+    // ── Checkpoint: if budget exhausted, build a checkpoint for potential resumption ──
+    let checkpoint: string | undefined;
+    if (budgetExhausted) {
+        try {
+            checkpoint = JSON.stringify({
+                sessionId: session.id,
+                toolsUsed: [...new Set(toolsUsed)],
+                roundsUsed: effectiveMaxRounds,
+                lastContent: finalContent.slice(0, 500),
+                timestamp: Date.now(),
+            });
+        } catch { /* ignore serialization failures */ }
+    }
+
     return {
         content: finalContent,
         sessionId: session.id,
@@ -909,5 +990,7 @@ export async function processMessage(
         },
         model: modelUsed,
         durationMs,
+        exhaustedBudget: budgetExhausted || undefined,
+        checkpoint,
     };
 }

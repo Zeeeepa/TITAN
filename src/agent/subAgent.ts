@@ -33,6 +33,10 @@ export interface SubAgentConfig {
     maxRounds?: number;
     /** Whether this is being called from within a sub-agent already */
     isNested?: boolean;
+    /** Current nesting depth (0 = top-level sub-agent) */
+    depth?: number;
+    /** Progress callback: called each round with progress info */
+    onProgress?: (round: number, totalRounds: number, agentName: string) => void;
 }
 
 export interface SubAgentResult {
@@ -41,6 +45,8 @@ export interface SubAgentResult {
     success: boolean;
     durationMs: number;
     rounds: number;
+    /** Whether the output passed validation checks */
+    validated: boolean;
 }
 
 /** Built-in sub-agent templates */
@@ -151,15 +157,19 @@ Return a structured report with each claim, its verification status, confidence 
 export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentResult> {
     const titanConfig = loadConfig();
     const startTime = Date.now();
+    const currentDepth = config.depth ?? 0;
+    const subAgentsCfg = (titanConfig as Record<string, unknown>).subAgents as Record<string, unknown> | undefined;
+    const maxDepth = (subAgentsCfg?.maxDepth as number) ?? 2;
 
-    // Prevent sub-sub-agents
-    if (config.isNested) {
+    // Check depth limit (configurable, default 2)
+    if (currentDepth >= maxDepth || config.isNested) {
         return {
-            content: 'Error: Sub-agents cannot spawn further sub-agents (max depth = 1).',
+            content: `Error: Sub-agent nesting depth limit reached (depth ${currentDepth}/${maxDepth}).`,
             toolsUsed: [],
             success: false,
             durationMs: 0,
             rounds: 0,
+            validated: false,
         };
     }
 
@@ -175,12 +185,16 @@ export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentRes
             success: false,
             durationMs: 0,
             rounds: 0,
+            validated: false,
         };
     }
 
     activeSubAgents++;
     const agentName = config.name || 'SubAgent';
-    const maxRounds = config.maxRounds || 10;
+    // Reduce max rounds by 30% per depth level to prevent runaway nesting
+    const baseMaxRounds = config.maxRounds || 10;
+    const depthReduction = Math.pow(0.7, currentDepth);
+    const maxRounds = Math.max(3, Math.ceil(baseMaxRounds * depthReduction));
     const model = config.model || titanConfig.agent.modelAliases?.fast || 'openai/gpt-4o-mini';
 
     logger.info(COMPONENT, `Spawning ${agentName}: "${config.task.slice(0, 80)}..." (model: ${model}, maxRounds: ${maxRounds})`);
@@ -189,14 +203,13 @@ export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentRes
     let availableTools: ToolDefinition[];
     const allTools = getToolDefinitions();
 
+    const canNest = currentDepth + 1 < maxDepth; // Allow spawn_agent only if depth allows
     if (config.tools && config.tools.length > 0) {
         const toolSet = new Set(config.tools);
-        // Never allow spawn_agent in sub-agents (prevents recursion)
-        toolSet.delete('spawn_agent');
+        if (!canNest) toolSet.delete('spawn_agent');
         availableTools = allTools.filter(t => toolSet.has(t.function.name));
     } else {
-        // All tools except spawn_agent
-        availableTools = allTools.filter(t => t.function.name !== 'spawn_agent');
+        availableTools = allTools.filter(t => canNest || t.function.name !== 'spawn_agent');
     }
 
     const systemPrompt = config.systemPrompt || `You are the ${agentName} sub-agent of TITAN. Execute the task below using available tools. Be efficient and return a clear summary when done.`;
@@ -214,6 +227,7 @@ export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentRes
         for (let round = 0; round < maxRounds; round++) {
             rounds = round + 1;
             logger.debug(COMPONENT, `[${agentName}] Round ${rounds}/${maxRounds}`);
+            config.onProgress?.(rounds, maxRounds, agentName);
 
             const response = await chat({
                 model,
@@ -257,12 +271,19 @@ export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentRes
         const durationMs = Date.now() - startTime;
         logger.info(COMPONENT, `${agentName} completed in ${durationMs}ms (${rounds} rounds, ${toolsUsed.length} tool calls)`);
 
+        // Output validation: check for empty, too-short, or error-like responses
+        const validated = validateSubAgentOutput(finalContent);
+        if (!validated) {
+            logger.warn(COMPONENT, `[${agentName}] Output failed validation: "${finalContent.slice(0, 80)}..."`);
+        }
+
         return {
             content: finalContent,
             toolsUsed: [...new Set(toolsUsed)],
-            success: !finalContent.toLowerCase().startsWith('error'),
+            success: !finalContent.toLowerCase().startsWith('error') && validated,
             durationMs,
             rounds,
+            validated,
         };
     } catch (err) {
         const durationMs = Date.now() - startTime;
@@ -273,10 +294,21 @@ export async function spawnSubAgent(config: SubAgentConfig): Promise<SubAgentRes
             success: false,
             durationMs,
             rounds,
+            validated: false,
         };
     } finally {
         activeSubAgents--;
     }
+}
+
+/** Validate sub-agent output for quality */
+function validateSubAgentOutput(content: string): boolean {
+    if (!content || content.trim().length < 20) return false;
+    const lower = content.toLowerCase();
+    if (lower.startsWith('i cannot') || lower.startsWith('i\'m unable') || lower.startsWith('i am unable')) return false;
+    if (lower.startsWith('error:') || lower.startsWith('sub-agent error:')) return false;
+    if (lower === 'task completed.' && content.length < 20) return false;
+    return true;
 }
 
 /** Get count of currently active sub-agents */

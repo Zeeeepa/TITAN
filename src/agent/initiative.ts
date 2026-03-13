@@ -13,7 +13,7 @@ const COMPONENT = 'Initiative';
 
 /** Track last initiative time to rate-limit */
 let lastInitiativeTime = 0;
-const MIN_INTERVAL_MS = 60_000; // 1 minute between self-initiated tasks
+const DEFAULT_MIN_INTERVAL_MS = 60_000; // 1 minute between self-initiated tasks
 
 export interface InitiativeResult {
     acted: boolean;
@@ -32,8 +32,10 @@ export async function checkInitiative(): Promise<InitiativeResult> {
     const config = loadConfig();
     const now = Date.now();
 
-    // Rate limiting
-    if (now - lastInitiativeTime < MIN_INTERVAL_MS) {
+    // Configurable rate limiting
+    const autonomyCfg = config.autonomy as Record<string, unknown>;
+    const intervalMs = (autonomyCfg?.initiativeIntervalMs as number) || DEFAULT_MIN_INTERVAL_MS;
+    if (now - lastInitiativeTime < intervalMs) {
         return { acted: false };
     }
 

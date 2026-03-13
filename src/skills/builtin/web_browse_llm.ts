@@ -610,8 +610,10 @@ export async function fillFormSmart(session: WebActSession, url: string, fields:
                 // Defer button/radio clicks to second pass
                 deferredClicks.push({ fieldName, value: valueStr });
             } else if (el.role === 'combobox' || el.placeholder?.toLowerCase().includes('start typing')) {
-                // Combobox/autocomplete: type then select from dropdown
-                await page.fill(el.selector, value);
+                // Combobox/autocomplete: type then select from dropdown (React-compatible)
+                const comboLocator = page.locator(el.selector);
+                await comboLocator.click({ timeout: 3000 }).catch(() => {});
+                await comboLocator.pressSequentially(value, { delay: 10 });
                 await page.waitForTimeout(1500); // Wait for dropdown to appear
                 // Try to click the first dropdown option
                 try {
@@ -626,8 +628,17 @@ export async function fillFormSmart(session: WebActSession, url: string, fields:
                     results.push(`⚠️ Filled combobox "${fieldName}" with "${value}" but could not select option`);
                 }
             } else {
-                // Standard text input
-                await page.fill(el.selector, value);
+                // Standard text input — use pressSequentially for React SPA compatibility
+                // page.fill() sets DOM .value but doesn't trigger React's synthetic onChange events.
+                // pressSequentially types char-by-char, which fires all React event handlers.
+                const locator = page.locator(el.selector);
+                await locator.click({ timeout: 3000 }).catch(() => {});
+                // Clear existing value first
+                await page.evaluate((sel) => {
+                    const input = document.querySelector(sel) as HTMLInputElement;
+                    if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
+                }, el.selector);
+                await locator.pressSequentially(value, { delay: 5 });
                 await page.waitForTimeout(300);
                 results.push(`✅ Filled "${fieldName}" with "${value.slice(0, 50)}${value.length > 50 ? '...' : ''}"`);
             }

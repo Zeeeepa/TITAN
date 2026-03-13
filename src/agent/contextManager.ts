@@ -67,6 +67,39 @@ export function summarizeMessages(messages: ChatMessage[]): ChatMessage {
     return { role: 'system', content: summary };
 }
 
+/**
+ * Compress verbose tool results to save context window space.
+ * Keeps the last 5 tool results at full fidelity, summarizes older ones.
+ */
+function compressToolResults(messages: ChatMessage[]): ChatMessage[] {
+    // Count tool messages from the end to find the cutoff
+    let toolCount = 0;
+    const toolIndices: number[] = [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'tool') {
+            toolCount++;
+            toolIndices.push(i);
+        }
+    }
+
+    // If 5 or fewer tool results, nothing to compress
+    if (toolCount <= 5) return messages;
+
+    // Indices of tool messages to keep at full fidelity (last 5)
+    const keepFullSet = new Set(toolIndices.slice(0, 5));
+
+    return messages.map((msg, i) => {
+        if (msg.role !== 'tool' || keepFullSet.has(i)) return msg;
+        const content = msg.content || '';
+        if (content.length <= 500) return msg;
+
+        // Compress: keep first 150 chars + success/error status
+        const isError = content.toLowerCase().includes('error:');
+        const summary = `[${msg.name || 'tool'}: ${isError ? 'FAILED' : 'OK'}] ${content.slice(0, 150)}... [${content.length} chars compressed]`;
+        return { ...msg, content: summary };
+    });
+}
+
 /** Smart context builder — fits messages within token budget */
 export function buildSmartContext(
     messages: ChatMessage[],
@@ -89,12 +122,15 @@ export function buildSmartContext(
     logger.debug(COMPONENT, `Context overflow: ${totalTokens} tokens > ${tokenBudget} budget. Compressing.`);
 
     // Strategy: Keep the most recent messages, summarize the oldest
+    // First: compress verbose tool results in older messages to save tokens
+    const compressedMessages = compressToolResults(messages);
+
     const result: ChatMessage[] = [];
     let usedTokens = 0;
 
     // Always keep the last N messages (most important for context)
-    const recentCount = Math.min(messages.length, 20);
-    const recentMessages = messages.slice(-recentCount);
+    const recentCount = Math.min(compressedMessages.length, 20);
+    const recentMessages = compressedMessages.slice(-recentCount);
     const recentTokens = tokenCounts.slice(-recentCount).reduce((a, b) => a + b, 0);
 
     if (recentTokens > tokenBudget) {
@@ -111,7 +147,7 @@ export function buildSmartContext(
     }
 
     // Summarize older messages
-    const olderMessages = messages.slice(0, -recentCount);
+    const olderMessages = compressedMessages.slice(0, -recentCount);
     if (olderMessages.length > 0) {
         const summary = summarizeMessages(olderMessages);
         result.push(summary);

@@ -41,7 +41,7 @@ export function setAutonomousMode(enabled: boolean): void {
 }
 
 // ─── Types ────────────────────────────────────────────────────────
-export type StallType = 'silence' | 'tool_loop' | 'empty_response' | 'max_rounds';
+export type StallType = 'silence' | 'tool_loop' | 'empty_response' | 'max_rounds' | 'tool_call_failure';
 
 export interface StallEvent {
     type: StallType;
@@ -63,6 +63,7 @@ interface SessionState {
     toolHistory: ToolCallRecord[];
     nudgeCount: number;
     stallCount: number;
+    consecutiveToolCallFailures: number;
     timer?: ReturnType<typeof setTimeout>;
 }
 
@@ -76,7 +77,7 @@ function hashArgs(args: Record<string, unknown>): string {
 
 function getOrCreate(sessionId: string): SessionState {
     if (!sessions.has(sessionId)) {
-        sessions.set(sessionId, { lastEventMs: Date.now(), toolHistory: [], nudgeCount: 0, stallCount: 0 });
+        sessions.set(sessionId, { lastEventMs: Date.now(), toolHistory: [], nudgeCount: 0, stallCount: 0, consecutiveToolCallFailures: 0 });
     }
     return sessions.get(sessionId)!;
 }
@@ -101,10 +102,59 @@ export function heartbeat(sessionId: string): void {
     }, stallThresholdMs);
 }
 
+/** Default threshold for tool call failure detection */
+let selfHealThreshold = 3;
+
+/** Configure the self-heal threshold (how many consecutive tool_call failures before triggering) */
+export function setSelfHealThreshold(threshold: number): void {
+    selfHealThreshold = Math.max(2, Math.min(10, threshold));
+}
+
+/**
+ * Check if the model is failing to generate tool calls despite tools being available.
+ * Call this when the LLM returns content but no tool_calls.
+ * Returns a StallEvent after `selfHealThreshold` consecutive failures.
+ */
+export function checkToolCallCapability(
+    sessionId: string,
+    content: string,
+    toolsWereAvailable: boolean,
+): StallEvent | null {
+    if (!toolsWereAvailable) return null;
+    // Only count if the model generated real content (not empty)
+    if (!content || content.trim().length <= 10) return null;
+
+    const state = getOrCreate(sessionId);
+    state.consecutiveToolCallFailures++;
+
+    if (state.consecutiveToolCallFailures >= selfHealThreshold) {
+        state.stallCount++;
+        logger.warn(COMPONENT, `Tool call failure detected in session ${sessionId}: ${state.consecutiveToolCallFailures} consecutive rounds with no tool calls`);
+        return {
+            type: 'tool_call_failure',
+            sessionId,
+            detectedAt: new Date().toISOString(),
+            detail: `Model returned content ${state.consecutiveToolCallFailures}x without generating tool calls despite tools being available`,
+            nudgeCount: state.consecutiveToolCallFailures,
+        };
+    }
+
+    return null;
+}
+
+/** Reset the tool call failure counter (call when a successful tool call is made) */
+export function resetToolCallFailures(sessionId: string): void {
+    const state = sessions.get(sessionId);
+    if (state) state.consecutiveToolCallFailures = 0;
+}
+
 /** Call this every time a tool is invoked */
 export function recordToolCall(sessionId: string, name: string, args: Record<string, unknown>): StallEvent | null {
     const state = getOrCreate(sessionId);
     const argsHash = hashArgs(args);
+
+    // Reset tool call failure counter — model successfully called a tool
+    state.consecutiveToolCallFailures = 0;
 
     state.toolHistory.push({ name, argsHash, calledAt: Date.now() });
     if (state.toolHistory.length > 10) state.toolHistory.shift();
@@ -187,6 +237,10 @@ export function getNudgeMessage(event: StallEvent): string {
         max_rounds: [
             'I\'ve taken many steps on this task. Let me summarize what I\'ve done so far and ask if you\'d like me to continue.',
             'I\'ve hit my action limit. Here\'s where I stand — tell me how you\'d like to proceed.',
+        ],
+        tool_call_failure: [
+            '[Self-Heal] Current model cannot generate tool calls. Switching to a fallback model that supports tool calling.',
+            '[Self-Heal] Tool calling still failing after model switch. Returning an honest status to the user.',
         ],
     };
 

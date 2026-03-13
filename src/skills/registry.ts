@@ -239,6 +239,7 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerPersonaManagerSkill } = await import('./builtin/persona_manager.js');
     const { registerResearchPipelineSkill } = await import('./builtin/research_pipeline.js');
     const { registerAutoresearchSkill } = await import('./builtin/autoresearch.js');
+    const { registerSelfDoctorSkill } = await import('./builtin/self_doctor.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -283,6 +284,7 @@ export async function initBuiltinSkills(): Promise<void> {
         ['persona_manager', registerPersonaManagerSkill],
         ['research_pipeline', registerResearchPipelineSkill],
         ['autoresearch', registerAutoresearchSkill],
+        ['self_doctor', registerSelfDoctorSkill],
     ];
 
     for (const [name, fn] of registrations) {

@@ -32,6 +32,7 @@ export const DEFAULT_CORE_TOOLS = [
     'goal_list',
     'spawn_agent',
     'tool_search',
+    'self_doctor',
 ];
 
 /** Build a compact one-line catalog of all tools for the tool_search description */

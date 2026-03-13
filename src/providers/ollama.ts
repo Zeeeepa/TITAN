@@ -45,6 +45,49 @@ function compressSystemPrompt(content: string): string {
     return compressed;
 }
 
+/**
+ * Trim messages for cloud models while preserving tool call/response pairs.
+ * Naive slicing can split a tool call from its response, breaking the tool calling contract.
+ * This walks backwards keeping assistant+tool pairs together.
+ */
+function trimPreservingToolPairs(msgs: Array<Record<string, unknown>>, maxTotal: number): Array<Record<string, unknown>> {
+    const systemMsgs = msgs.filter(m => m.role === 'system');
+    const nonSystem = msgs.filter(m => m.role !== 'system');
+    const maxNonSystem = maxTotal - systemMsgs.length;
+
+    if (nonSystem.length <= maxNonSystem) return msgs;
+
+    // Walk backwards, keeping tool/assistant pairs together
+    const kept: Array<Record<string, unknown>> = [];
+    let i = nonSystem.length - 1;
+    while (i >= 0 && kept.length < maxNonSystem) {
+        const msg = nonSystem[i];
+        if (msg.role === 'tool') {
+            // Keep this tool result and find its assistant parent
+            kept.unshift(msg);
+            for (let j = i - 1; j >= 0; j--) {
+                if (nonSystem[j].role === 'assistant' && (nonSystem[j].tool_calls || nonSystem[j].toolCalls)) {
+                    kept.unshift(nonSystem[j]);
+                    i = j - 1;
+                    break;
+                }
+                if (nonSystem[j].role === 'tool') {
+                    // Sibling tool result from same batch
+                    kept.unshift(nonSystem[j]);
+                } else {
+                    i = j;
+                    break;
+                }
+            }
+        } else {
+            kept.unshift(msg);
+            i--;
+        }
+    }
+
+    return [...systemMsgs, ...kept];
+}
+
 /** Simplify tool parameter schemas for cloud models.
  *  Strips Zod artifacts ($schema, additionalProperties, etc.) that can
  *  confuse cloud model tool-calling.
@@ -136,15 +179,11 @@ export class OllamaProvider extends LLMProvider {
             (body.options as Record<string, unknown>).temperature = options.temperature ?? 0.3;
         }
 
-        // Cloud models: trim conversation history to keep context manageable
-        // Keep system message + last N user/assistant exchanges
+        // Cloud models: trim conversation history preserving tool call/response pairs
         if (isCloudModel && hasTools) {
             const msgs = body.messages as Array<Record<string, unknown>>;
             if (msgs.length > 10) {
-                const systemMsgs = msgs.filter(m => m.role === 'system');
-                const nonSystemMsgs = msgs.filter(m => m.role !== 'system');
-                // Keep last 8 non-system messages (4 exchanges)
-                const trimmed = [...systemMsgs, ...nonSystemMsgs.slice(-8)];
+                const trimmed = trimPreservingToolPairs(msgs, 10);
                 logger.info(COMPONENT, `Cloud model context trim: ${msgs.length} → ${trimmed.length} messages`);
                 body.messages = trimmed;
             }
@@ -278,14 +317,11 @@ export class OllamaProvider extends LLMProvider {
             (body.options as Record<string, unknown>).temperature = options.temperature ?? 0.3;
         }
 
-        // Cloud model optimizations: trim history + merge system into user message
+        // Cloud model optimizations: trim history preserving tool pairs + merge system into user message
         if (isCloudModel && hasTools) {
             const msgs = body.messages as Array<Record<string, unknown>>;
-            // Trim to last 8 non-system messages
             if (msgs.length > 10) {
-                const systemMsgs = msgs.filter(m => m.role === 'system');
-                const nonSystemMsgs = msgs.filter(m => m.role !== 'system');
-                const trimmed = [...systemMsgs, ...nonSystemMsgs.slice(-8)];
+                const trimmed = trimPreservingToolPairs(msgs, 10);
                 logger.info(COMPONENT, `[Stream] Cloud model context trim: ${msgs.length} → ${trimmed.length} messages`);
                 body.messages = trimmed;
             }

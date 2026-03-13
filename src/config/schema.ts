@@ -106,6 +106,12 @@ export const AgentConfigSchema = z.object({
     reflectionEnabled: z.boolean().default(true),
     /** Reflect every N rounds (default: 3) */
     reflectionInterval: z.number().default(3),
+    /** Enable automatic model switching when tool calling fails (self-healing) */
+    selfHealEnabled: z.boolean().default(true),
+    /** Number of consecutive tool call failures before auto-switching models (2-10) */
+    selfHealThreshold: z.number().min(2).max(10).default(3),
+    /** Models known to reliably support tool calling — used as self-heal fallbacks */
+    toolCapableModels: z.array(z.string()).default([]),
 });
 
 export const MeshConfigSchema = z.object({

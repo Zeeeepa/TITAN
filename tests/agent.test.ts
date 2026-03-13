@@ -107,6 +107,13 @@ vi.mock('../src/agent/stallDetector.js', () => ({
     clearSession: mockClearSession,
     setStallHandler: mockSetStallHandler,
     setAutonomousMode: vi.fn(),
+    checkToolCallCapability: vi.fn().mockReturnValue(null),
+    resetToolCallFailures: vi.fn(),
+    getStallStats: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../src/agent/selfAwareness.js', () => ({
+    buildSelfAwarenessContext: vi.fn().mockReturnValue('## Self-Awareness\n- Model: test-model'),
 }));
 
 vi.mock('../src/agent/loopDetection.js', () => ({

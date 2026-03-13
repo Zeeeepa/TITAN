@@ -12,7 +12,7 @@ import { recordToolResult, getLearningContext, learnFact } from '../memory/learn
 import { buildPersonalContext } from '../memory/relationship.js';
 import { getTeachingContext, isCorrection } from './teaching.js';
 import { recordToolUsage, recordCorrection } from './userProfile.js';
-import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler, setAutonomousMode } from './stallDetector.js';
+import { heartbeat, recordToolCall, checkResponse, getNudgeMessage, clearSession, setStallHandler, setAutonomousMode, checkToolCallCapability, resetToolCallFailures } from './stallDetector.js';
 import { checkForLoop, resetLoopDetection } from './loopDetection.js';
 import { routeModel, maybeCompressContext, recordTokenUsage } from './costOptimizer.js';
 import { getCachedResponse, setCachedResponse } from './responseCache.js';
@@ -23,6 +23,7 @@ import type { ChatMessage, ChatResponse, ToolCall } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
 import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
+import { buildSelfAwarenessContext } from './selfAwareness.js';
 import { shouldReflect, reflect } from './reflection.js';
 import { analyzeForDelegation, executeDelegationPlan } from './orchestrator.js';
 import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
@@ -32,6 +33,29 @@ import { TITAN_NAME, AGENTS_MD, SOUL_MD, TOOLS_MD } from '../utils/constants.js'
 
 const COMPONENT = 'Agent';
 const MAX_TOOL_ROUNDS = 10;
+const MAX_MODEL_SWITCHES = 2; // Safety: max 2 in-flight model switches per request
+
+/** Find a fallback model for tool calling when the current model fails */
+function findToolCapableFallback(failedModel: string, failedModels: Set<string>, config: import('../config/schema.js').TitanConfig): string | null {
+    const candidates: string[] = [];
+
+    // 1. Check explicit toolCapableModels config
+    const toolCapable = (config.agent as Record<string, unknown>).toolCapableModels as string[] | undefined;
+    if (toolCapable?.length) candidates.push(...toolCapable);
+
+    // 2. Check fallback chain
+    const chain = (config.agent as Record<string, unknown>).fallbackChain as string[] | undefined;
+    if (chain?.length) candidates.push(...chain);
+
+    // 3. Check model aliases (fast and smart)
+    const aliases = (config.agent as Record<string, unknown>).modelAliases as Record<string, string> | undefined;
+    if (aliases?.fast) candidates.push(aliases.fast);
+    if (aliases?.smart) candidates.push(aliases.smart);
+
+    // Filter out the failed model and any previously failed models
+    const viable = candidates.filter(m => m !== failedModel && !failedModels.has(m));
+    return viable.length > 0 ? viable[0] : null;
+}
 
 // ── Register spawn_agent tool ────────────────────────────────────
 let spawnAgentRegistered = false;
@@ -196,7 +220,9 @@ You have a knowledge graph (temporal memory) that persists across sessions. **Us
 - **graph_entities**: List known people, topics, projects, or places.
 - **graph_recall**: Recall everything about a specific entity.
 - **memory**: Store and retrieve key-value preferences (e.g., "preferred language: Python").
-**Always check your memory first** when the user asks about something you might already know. Record new facts proactively — names, projects, preferences, technical choices, locations. The more you remember, the more helpful you become.`;
+**Always check your memory first** when the user asks about something you might already know. Record new facts proactively — names, projects, preferences, technical choices, locations. The more you remember, the more helpful you become.
+
+${buildSelfAwarenessContext(config)}`;
 }
 
 /** Streaming callbacks for real-time token delivery */
@@ -386,6 +412,12 @@ export async function processMessage(
     const toolsUsed: string[] = [];
     let finalContent = '';
     let modelUsed = config.agent.model;
+
+    // ── Self-Heal state: track model switching for tool call failures ──
+    const selfHealEnabled = (config.agent as Record<string, unknown>).selfHealEnabled !== false;
+    let modelSwitchCount = 0;
+    let selfHealExhausted = false;
+    const failedModels = new Set<string>();
 
     // ── Cost optimizer: smart model routing ─────────────────
     let { model: activeModel, reason: routingReason } = routeModel(message, config.agent.model);
@@ -586,6 +618,30 @@ export async function processMessage(
 
         // If no tool calls, we have the final response
         if (!response.toolCalls || response.toolCalls.length === 0) {
+            // ── Self-Heal: detect tool calling failure and auto-switch model ──
+            if (selfHealEnabled && !selfHealExhausted && activeTools.length > 0) {
+                const toolFailure = checkToolCallCapability(session.id, response.content, activeTools.length > 0);
+                if (toolFailure) {
+                    const fallback = findToolCapableFallback(activeModel, failedModels, config);
+                    if (fallback) {
+                        logger.warn(COMPONENT, `[SelfHeal] ${activeModel} failed tool calling ${toolFailure.nudgeCount}x. Switching to ${fallback}`);
+                        failedModels.add(activeModel);
+                        activeModel = fallback;
+                        modelUsed = fallback;
+                        modelSwitchCount++;
+                        if (modelSwitchCount >= MAX_MODEL_SWITCHES) selfHealExhausted = true;
+                        resetToolCallFailures(session.id);
+                        messages.push({ role: 'user', content: `[System: Model switched to ${fallback} for tool calling capability. Use your tools to complete the task.]` });
+                        continue;
+                    } else if (modelSwitchCount > 0) {
+                        // Already switched once and no more fallbacks — give an honest failure
+                        selfHealExhausted = true;
+                        finalContent = 'I tried switching models but tool calling is still failing. Please check my configuration with the self_doctor tool or switch me to a model that supports tool calling.';
+                        break;
+                    }
+                }
+            }
+
             const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
             if (stallEvent) {
                 const nudge = getNudgeMessage(stallEvent);

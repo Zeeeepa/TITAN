@@ -571,62 +571,44 @@ export async function fillFormSmart(session: WebActSession, url: string, fields:
         }
     }
 
-    // Fill each field (with human-like delays between fields)
+    // Fill each field — text/select fields first, buttons/radios deferred to second pass
+    // (clicking buttons can change page state, so fill all inputs before clicking)
+    const deferredClicks: Array<{ fieldName: string; value: string }> = [];
+
     for (const [fieldName, value] of Object.entries(fields)) {
         const valueStr = String(value);
         // Human-like pause between fields — bots fill instantly, humans don't
         await humanDelay(300, 900);
         try {
-            // Special case: if the field name itself matches a button/radio label, click it
-            // (e.g., "I am not located in the EEA/UK": true → click that radio)
             const normFieldName = normalize(fieldName);
-            const isSelect = valueStr === 'true' || valueStr === 'false' || valueStr === '';
-            if (isSelect) {
-                const matchingBtn = formElements.find(e =>
-                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button') &&
-                    normalize(e.label) === normFieldName
-                );
-                if (matchingBtn) {
-                    await page.click(matchingBtn.selector, { timeout: 5000 });
-                    await page.waitForTimeout(500);
-                    results.push(`✅ Selected "${fieldName}"`);
-                    continue;
-                }
-            }
 
             const el = findBestMatch(fieldName);
+
+            // If no text/select match found, check if this is a button/radio click — defer it
             if (!el) {
-                // Try matching field name OR value against button/radio labels
+                const isSelect = valueStr === 'true' || valueStr === 'false' || valueStr === '';
+                if (isSelect) {
+                    const matchingBtn = formElements.find(e =>
+                        (e.type === 'radio' || e.type === 'button' || e.tagName === 'button') &&
+                        normalize(e.label) === normFieldName
+                    );
+                    if (matchingBtn) { deferredClicks.push({ fieldName, value: valueStr }); continue; }
+                }
                 const buttonEl = formElements.find(e =>
                     (e.type === 'button' || e.type === 'radio' || e.tagName === 'button' || e.role === 'button') &&
                     (e.label.toLowerCase().includes(valueStr.toLowerCase()) ||
                      normalize(e.label).includes(normFieldName) ||
                      normFieldName.includes(normalize(e.label)))
                 );
-                if (buttonEl) {
-                    await page.click(buttonEl.selector, { timeout: 5000 });
-                    await page.waitForTimeout(500);
-                    results.push(`✅ Clicked "${buttonEl.label}" for "${fieldName}"`);
-                } else {
-                    results.push(`❌ Could not find field: "${fieldName}"`);
-                }
+                if (buttonEl) { deferredClicks.push({ fieldName, value: valueStr }); continue; }
+                results.push(`❌ Could not find field: "${fieldName}"`);
                 continue;
             }
 
             // Handle different field types
             if (el.type === 'radio' || el.type === 'button' || el.tagName === 'button') {
-                // For radio/buttons, find and click the matching option
-                const target = formElements.find(e =>
-                    e.label.toLowerCase().includes(value.toLowerCase()) &&
-                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button')
-                );
-                if (target) {
-                    await page.click(target.selector, { timeout: 5000 });
-                    await page.waitForTimeout(500);
-                    results.push(`✅ Clicked "${value}" for "${fieldName}"`);
-                } else {
-                    results.push(`❌ Could not find option "${value}" for "${fieldName}"`);
-                }
+                // Defer button/radio clicks to second pass
+                deferredClicks.push({ fieldName, value: valueStr });
             } else if (el.role === 'combobox' || el.placeholder?.toLowerCase().includes('start typing')) {
                 // Combobox/autocomplete: type then select from dropdown
                 await page.fill(el.selector, value);
@@ -651,6 +633,60 @@ export async function fillFormSmart(session: WebActSession, url: string, fields:
             }
         } catch (e) {
             results.push(`❌ Error filling "${fieldName}": ${(e as Error).message?.split('\n')[0]}`);
+        }
+    }
+
+    // Second pass: execute deferred button/radio clicks (after all text fields are filled)
+    for (const { fieldName, value } of deferredClicks) {
+        await humanDelay(300, 600);
+        try {
+            const normFieldName = normalize(fieldName);
+            // Try exact label match first
+            const isSelect = value === 'true' || value === 'false' || value === '';
+            if (isSelect) {
+                const matchingBtn = formElements.find(e =>
+                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button') &&
+                    normalize(e.label) === normFieldName
+                );
+                if (matchingBtn) {
+                    await page.click(matchingBtn.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Selected "${fieldName}"`);
+                    continue;
+                }
+            }
+            // Try value-based button match
+            const el = findBestMatch(fieldName);
+            if (el && (el.type === 'radio' || el.type === 'button' || el.tagName === 'button')) {
+                const target = formElements.find(e =>
+                    e.label.toLowerCase().includes(value.toLowerCase()) &&
+                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button')
+                );
+                if (target) {
+                    await page.click(target.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Clicked "${value}" for "${fieldName}"`);
+                } else {
+                    results.push(`❌ Could not find option "${value}" for "${fieldName}"`);
+                }
+            } else {
+                // Fallback: find any button matching field name or value
+                const buttonEl = formElements.find(e =>
+                    (e.type === 'button' || e.type === 'radio' || e.tagName === 'button' || e.role === 'button') &&
+                    (e.label.toLowerCase().includes(value.toLowerCase()) ||
+                     normalize(e.label).includes(normFieldName) ||
+                     normFieldName.includes(normalize(e.label)))
+                );
+                if (buttonEl) {
+                    await page.click(buttonEl.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Clicked "${buttonEl.label}" for "${fieldName}"`);
+                } else {
+                    results.push(`❌ Could not find button: "${fieldName}" = "${value}"`);
+                }
+            }
+        } catch (e) {
+            results.push(`❌ Error clicking "${fieldName}": ${(e as Error).message?.split('\n')[0]}`);
         }
     }
 

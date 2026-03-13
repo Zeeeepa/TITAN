@@ -56,6 +56,18 @@ export async function detectCaptchaInfo(page: Page): Promise<CaptchaInfo | null>
             } catch { /* ignore parse errors */ }
         }
 
+        // Check reCAPTCHA script tag for render= param (v3 invisible sites like AshbyHQ)
+        const recaptchaScript = document.querySelector('script[src*="recaptcha"][src*="render="]') as HTMLScriptElement | null;
+        if (recaptchaScript) {
+            try {
+                const src = new URL(recaptchaScript.src);
+                const renderKey = src.searchParams.get('render') || '';
+                if (renderKey && renderKey !== 'explicit') {
+                    return { type: 'recaptcha_v3' as const, sitekey: renderKey };
+                }
+            } catch { /* ignore */ }
+        }
+
         // Check global grecaptcha config (v3 sites often use this)
         const gCfg = (window as any).___grecaptcha_cfg;
         if (gCfg?.clients) {

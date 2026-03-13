@@ -4,6 +4,22 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.16] — 2026-03-13
+
+### Added
+- **CapSolver Integration** — Automatic CAPTCHA solving via CapSolver REST API. Supports reCAPTCHA v2/v3, hCaptcha, and Cloudflare Turnstile. New `captchaSolver.ts` module with detect, solve, and inject pipeline
+- **Direct Form Fill Endpoint** — `POST /api/browser/form-fill` bypasses LLM orchestration for reliable form automation. Supports `postClicks` for button/radio interactions after text fill
+- **CAPTCHA Solve Endpoint** — `POST /api/browser/solve-captcha` for standalone CAPTCHA solving on any page
+- **CapSolver Config** — New `capsolver` section in Zod config schema (`enabled`, `apiKey`, `timeoutMs`, `minScore`)
+- **reCAPTCHA Script Render Detection** — Detects sitekeys from `recaptcha/api.js?render=` script tags (invisible reCAPTCHA v3)
+
+### Fixed
+- **Form fill button ordering** — Button/radio clicks now deferred to second pass after all text fields are filled, preventing page state corruption
+- **React controlled component compatibility** — Form fills now work with React apps that use synthetic events (e.g., AshbyHQ)
+- **CAPTCHA detection before submit** — CapSolver integration in `fillFormSmart` attempts auto-solve before falling back to manual
+
+---
+
 ## [2026.10.11] — 2026-03-12
 
 ### Added

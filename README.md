@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, 15 channels, 34 providers, ~117 tools, ~3,691 tests. Autonomous persona, research pipeline, integrations panel, workflow engine. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, browser automation with CAPTCHA solving, 15 channels, 34 providers, ~117 tools, ~3,709 tests. Autonomous persona, research pipeline, integrations panel, workflow engine. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-117-orange" alt="117 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
-  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C691-brightgreen" alt="3,691 Tests"/></a>
+  <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C709-brightgreen" alt="3,709 Tests"/></a>
 </p>
 
 <p align="center">
@@ -544,7 +544,7 @@ print(f"Found {len(results)} results")
 |----------|-------|
 | **Shell & Process** | `shell`, `exec`, `process` (list, kill, spawn, poll, log) |
 | **Filesystem** | `read_file`, `write_file`, `edit_file`, `list_dir`, `apply_patch` |
-| **Web** | `web_search`, `web_fetch`, `web_read`, `web_act`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` |
+| **Web** | `web_search`, `web_fetch`, `web_read`, `web_act`, `smart_form_fill`, `browser` (CDP), `browse_url`, `browser_search`, `browser_auto_nav` |
 | **Intelligence** | `auto_generate_skill`, `analyze_image`, `transcribe_audio`, `generate_speech` |
 | **GitHub** | `github_repos`, `github_issues`, `github_prs`, `github_commits`, `github_files` |
 | **Email** | `email_send`, `email_search`, `email_read`, `email_list` (Gmail OAuth + SMTP) |
@@ -806,6 +806,7 @@ We don't bite. Unless you submit a PR that adds `is-even` as a dependency.
 ### Browser Automation
 
 - **[Skyvern](https://github.com/Skyvern-AI/skyvern)** by [Skyvern AI](https://skyvern.com/) — AI browser automation via vision + LLMs. Licensed under AGPL-3.0 (separate service).
+- **[CapSolver](https://www.capsolver.com/)** — REST API for solving reCAPTCHA v2/v3, hCaptcha, and Cloudflare Turnstile. Optional integration — configure via `capsolver` config section.
 
 ### Frontend (Mission Control v2)
 

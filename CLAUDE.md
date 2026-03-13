@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.11
+- **Current version**: v2026.10.16
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -18,7 +18,7 @@
 | Providers | 34 (4 native + 30 OpenAI-compatible) |
 | Tools | ~117 across 82 loaded skills |
 | Channels | 15 (Discord, Telegram, Slack, WhatsApp, Matrix, IRC, etc.) |
-| Tests | 3,691 across 114 files (vitest) |
+| Tests | 3,709 across 116 files (vitest) |
 | Default model | `anthropic/claude-sonnet-4-20250514` |
 | Gateway port | 48420 |
 
@@ -27,7 +27,7 @@
 ```
 src/
 ├── agent/        # Agent core, reflection, sub-agents, orchestrator, goals, initiative
-├── browsing/     # Stagehand + shared browser pool (Playwright)
+├── browsing/     # Shared browser pool (Playwright), CAPTCHA solver (CapSolver)
 ├── channels/     # 15 channel adapters
 ├── config/       # Zod-validated config schema
 ├── context/      # ContextEngine plugin system
@@ -68,7 +68,7 @@ npm run typecheck
 ## Testing
 
 ```bash
-npm test                 # Run all 3,691 tests
+npm test                 # Run all 3,709 tests
 npm run test:watch       # Watch mode
 npx vitest run tests/core.test.ts  # Run specific file
 ```
@@ -118,6 +118,8 @@ Key endpoints:
 - `GET /api/cron` — List cron jobs
 - `POST /api/autopilot/toggle` — Enable/disable autopilot
 - `POST /api/recipes/:id/run` — Execute a saved recipe
+- `POST /api/browser/form-fill` — Direct form fill (bypasses LLM, supports `postClicks`)
+- `POST /api/browser/solve-captcha` — Solve CAPTCHA on a given URL via CapSolver
 
 ## Mission Control v2 (React SPA)
 
@@ -189,6 +191,7 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.16**: CapSolver CAPTCHA integration, direct form-fill endpoint, deferred button clicks, React-compatible form automation
 - **v2026.10.11**: Integrations panel (12 provider API keys + Google OAuth), Workflows panel (Goals, Cron, Recipes, Autopilot), autonomous persona, research pipeline, autoresearch, TopFacts plugin, checkpoint/resume, 17 admin panels, 117 tools, 82 skills
 - **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, new admin panels
 - **v2026.10.3**: Settings panel data binding (models API shape, nested config keys)

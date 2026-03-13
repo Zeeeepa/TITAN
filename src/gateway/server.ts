@@ -1981,7 +1981,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // ── API Documentation ────────────────────────────────────
   // ── Browser automation endpoints ─────────────────────────
   app.post('/api/browser/form-fill', async (req, res) => {
-    const { url, data, submit } = req.body;
+    const { url, data, submit, postClicks } = req.body;
     if (!url || typeof url !== 'string') {
       return res.status(400).json({ success: false, error: 'url is required (string)' });
     }
@@ -1994,12 +1994,96 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       const page = await getPage();
       const session = { page, lastUsed: Date.now(), elements: new Map<number, string>() };
       try {
-        const result = await fillFormSmart(session as any, url, data as Record<string, string>, submit ?? false);
-        const lines = result.split('\n');
+        // If postClicks are specified, defer submit to after clicks
+        const deferSubmit = Array.isArray(postClicks) && postClicks.length > 0 && submit;
+        const result = await fillFormSmart(session as any, url, data as Record<string, string>, deferSubmit ? false : (submit ?? false));
+
+        // Post-fill clicks: click elements by text content or CSS selector after form is filled
+        const clickResults: string[] = [];
+        if (Array.isArray(postClicks)) {
+          for (const click of postClicks) {
+            try {
+              if (typeof click === 'string') {
+                // Try text-based click first (button, radio, label), then CSS selector
+                const clicked = await page.evaluate((text: string) => {
+                  const els = Array.from(document.querySelectorAll('button, input[type="radio"], label, [role="button"], [role="radio"]'));
+                  for (const el of els) {
+                    const elText = (el as HTMLElement).textContent?.trim() || '';
+                    if (elText.toLowerCase() === text.toLowerCase() || elText.toLowerCase().includes(text.toLowerCase())) {
+                      (el as HTMLElement).click();
+                      return elText;
+                    }
+                  }
+                  return null;
+                }, click);
+                if (clicked) {
+                  clickResults.push(`✅ Clicked "${clicked}"`);
+                } else {
+                  // Fallback: try as CSS selector
+                  try {
+                    await page.click(click, { timeout: 3000 });
+                    clickResults.push(`✅ Clicked selector: ${click}`);
+                  } catch {
+                    clickResults.push(`❌ Could not find: "${click}"`);
+                  }
+                }
+                await page.waitForTimeout(500);
+              }
+            } catch (e) {
+              clickResults.push(`❌ Error clicking "${click}": ${(e as Error).message?.split('\n')[0]}`);
+            }
+          }
+        }
+
+        // Now solve CAPTCHA and submit if deferred
+        if (deferSubmit) {
+          try {
+            const { solveCaptcha } = await import('../browsing/captchaSolver.js');
+            const solveResult = await solveCaptcha(page as unknown as import('playwright').Page);
+            if (solveResult.solved) {
+              clickResults.push(`✅ ${solveResult.type} solved via CapSolver`);
+            } else if (solveResult.error) {
+              clickResults.push(`⚠️ CAPTCHA: ${solveResult.error}`);
+            }
+          } catch { /* CapSolver not available */ }
+
+          // Click submit button
+          try {
+            const submitClicked = await page.evaluate(() => {
+              const btns = Array.from(document.querySelectorAll('button, [type="submit"], [role="button"]'));
+              for (const btn of btns) {
+                const text = (btn as HTMLElement).textContent?.trim().toLowerCase() || '';
+                if (text.includes('submit') || text.includes('apply')) {
+                  (btn as HTMLElement).click();
+                  return (btn as HTMLElement).textContent?.trim();
+                }
+              }
+              return null;
+            });
+            if (submitClicked) {
+              clickResults.push(`✅ Clicked submit: "${submitClicked}"`);
+              // Wait for navigation/response
+              await page.waitForTimeout(3000);
+              // Check if page changed (success indicator)
+              const finalUrl = page.url();
+              const finalTitle = await page.evaluate(() => document.title);
+              clickResults.push(`📄 Final page: "${finalTitle}" — ${finalUrl}`);
+            } else {
+              clickResults.push(`❌ Could not find submit button`);
+            }
+          } catch (e) {
+            clickResults.push(`❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
+          }
+        }
+
+        const fullResult = clickResults.length > 0
+          ? result + '\n\nPost-fill clicks:\n' + clickResults.join('\n')
+          : result;
+        const lines = fullResult.split('\n');
         const fieldsMatched = lines.filter((l: string) => l.startsWith('✅')).length;
         const fieldsFailed = lines.filter((l: string) => l.startsWith('❌'))
           .map((l: string) => l.replace(/^❌\s*/, '').split(':')[0]?.trim() || '');
-        res.json({ success: fieldsFailed.length === 0, result, fieldsMatched, fieldsFailed });
+        res.json({ success: fieldsFailed.length === 0, result: fullResult, fieldsMatched, fieldsFailed });
       } finally {
         await releasePage(page);
       }

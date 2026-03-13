@@ -506,6 +506,16 @@ export const TitanConfigSchema = z.object({
         /** Require human review before posting */
         reviewRequired: z.boolean().default(true),
     }).default({}),
+    slack: z.object({
+        /** Enable Slack skill tools (separate from channel adapter) */
+        enabled: z.boolean().default(false),
+        /** Slack Bot Token (xoxb-*). Falls back to SLACK_BOT_TOKEN env var */
+        botToken: z.string().optional(),
+        /** Default channel for posting */
+        defaultChannel: z.string().default('general'),
+        /** Require human review before posting messages */
+        reviewRequired: z.boolean().default(true),
+    }).default({}),
 });
 
 export type TitanConfig = z.infer<typeof TitanConfigSchema>;

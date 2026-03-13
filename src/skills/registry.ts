@@ -240,6 +240,13 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerResearchPipelineSkill } = await import('./builtin/research_pipeline.js');
     const { registerAutoresearchSkill } = await import('./builtin/autoresearch.js');
     const { registerSelfDoctorSkill } = await import('./builtin/self_doctor.js');
+    const { registerInteractionTrackerSkill } = await import('./builtin/interaction_tracker.js');
+    const { registerFeedbackTrackerSkill } = await import('./builtin/feedback_tracker.js');
+    const { registerGrowthExperimentsSkill } = await import('./builtin/growth_experiments.js');
+    const { registerContentCalendarSkill } = await import('./builtin/content_calendar.js');
+    const { registerSlackSkill } = await import('./builtin/slack.js');
+    const { registerRevenueCatKBSkill } = await import('./builtin/revenuecat_kb.js');
+    const { registerWeeklyReportSkill } = await import('./builtin/weekly_report.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -285,6 +292,13 @@ export async function initBuiltinSkills(): Promise<void> {
         ['research_pipeline', registerResearchPipelineSkill],
         ['autoresearch', registerAutoresearchSkill],
         ['self_doctor', registerSelfDoctorSkill],
+        ['interaction_tracker', registerInteractionTrackerSkill],
+        ['feedback_tracker', registerFeedbackTrackerSkill],
+        ['growth_experiments', registerGrowthExperimentsSkill],
+        ['content_calendar', registerContentCalendarSkill],
+        ['slack', registerSlackSkill],
+        ['revenuecat_kb', registerRevenueCatKBSkill],
+        ['weekly_report', registerWeeklyReportSkill],
     ];
 
     for (const [name, fn] of registrations) {

@@ -4,6 +4,21 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.19] — 2026-03-13
+
+### Added
+- **Slack Skill** — 7 new tools (`slack_post`, `slack_read`, `slack_search`, `slack_react`, `slack_thread_reply`, `slack_channels`, `slack_review`) for proactive Slack engagement with human review queue. Separate from channel adapter — uses `@slack/web-api` for bot-initiated messaging
+- **Interaction Tracker** — 3 tools (`interaction_log`, `interaction_stats`, `interaction_search`) for tracking community interactions across platforms (X, GitHub, Discord, Slack, forums). JSONL append-only storage, 50/week compliance warnings, daily trend charts
+- **Feedback Tracker** — 3 tools (`feedback_submit`, `feedback_list`, `feedback_update`) for structured product feedback with severity/category classification and keyword-based duplicate detection (>50% word overlap)
+- **Growth Experiments** — 3 tools (`experiment_create`, `experiment_update`, `experiment_list`) for hypothesis-driven growth experiments with result/outcome/learnings tracking
+- **Content Calendar** — 3 tools (`calendar_add`, `calendar_view`, `calendar_update`) for content publishing pipeline with week-grouped views and 2/week compliance indicators
+- **Weekly Report Generator** — 3 tools (`report_generate`, `report_deliver`, `report_history`) aggregating metrics from all trackers into structured async check-in reports with Slack delivery
+- **RevenueCat Knowledge Base** — 2 tools (`rc_ingest`, `rc_search`) for RAG-style ingestion and keyword-scored retrieval of RevenueCat documentation
+- **Slack Config Schema** — New `slack` section in config: `enabled`, `botToken`, `defaultChannel`, `reviewRequired`
+- 130 new tests across 7 test files (total: 3,839 tests, 123 files)
+
+---
+
 ## [2026.10.18] — 2026-03-13
 
 ### Added

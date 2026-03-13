@@ -369,11 +369,33 @@ export async function humanScroll(page: Page, distance = 500): Promise<void> {
     }
 }
 
-/** Move mouse to coordinates with slight randomness */
+/** Cubic Bezier interpolation for natural-looking curves */
+function bezier(t: number, p0: number, p1: number, p2: number, p3: number): number {
+    const u = 1 - t;
+    return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+}
+
+/** Move mouse along a Bezier curve to target coordinates (looks human, not robotic) */
 export async function humanMoveMouse(page: Page, x: number, y: number): Promise<void> {
-    const jitterX = x + (Math.random() * 6 - 3);
-    const jitterY = y + (Math.random() * 6 - 3);
-    await page.mouse.move(jitterX, jitterY, { steps: Math.floor(Math.random() * 10) + 5 });
+    // Get current mouse position (approximate from viewport center if unknown)
+    const viewport = page.viewportSize() || { width: 1280, height: 800 };
+    const startX = viewport.width * 0.5 + (Math.random() * 100 - 50);
+    const startY = viewport.height * 0.5 + (Math.random() * 100 - 50);
+
+    // Random control points for natural curve (humans don't move in straight lines)
+    const cp1x = startX + (x - startX) * 0.25 + (Math.random() - 0.5) * 80;
+    const cp1y = startY + (y - startY) * 0.25 + (Math.random() - 0.5) * 80;
+    const cp2x = startX + (x - startX) * 0.75 + (Math.random() - 0.5) * 80;
+    const cp2y = startY + (y - startY) * 0.75 + (Math.random() - 0.5) * 80;
+
+    const steps = Math.floor(Math.random() * 15) + 10;
+    for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const px = bezier(t, startX, cp1x, cp2x, x);
+        const py = bezier(t, startY, cp1y, cp2y, y);
+        await page.mouse.move(px, py);
+        await new Promise(r => setTimeout(r, Math.random() * 25 + 8));
+    }
 }
 
 // ────────────────────────────────────────────────────────
@@ -385,16 +407,50 @@ export async function humanMoveMouse(page: Page, x: number, y: number): Promise<
  * reCAPTCHA v3 scores based on behavior — visiting the page, scrolling,
  * moving the mouse, and spending time builds trust before form submission.
  *
+ * On fresh sessions (no Google cookies), visits Google first to establish
+ * referrer chain and accumulate trust cookies (biggest single scoring factor).
+ *
  * Call this BEFORE filling forms on reCAPTCHA-protected pages.
  */
 export async function warmUpForCaptcha(page: Page): Promise<void> {
     logger.info(COMPONENT, 'Warming up page for reCAPTCHA v3 scoring...');
 
+    // 0. Google pre-warm: if no Google cookies exist, visit Google first
+    //    Having NID/SID cookies from Google is the single biggest factor (~20-30% of score)
+    try {
+        const context = page.context();
+        const cookies = await context.cookies('https://www.google.com');
+        const hasGoogleCookies = cookies.some(c => ['NID', 'SID', 'HSID', '1P_JAR'].includes(c.name));
+
+        if (!hasGoogleCookies) {
+            logger.info(COMPONENT, 'Fresh session — visiting Google to build cookie trust...');
+            const currentUrl = page.url();
+            await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 10_000 });
+            await humanDelay(1000, 2000);
+
+            // Simulate a small interaction on Google (mouse move, maybe a click)
+            const vp = page.viewportSize() || { width: 1280, height: 800 };
+            await humanMoveMouse(page, vp.width * 0.5, vp.height * 0.4);
+            await humanDelay(500, 1000);
+
+            // Navigate back to the target page (now with Google referrer)
+            if (currentUrl && currentUrl !== 'about:blank') {
+                await page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                await humanDelay(1000, 2000);
+            }
+
+            // Save the Google cookies for future sessions
+            await saveStorageState();
+        }
+    } catch (e) {
+        logger.debug(COMPONENT, `Google pre-warm skipped: ${(e as Error).message}`);
+    }
+
     // 1. Wait for page to fully load
     await page.waitForLoadState('networkidle').catch(() => {});
     await humanDelay(1000, 2000);
 
-    // 2. Simulate natural mouse movements across the page
+    // 2. Simulate natural mouse movements along Bezier curves
     const viewport = page.viewportSize() || { width: 1280, height: 800 };
     const points = [
         { x: viewport.width * 0.3, y: viewport.height * 0.2 },

@@ -332,20 +332,32 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
             currentValue: string;
         }> = [];
 
-        // Helper: find label text for an element
+        // Helper: find label text for an element (walks up DOM tree)
         function getLabelText(el: HTMLElement): string {
             // Check for associated <label>
             const id = el.id;
             if (id) {
                 const label = document.querySelector(`label[for="${id}"]`);
-                if (label) return label.textContent?.trim() || '';
+                if (label?.textContent?.trim()) return label.textContent.trim();
             }
             // Check for wrapping <label>
             const parentLabel = el.closest('label');
-            if (parentLabel) return parentLabel.textContent?.replace(el.textContent || '', '').trim() || '';
+            if (parentLabel) {
+                const text = parentLabel.textContent?.replace(el.textContent || '', '').trim();
+                if (text) return text;
+            }
             // Check preceding label sibling
-            const prev = el.previousElementSibling;
+            let prev = el.previousElementSibling;
             if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
+            // Walk up to parent/grandparent and find first label
+            let parent = el.parentElement;
+            for (let depth = 0; depth < 3 && parent; depth++) {
+                const lbl = parent.querySelector(':scope > label');
+                if (lbl?.textContent?.trim()) return lbl.textContent.trim();
+                prev = parent.previousElementSibling;
+                if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
+                parent = parent.parentElement;
+            }
             // Check for aria-label
             return el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
         }
@@ -409,55 +421,94 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
 
     results.push(`Found ${formElements.length} form elements on page`);
 
+    // Normalize field name: "agent_name" → "agent name", "operatorEmail" → "operator email"
+    function normalize(s: string): string {
+        return s
+            .replace(/([a-z])([A-Z])/g, '$1 $2')  // camelCase → spaces
+            .replace(/[_\-./]+/g, ' ')              // underscores, dashes → spaces
+            .replace(/[^\w\s]/g, '')                // strip punctuation
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     // Fuzzy match helper — returns best matching element for a field name
     function findBestMatch(fieldName: string): typeof formElements[0] | null {
+        const norm = normalize(fieldName);
         const lower = fieldName.toLowerCase();
-        // First try exact label match
-        const exact = formElements.find(e =>
-            e.label.toLowerCase() === lower ||
-            e.ariaLabel.toLowerCase() === lower ||
-            e.placeholder.toLowerCase() === lower
-        );
+
+        // First try exact label match (original + normalized)
+        const exact = formElements.find(e => {
+            const l = e.label.toLowerCase();
+            const nl = normalize(e.label);
+            return l === lower || l === norm || nl === norm ||
+                e.ariaLabel.toLowerCase() === lower || normalize(e.ariaLabel) === norm ||
+                e.placeholder.toLowerCase() === lower;
+        });
         if (exact) return exact;
 
-        // Then try substring match
-        const partial = formElements.find(e =>
-            e.label.toLowerCase().includes(lower) ||
-            lower.includes(e.label.toLowerCase()) ||
-            e.ariaLabel.toLowerCase().includes(lower) ||
-            e.placeholder.toLowerCase().includes(lower)
-        );
+        // Then try substring match (both directions)
+        const partial = formElements.find(e => {
+            const nl = normalize(e.label);
+            return nl.includes(norm) || norm.includes(nl) ||
+                e.label.toLowerCase().includes(lower) ||
+                lower.includes(e.label.toLowerCase()) ||
+                normalize(e.ariaLabel).includes(norm) ||
+                normalize(e.placeholder).includes(norm);
+        });
         if (partial) return partial;
 
-        // Try word overlap
-        const words = lower.split(/\s+/);
+        // Try word overlap (with normalized tokens)
+        const words = norm.split(/\s+/).filter(w => w.length > 1);
         let bestScore = 0;
         let bestEl: typeof formElements[0] | null = null;
         for (const el of formElements) {
-            const elText = `${el.label} ${el.ariaLabel} ${el.placeholder}`.toLowerCase();
-            const score = words.filter(w => elText.includes(w)).length;
+            const elText = normalize(`${el.label} ${el.ariaLabel} ${el.placeholder}`);
+            const matched = words.filter(w => elText.includes(w)).length;
+            const score = words.length > 0 ? matched / words.length : 0;
             if (score > bestScore) {
                 bestScore = score;
                 bestEl = el;
             }
         }
-        return bestScore >= 1 ? bestEl : null;
+        // Require at least 50% word overlap
+        return bestScore >= 0.5 ? bestEl : null;
     }
 
     // Fill each field
     for (const [fieldName, value] of Object.entries(fields)) {
+        const valueStr = String(value);
         try {
+            // Special case: if the field name itself matches a button/radio label, click it
+            // (e.g., "I am not located in the EEA/UK": true → click that radio)
+            const normFieldName = normalize(fieldName);
+            const isSelect = valueStr === 'true' || valueStr === 'false' || valueStr === '';
+            if (isSelect) {
+                const matchingBtn = formElements.find(e =>
+                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button') &&
+                    normalize(e.label) === normFieldName
+                );
+                if (matchingBtn) {
+                    await page.click(matchingBtn.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Selected "${fieldName}"`);
+                    continue;
+                }
+            }
+
             const el = findBestMatch(fieldName);
             if (!el) {
-                // Special case: button clicks (Yes/No, radio, submit)
+                // Try matching field name OR value against button/radio labels
                 const buttonEl = formElements.find(e =>
                     (e.type === 'button' || e.type === 'radio' || e.tagName === 'button' || e.role === 'button') &&
-                    e.label.toLowerCase().includes(value.toLowerCase())
+                    (e.label.toLowerCase().includes(valueStr.toLowerCase()) ||
+                     normalize(e.label).includes(normFieldName) ||
+                     normFieldName.includes(normalize(e.label)))
                 );
                 if (buttonEl) {
                     await page.click(buttonEl.selector, { timeout: 5000 });
                     await page.waitForTimeout(500);
-                    results.push(`✅ Clicked "${value}" button for "${fieldName}"`);
+                    results.push(`✅ Clicked "${buttonEl.label}" for "${fieldName}"`);
                 } else {
                     results.push(`❌ Could not find field: "${fieldName}"`);
                 }
@@ -534,12 +585,22 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         }
     }
 
+    // Return compact result — no full snapshot (too large for local models)
+    const filled = results.filter(r => r.startsWith('✅')).length;
+    const failed = results.filter(r => r.startsWith('❌')).length;
     results.push('');
-    results.push('--- Current form state ---');
+    results.push(`Summary: ${filled} filled, ${failed} failed out of ${Object.keys(fields).length} fields`);
 
-    // Take a snapshot to show current state
-    const snapshot = await buildSnapshot(session);
-    results.push(snapshot);
+    // List available form fields so model can retry with correct names
+    if (failed > 0) {
+        results.push('');
+        results.push('Available form fields on this page:');
+        for (const el of formElements) {
+            if (el.label && el.type !== 'button' && el.type !== 'radio') {
+                results.push(`  - "${el.label}" (${el.type || el.tagName})`);
+            }
+        }
+    }
 
     return results.join('\n');
 }
@@ -645,6 +706,117 @@ async function executeAction(session: WebActSession, action: string): Promise<st
             case 'snapshot': {
                 return buildSnapshot(session);
             }
+            case 'read_form': {
+                // Compact form-only view for local models — just fields and their labels
+                const formInfo = await page.evaluate(() => {
+                    const fields: string[] = [];
+
+                    // Helper: find label for an element by walking up DOM
+                    function findLabel(el: Element): string {
+                        const htmlEl = el as HTMLInputElement;
+                        // 1. label[for=id]
+                        if (htmlEl.id) {
+                            const lbl = document.querySelector(`label[for="${htmlEl.id}"]`);
+                            if (lbl?.textContent?.trim()) return lbl.textContent.trim();
+                        }
+                        // 2. Previous sibling label
+                        let prev = el.previousElementSibling;
+                        if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
+                        // 3. Walk up to parent/grandparent and find first label child
+                        let parent = el.parentElement;
+                        for (let depth = 0; depth < 3 && parent; depth++) {
+                            const lbl = parent.querySelector(':scope > label');
+                            if (lbl?.textContent?.trim()) return lbl.textContent.trim();
+                            // Check previous sibling of parent too
+                            prev = parent.previousElementSibling;
+                            if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
+                            parent = parent.parentElement;
+                        }
+                        // 4. aria-label or placeholder
+                        return htmlEl.getAttribute('aria-label') || htmlEl.placeholder || '';
+                    }
+
+                    // Collect all form inputs (not radios/buttons — handled separately)
+                    const inputs = document.querySelectorAll('input[type="text"], input[type="email"], input[type="tel"], input[type="url"], input[type="number"], textarea, select, [role="combobox"]');
+                    for (const el of inputs) {
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) continue;
+                        const style = window.getComputedStyle(el);
+                        if (style.display === 'none' || style.visibility === 'hidden') continue;
+                        const label = findLabel(el).slice(0, 100);
+                        const type = (el as HTMLInputElement).type || el.getAttribute('role') || el.tagName.toLowerCase();
+                        const val = (el as HTMLInputElement).value || '';
+                        fields.push(`- "${label}" [${type}]${val ? ` = "${val}"` : ''}`);
+                    }
+
+                    // Collect buttons that look like Yes/No options (not submit/nav)
+                    const buttons = document.querySelectorAll('button');
+                    const yesNoButtons: string[] = [];
+                    let lastQuestion = '';
+                    for (const btn of buttons) {
+                        const text = btn.innerText?.trim();
+                        if (!text || text.length > 20) continue;
+                        const rect = btn.getBoundingClientRect();
+                        if (rect.width === 0 || rect.height === 0) continue;
+                        // Check if there's a question label before this button group
+                        let parent = btn.parentElement;
+                        for (let d = 0; d < 3 && parent; d++) {
+                            const prev = parent.previousElementSibling;
+                            if (prev?.tagName === 'LABEL' && prev.textContent?.trim() && prev.textContent.trim() !== lastQuestion) {
+                                lastQuestion = prev.textContent.trim().slice(0, 100);
+                                break;
+                            }
+                            parent = parent.parentElement;
+                        }
+                        if (text.toLowerCase() === 'yes' || text.toLowerCase() === 'no') {
+                            yesNoButtons.push(text);
+                        }
+                    }
+                    if (yesNoButtons.length > 0 && lastQuestion) {
+                        fields.push(`- "${lastQuestion}" [buttons: ${yesNoButtons.join(' / ')}]`);
+                    }
+
+                    // Collect radio groups with their question
+                    const radios = document.querySelectorAll('input[type="radio"]');
+                    const seen = new Set<string>();
+                    for (const r of radios) {
+                        const radio = r as HTMLInputElement;
+                        const name = radio.name || 'radio';
+                        if (seen.has(name)) continue;
+                        // Get all radios in this group
+                        const group = document.querySelectorAll(`input[name="${name}"]`);
+                        const options: string[] = [];
+                        for (const g of group) {
+                            const lbl = document.querySelector(`label[for="${(g as HTMLInputElement).id}"]`);
+                            const text = lbl?.textContent?.trim().slice(0, 60) || (g as HTMLInputElement).value;
+                            options.push(text + ((g as HTMLInputElement).checked ? ' [selected]' : ''));
+                        }
+                        fields.push(`- Radio choose one: ${options.join(' | ')}`);
+                        seen.add(name);
+                    }
+
+                    // Find submit button
+                    const submitBtns = document.querySelectorAll('button[type="submit"], input[type="submit"]');
+                    for (const btn of submitBtns) {
+                        const text = (btn as HTMLElement).innerText?.trim() || (btn as HTMLInputElement).value || 'Submit';
+                        fields.push(`- Submit button: "${text}"`);
+                    }
+                    // Also check for buttons with "submit" or "apply" text
+                    if (submitBtns.length === 0) {
+                        for (const btn of document.querySelectorAll('button')) {
+                            const text = btn.innerText?.trim().toLowerCase();
+                            if (text?.includes('submit') || text?.includes('apply')) {
+                                fields.push(`- Submit button: "${btn.innerText.trim()}"`);
+                                break;
+                            }
+                        }
+                    }
+
+                    return fields.join('\n');
+                }) as string;
+                const title = await page.title();
+                return `Form fields on "${title}":\n${formInfo || '(no form fields found)'}\n\nTo fill this form, use fill_form with EXACT field labels as keys in form_data JSON. For Yes/No questions, include the field label as key and "Yes" or "No" as value. For radio options, use the option text as value. Add "submit": "Submit Application" to auto-submit.`;
+            }
             case 'text': {
                 const fullText = await page.evaluate(() => {
                     const main = document.querySelector('main') || document.querySelector('article') ||
@@ -738,7 +910,7 @@ export function registerWebBrowseLlmSkill(): void {
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', description: 'Action: "open <url>", "click <n>", "type <n> <text>", "fill_form", "snapshot", "scroll up|down", "text"' },
+                action: { type: 'string', description: 'Action: "open <url>", "click <n>", "type <n> <text>", "read_form" (list form fields), "fill_form" (fill form), "snapshot", "scroll up|down", "text"' },
                 url: { type: 'string', description: 'URL for fill_form action — the page with the form to fill' },
                 form_data: { type: 'string', description: 'JSON string for fill_form — maps field labels to values. Example: {"Name": "TITAN", "Email": "user@example.com", "Visa": "No"}' },
                 sessionId: { type: 'string', description: 'Session ID for persistent browsing (optional)' },
@@ -754,6 +926,15 @@ export function registerWebBrowseLlmSkill(): void {
 
             // Handle fill_form — LLMs may pass url/form_data as separate params
             const cmd = action.trim().split(/\s+/)[0]?.toLowerCase();
+            if (cmd === 'read_form') {
+                // Navigate to URL if provided
+                const formUrl = (args.url as string) || '';
+                if (formUrl && session.page.url() !== formUrl) {
+                    await session.page.goto(formUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                    await session.page.waitForTimeout(2000);
+                }
+                return executeAction(session, 'read_form');
+            }
             if (cmd === 'fill_form') {
                 const formUrl = (args.url as string) || '';
                 const formDataStr = (args.form_data as string) || '';

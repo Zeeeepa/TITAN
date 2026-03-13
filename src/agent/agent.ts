@@ -94,6 +94,90 @@ function stripToolJson(text: string): string {
     return text.replace(/\s*\{"(?:name|tool_call)":\s*"[^"]+",\s*"(?:parameters|arguments)":\s*\{[^}]*\}\s*\}\s*/g, '').trim();
 }
 
+/**
+ * Tool Call Rescue — extract a tool call from LLM text content.
+ * Local models sometimes describe calling a tool in their text response instead of
+ * generating a proper tool_calls function call. This detects that pattern and
+ * converts it into a synthetic tool call so the tool actually executes.
+ *
+ * Patterns detected:
+ *   - "Call smart_form_fill with url=... data=..."
+ *   - "Use the smart_form_fill tool"
+ *   - JSON-like tool calls embedded in text: {"name":"smart_form_fill","arguments":{...}}
+ */
+function extractToolCallFromContent(
+    content: string,
+    activeTools: Array<{ name: string; parameters?: unknown }>,
+): { id: string; function: { name: string; arguments: string } } | null {
+    if (!content || content.length < 10) return null;
+
+    const toolNames = activeTools.map(t => t.name);
+
+    // Strategy 1: Look for embedded JSON tool calls
+    const jsonMatch = content.match(/\{"(?:name|tool_call)":\s*"([^"]+)",\s*"(?:parameters|arguments)":\s*(\{[^}]*(?:\{[^}]*\}[^}]*)?\})\s*\}/);
+    if (jsonMatch && toolNames.includes(jsonMatch[1])) {
+        return {
+            id: `rescue_${Date.now()}`,
+            function: { name: jsonMatch[1], arguments: jsonMatch[2] },
+        };
+    }
+
+    // Strategy 2: Model says "call <tool>" or "use <tool>" with JSON args nearby
+    for (const toolName of toolNames) {
+        // Skip very common tools — only rescue specific high-value tools
+        if (['shell', 'read_file', 'write_file', 'edit_file', 'list_dir', 'memory', 'web_search', 'web_fetch', 'tool_search'].includes(toolName)) continue;
+
+        const mentionRegex = new RegExp(`(?:call|use|invoke|execute|run)\\s+(?:the\\s+)?(?:tool\\s+)?(?:named\\s+)?["\`]?${toolName}["\`]?`, 'i');
+        if (!mentionRegex.test(content)) continue;
+
+        // Tool is mentioned — try to extract JSON args from the content
+        const jsonArgs = content.match(/\{[\s\S]*?"url"[\s\S]*?\}/);
+        if (jsonArgs) {
+            try {
+                // Validate it's parseable JSON
+                const parsed = JSON.parse(jsonArgs[0]);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    // Convert nested objects to strings (smart_form_fill expects data as string)
+                    const args: Record<string, string> = {};
+                    for (const [k, v] of Object.entries(parsed)) {
+                        args[k] = typeof v === 'string' ? v : JSON.stringify(v);
+                    }
+                    return {
+                        id: `rescue_${Date.now()}`,
+                        function: { name: toolName, arguments: JSON.stringify(args) },
+                    };
+                }
+            } catch { /* not valid JSON, skip */ }
+        }
+
+        // No JSON found but tool is mentioned — call with empty args to let the tool guide
+        // Only for tools that can handle being called with partial info
+        if (toolName === 'smart_form_fill') {
+            // Try to extract url and data from natural language
+            const urlMatch = content.match(/url[=:]\s*["']?(https?:\/\/\S+)["']?/i);
+            const dataMatch = content.match(/data[=:]\s*['"]?(\{[\s\S]*?\})['"]?/i);
+            if (urlMatch && dataMatch) {
+                try {
+                    JSON.parse(dataMatch[1]); // validate
+                    return {
+                        id: `rescue_${Date.now()}`,
+                        function: {
+                            name: toolName,
+                            arguments: JSON.stringify({
+                                url: urlMatch[1],
+                                data: dataMatch[1],
+                                submit: content.toLowerCase().includes('submit=true') ? 'true' : 'false',
+                            }),
+                        },
+                    };
+                } catch { /* skip */ }
+            }
+        }
+    }
+
+    return null;
+}
+
 // Wire the stall detector so silence timeouts are logged rather than silently discarded
 setStallHandler(async (event) => {
     logger.warn(COMPONENT, `Stall event [${event.type}] in session ${event.sessionId}: ${event.detail} (nudge #${event.nudgeCount})`);
@@ -642,19 +726,29 @@ export async function processMessage(
                 }
             }
 
-            const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
-            if (stallEvent) {
-                const nudge = getNudgeMessage(stallEvent);
-                logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
-                messages.push({ role: 'user', content: nudge });
-                continue;
+            // ── Tool Call Rescue: detect tool names in text content and auto-call ──
+            // Local models sometimes mention a tool by name (even with JSON args) but
+            // fail to generate a proper tool_calls response. Rescue by parsing and executing.
+            const rescuedToolCall = extractToolCallFromContent(response.content, activeTools);
+            if (rescuedToolCall) {
+                logger.info(COMPONENT, `[ToolRescue] Extracted "${rescuedToolCall.function.name}" from content text — executing`);
+                response.toolCalls = [rescuedToolCall];
+                // Don't break — fall through to the tool execution path below
+            } else {
+                const stallEvent = checkResponse(session.id, response.content, round, MAX_TOOL_ROUNDS);
+                if (stallEvent) {
+                    const nudge = getNudgeMessage(stallEvent);
+                    logger.warn(COMPONENT, `Stall [${stallEvent.type}] — injecting nudge`);
+                    messages.push({ role: 'user', content: nudge });
+                    continue;
+                }
+                finalContent = stripToolJson(response.content);
+
+                // ── Response cache: store final text responses ───
+                setCachedResponse(smartMessages, activeModel, finalContent);
+
+                break;
             }
-            finalContent = stripToolJson(response.content);
-
-            // ── Response cache: store final text responses ───
-            setCachedResponse(smartMessages, activeModel, finalContent);
-
-            break;
         }
 
         // Handle tool calls

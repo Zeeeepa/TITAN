@@ -26,6 +26,8 @@ export const DEFAULT_CORE_TOOLS = [
     'list_dir',
     'web_search',
     'web_fetch',
+    'web_act',
+    'smart_form_fill',
     'weather',
     'memory',
     'system_info',

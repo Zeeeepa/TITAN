@@ -1017,6 +1017,34 @@ export function registerWebBrowseLlmSkill(): void {
 
             // Handle fill_form — LLMs may pass url/form_data as separate params
             const cmd = action.trim().split(/\s+/)[0]?.toLowerCase();
+
+            // Redirect: LLMs sometimes pass "smart_form_fill" as a web_act action
+            if (cmd === 'smart_form_fill') {
+                const formUrl = (args.url as string) || '';
+                const formDataStr = (args.form_data as string) || (args.data as string) || '';
+                let fields: Record<string, string> | null = null;
+                if (formDataStr) {
+                    try { fields = JSON.parse(formDataStr); } catch { /* ignore */ }
+                }
+                if (!fields) {
+                    const jsonMatch = action.match(/\{[\s\S]+\}/);
+                    if (jsonMatch) {
+                        try { fields = JSON.parse(jsonMatch[0]); } catch { /* ignore */ }
+                    }
+                }
+                if (fields) {
+                    const submitArg = (args.submit as string) || 'false';
+                    const doSubmit = submitArg === 'true' || submitArg === '1';
+                    logger.info(COMPONENT, `Redirecting web_act "smart_form_fill" action → fillFormSmart (${Object.keys(fields).length} fields)`);
+                    if (formUrl && session.page.url() !== formUrl) {
+                        await session.page.goto(formUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+                        await session.page.waitForTimeout(2000);
+                    }
+                    return fillFormSmart(session, formUrl || session.page.url(), fields, doSubmit);
+                }
+                return 'Error: smart_form_fill requires data. Pass form_data as JSON string.';
+            }
+
             if (cmd === 'read_form') {
                 // Navigate to URL if provided
                 const formUrl = (args.url as string) || '';

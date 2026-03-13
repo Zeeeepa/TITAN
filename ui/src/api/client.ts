@@ -9,6 +9,7 @@ import type {
   SkillInfo,
   ToolInfo,
   ChannelInfo,
+  ChannelConfig,
   MeshPeer,
   LiveKitTokenResponse,
   LogEntry,
@@ -267,6 +268,19 @@ export async function getChannels(): Promise<ChannelInfo[]> {
     enabled: ch.enabled ?? ch.connected ?? false,
     status: ch.connected ? 'connected' as const : 'disconnected' as const,
   }));
+}
+
+export async function getChannelConfigs(): Promise<Record<string, ChannelConfig>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cfg = await getConfig() as any;
+  return cfg.channels ?? {};
+}
+
+export async function updateChannelConfig(
+  channelName: string,
+  config: Partial<ChannelConfig>,
+): Promise<TitanConfig> {
+  return updateConfig({ channels: { [channelName]: config } } as Partial<TitanConfig>);
 }
 
 // ---- Mesh ----

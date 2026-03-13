@@ -121,6 +121,14 @@ export interface ChannelInfo {
   status: 'connected' | 'disconnected' | 'error';
 }
 
+export interface ChannelConfig {
+  enabled: boolean;
+  token?: string;
+  apiKey?: string;
+  allowFrom: string[];
+  dmPolicy: 'pairing' | 'open' | 'closed';
+}
+
 // ---- Mesh ----
 export interface MeshPeer {
   id: string;

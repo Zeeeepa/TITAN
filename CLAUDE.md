@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.16
+- **Current version**: v2026.10.17
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -191,7 +191,7 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
-- **v2026.10.16**: CapSolver CAPTCHA integration, direct form-fill endpoint, deferred button clicks, React-compatible form automation
+- **v2026.10.17**: CapSolver CAPTCHA integration, direct form-fill endpoint, deferred button clicks, React-compatible form automation
 - **v2026.10.11**: Integrations panel (12 provider API keys + Google OAuth), Workflows panel (Goals, Cron, Recipes, Autopilot), autonomous persona, research pipeline, autoresearch, TopFacts plugin, checkpoint/resume, 17 admin panels, 117 tools, 82 skills
 - **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, new admin panels
 - **v2026.10.3**: Settings panel data binding (models API shape, nested config keys)

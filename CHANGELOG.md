@@ -4,7 +4,7 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
-## [2026.10.16] — 2026-03-13
+## [2026.10.17] — 2026-03-13
 
 ### Added
 - **CapSolver Integration** — Automatic CAPTCHA solving via CapSolver REST API. Supports reCAPTCHA v2/v3, hCaptcha, and Cloudflare Turnstile. New `captchaSolver.ts` module with detect, solve, and inject pipeline

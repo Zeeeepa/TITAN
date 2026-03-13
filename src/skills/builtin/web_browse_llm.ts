@@ -302,6 +302,248 @@ async function buildSnapshot(session: WebActSession): Promise<string> {
     return lines.join('\n');
 }
 
+/**
+ * Smart form filler — matches field labels to values and fills them automatically.
+ * This allows a single tool call to fill an entire form instead of 10+ sequential calls.
+ */
+async function fillFormSmart(session: WebActSession, url: string, fields: Record<string, string>): Promise<string> {
+    const page = session.page;
+
+    // Navigate to the form page if URL provided and different from current
+    if (url && page.url() !== url) {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.waitForTimeout(2000); // Extra wait for form rendering
+    }
+
+    const results: string[] = [];
+    results.push(`Form filling: ${Object.keys(fields).length} fields to fill`);
+    results.push('');
+
+    // Get all form elements with their labels
+    const formElements = await page.evaluate(() => {
+        const elements: Array<{
+            selector: string;
+            label: string;
+            type: string;
+            tagName: string;
+            role: string;
+            placeholder: string;
+            ariaLabel: string;
+            currentValue: string;
+        }> = [];
+
+        // Helper: find label text for an element
+        function getLabelText(el: HTMLElement): string {
+            // Check for associated <label>
+            const id = el.id;
+            if (id) {
+                const label = document.querySelector(`label[for="${id}"]`);
+                if (label) return label.textContent?.trim() || '';
+            }
+            // Check for wrapping <label>
+            const parentLabel = el.closest('label');
+            if (parentLabel) return parentLabel.textContent?.replace(el.textContent || '', '').trim() || '';
+            // Check preceding label sibling
+            const prev = el.previousElementSibling;
+            if (prev?.tagName === 'LABEL') return prev.textContent?.trim() || '';
+            // Check for aria-label
+            return el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
+        }
+
+        // Collect all form-filling elements
+        const inputs = document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), textarea, select, [role="combobox"], [contenteditable="true"]');
+        let idx = 0;
+        for (const el of inputs) {
+            const htmlEl = el as HTMLInputElement;
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+            const titanId = `_titan_form_${idx}`;
+            htmlEl.setAttribute('data-titan-form', titanId);
+
+            elements.push({
+                selector: `[data-titan-form="${titanId}"]`,
+                label: getLabelText(htmlEl),
+                type: htmlEl.type || '',
+                tagName: el.tagName.toLowerCase(),
+                role: el.getAttribute('role') || '',
+                placeholder: htmlEl.placeholder || '',
+                ariaLabel: el.getAttribute('aria-label') || '',
+                currentValue: htmlEl.value || '',
+            });
+            idx++;
+        }
+
+        // Also collect buttons and radio buttons
+        const buttons = document.querySelectorAll('button, input[type="radio"], [role="button"]');
+        for (const el of buttons) {
+            const htmlEl = el as HTMLElement;
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) continue;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+
+            const titanId = `_titan_form_${idx}`;
+            htmlEl.setAttribute('data-titan-form', titanId);
+
+            elements.push({
+                selector: `[data-titan-form="${titanId}"]`,
+                label: htmlEl.innerText?.trim() || htmlEl.getAttribute('aria-label') || (el as HTMLInputElement).value || '',
+                type: (el as HTMLInputElement).type || 'button',
+                tagName: el.tagName.toLowerCase(),
+                role: el.getAttribute('role') || '',
+                placeholder: '',
+                ariaLabel: el.getAttribute('aria-label') || '',
+                currentValue: '',
+            });
+            idx++;
+        }
+
+        return elements;
+    }) as Array<{
+        selector: string; label: string; type: string; tagName: string;
+        role: string; placeholder: string; ariaLabel: string; currentValue: string;
+    }>;
+
+    results.push(`Found ${formElements.length} form elements on page`);
+
+    // Fuzzy match helper — returns best matching element for a field name
+    function findBestMatch(fieldName: string): typeof formElements[0] | null {
+        const lower = fieldName.toLowerCase();
+        // First try exact label match
+        const exact = formElements.find(e =>
+            e.label.toLowerCase() === lower ||
+            e.ariaLabel.toLowerCase() === lower ||
+            e.placeholder.toLowerCase() === lower
+        );
+        if (exact) return exact;
+
+        // Then try substring match
+        const partial = formElements.find(e =>
+            e.label.toLowerCase().includes(lower) ||
+            lower.includes(e.label.toLowerCase()) ||
+            e.ariaLabel.toLowerCase().includes(lower) ||
+            e.placeholder.toLowerCase().includes(lower)
+        );
+        if (partial) return partial;
+
+        // Try word overlap
+        const words = lower.split(/\s+/);
+        let bestScore = 0;
+        let bestEl: typeof formElements[0] | null = null;
+        for (const el of formElements) {
+            const elText = `${el.label} ${el.ariaLabel} ${el.placeholder}`.toLowerCase();
+            const score = words.filter(w => elText.includes(w)).length;
+            if (score > bestScore) {
+                bestScore = score;
+                bestEl = el;
+            }
+        }
+        return bestScore >= 1 ? bestEl : null;
+    }
+
+    // Fill each field
+    for (const [fieldName, value] of Object.entries(fields)) {
+        try {
+            const el = findBestMatch(fieldName);
+            if (!el) {
+                // Special case: button clicks (Yes/No, radio, submit)
+                const buttonEl = formElements.find(e =>
+                    (e.type === 'button' || e.type === 'radio' || e.tagName === 'button' || e.role === 'button') &&
+                    e.label.toLowerCase().includes(value.toLowerCase())
+                );
+                if (buttonEl) {
+                    await page.click(buttonEl.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Clicked "${value}" button for "${fieldName}"`);
+                } else {
+                    results.push(`❌ Could not find field: "${fieldName}"`);
+                }
+                continue;
+            }
+
+            // Handle different field types
+            if (el.type === 'radio' || el.type === 'button' || el.tagName === 'button') {
+                // For radio/buttons, find and click the matching option
+                const target = formElements.find(e =>
+                    e.label.toLowerCase().includes(value.toLowerCase()) &&
+                    (e.type === 'radio' || e.type === 'button' || e.tagName === 'button')
+                );
+                if (target) {
+                    await page.click(target.selector, { timeout: 5000 });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Clicked "${value}" for "${fieldName}"`);
+                } else {
+                    results.push(`❌ Could not find option "${value}" for "${fieldName}"`);
+                }
+            } else if (el.role === 'combobox' || el.placeholder?.toLowerCase().includes('start typing')) {
+                // Combobox/autocomplete: type then select from dropdown
+                await page.fill(el.selector, value);
+                await page.waitForTimeout(1500); // Wait for dropdown to appear
+                // Try to click the first dropdown option
+                try {
+                    // Look for listbox/option elements
+                    await page.evaluate(() => {
+                        const options = document.querySelectorAll('[role="option"], [role="listbox"] li, .autocomplete-item, .suggestion');
+                        if (options.length > 0) (options[0] as HTMLElement).click();
+                    });
+                    await page.waitForTimeout(500);
+                    results.push(`✅ Filled combobox "${fieldName}" with "${value}" and selected first option`);
+                } catch {
+                    results.push(`⚠️ Filled combobox "${fieldName}" with "${value}" but could not select option`);
+                }
+            } else {
+                // Standard text input
+                await page.fill(el.selector, value);
+                await page.waitForTimeout(300);
+                results.push(`✅ Filled "${fieldName}" with "${value.slice(0, 50)}${value.length > 50 ? '...' : ''}"`);
+            }
+        } catch (e) {
+            results.push(`❌ Error filling "${fieldName}": ${(e as Error).message?.split('\n')[0]}`);
+        }
+    }
+
+    // Auto-submit if requested (submit: true or submit: "Submit Application" in fields)
+    const submitValue = fields['submit'] || fields['Submit'];
+    if (submitValue) {
+        try {
+            const submitText = typeof submitValue === 'string' && submitValue !== 'true' ? submitValue : 'submit';
+            const submitted = await page.evaluate((text: string) => {
+                const lower = text.toLowerCase();
+                const candidates = document.querySelectorAll('button, input[type="submit"], [role="button"]');
+                for (const el of candidates) {
+                    const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
+                    if (elText.includes(lower) || elText.includes('submit') || elText.includes('apply')) {
+                        (el as HTMLElement).click();
+                        return elText;
+                    }
+                }
+                return null;
+            }, submitText) as string | null;
+
+            if (submitted) {
+                await page.waitForTimeout(3000); // Wait for submission
+                results.push(`\n✅ Clicked submit button: "${submitted}"`);
+            } else {
+                results.push('\n⚠️ Could not find submit button');
+            }
+        } catch (e) {
+            results.push(`\n❌ Submit error: ${(e as Error).message?.split('\n')[0]}`);
+        }
+    }
+
+    results.push('');
+    results.push('--- Current form state ---');
+
+    // Take a snapshot to show current state
+    const snapshot = await buildSnapshot(session);
+    results.push(snapshot);
+
+    return results.join('\n');
+}
+
 /** Parse and execute a web_act action */
 async function executeAction(session: WebActSession, action: string): Promise<string> {
     const page = session.page;
@@ -322,10 +564,31 @@ async function executeAction(session: WebActSession, action: string): Promise<st
                 return buildSnapshot(session);
             }
             case 'click': {
-                const n = parseInt(parts[1]);
-                const sel = session.elements.get(n);
-                if (!sel) return `Error: element [${n}] not found. Run snapshot to refresh.`;
-                await page.click(sel, { timeout: 5000 });
+                const arg = parts.slice(1).join(' ');
+                const n = parseInt(arg);
+                if (!isNaN(n)) {
+                    // Click by element number
+                    const sel = session.elements.get(n);
+                    if (!sel) return `Error: element [${n}] not found. Run snapshot to refresh.`;
+                    await page.click(sel, { timeout: 5000 });
+                } else if (arg) {
+                    // Click by text content — find button/link with matching text
+                    const clicked = await page.evaluate((text: string) => {
+                        const lower = text.toLowerCase().trim();
+                        const candidates = document.querySelectorAll('button, a, [role="button"], input[type="submit"], input[type="radio"]');
+                        for (const el of candidates) {
+                            const elText = (el as HTMLElement).innerText?.trim().toLowerCase() || (el as HTMLInputElement).value?.toLowerCase() || '';
+                            if (elText === lower || elText.includes(lower)) {
+                                (el as HTMLElement).click();
+                                return elText;
+                            }
+                        }
+                        return null;
+                    }, arg) as string | null;
+                    if (!clicked) return `Error: no button/link with text "${arg}" found. Try snapshot to see available elements.`;
+                } else {
+                    return 'Error: click requires element number or text. Usage: click <n> OR click Submit Application';
+                }
                 await page.waitForTimeout(1000);
                 return buildSnapshot(session);
             }
@@ -390,8 +653,34 @@ async function executeAction(session: WebActSession, action: string): Promise<st
                 }) as string;
                 return truncateToTokens(fullText, 3000);
             }
+            case 'fill_form': {
+                // Parse JSON from the rest of the action string
+                // Format: fill_form <url> <json> OR just fill_form <json> (uses current page)
+                const restText = action.replace(/^fill_form\s*/, '').trim();
+                let formUrl = '';
+                let jsonStr = restText;
+
+                // Check if first arg is a URL
+                if (restText.startsWith('http://') || restText.startsWith('https://')) {
+                    const spaceIdx = restText.indexOf(' ');
+                    if (spaceIdx > 0) {
+                        formUrl = restText.slice(0, spaceIdx);
+                        jsonStr = restText.slice(spaceIdx + 1).trim();
+                    }
+                }
+
+                try {
+                    const fields = JSON.parse(jsonStr);
+                    if (typeof fields !== 'object' || fields === null) {
+                        return 'Error: fill_form requires a JSON object. Usage: fill_form [url] {"field": "value", ...}';
+                    }
+                    return fillFormSmart(session, formUrl, fields as Record<string, string>);
+                } catch (e) {
+                    return `Error parsing form data: ${(e as Error).message}. Usage: fill_form [url] {"Field Label": "value", ...}`;
+                }
+            }
             default:
-                return `Unknown action: "${cmd}". Available: open, click, type, press, select, scroll, back, snapshot, text`;
+                return `Unknown action: "${cmd}". Available: open, click, type, press, select, scroll, back, snapshot, text, fill_form`;
         }
     } catch (e) {
         const msg = (e as Error).message?.split('\n')[0] || 'Unknown error';
@@ -445,12 +734,14 @@ export function registerWebBrowseLlmSkill(): void {
         enabled: true,
     }, {
         name: 'web_act',
-        description: 'Interactive step-by-step browser for text-only LLMs. Returns a numbered list of interactive elements on the page. Use actions like "open <url>", "click <n>", "type <n> <text>", "press <n> Enter", "select <n> <value>", "scroll up|down", "back", "snapshot", "text" to interact. Maintains persistent sessions.',
+        description: 'Interactive browser for LLMs. Actions: "open <url>", "click <n>", "type <n> <text>", "press <n> Enter", "select <n> <value>", "scroll up|down", "back", "snapshot", "text", "fill_form [url] {json}". PREFERRED: use fill_form to fill entire web forms in ONE call — pass a JSON object mapping field labels to values. Example: fill_form https://example.com/apply {"Name": "TITAN", "Email": "user@example.com", "Location": "California"}. For buttons/radio, use the button text as value: {"Visa required": "No"}.',
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', description: 'Action to perform: "open <url>", "click <n>", "type <n> <text>", "press <n> <key>", "select <n> <value>", "scroll up|down", "back", "snapshot", "text"' },
-                sessionId: { type: 'string', description: 'Session ID for persistent browsing (optional, auto-created if not provided)' },
+                action: { type: 'string', description: 'Action: "open <url>", "click <n>", "type <n> <text>", "fill_form", "snapshot", "scroll up|down", "text"' },
+                url: { type: 'string', description: 'URL for fill_form action — the page with the form to fill' },
+                form_data: { type: 'string', description: 'JSON string for fill_form — maps field labels to values. Example: {"Name": "TITAN", "Email": "user@example.com", "Visa": "No"}' },
+                sessionId: { type: 'string', description: 'Session ID for persistent browsing (optional)' },
             },
             required: ['action'],
         },
@@ -460,6 +751,38 @@ export function registerWebBrowseLlmSkill(): void {
             logger.info(COMPONENT, `web_act [${sessionId}]: ${action}`);
 
             const session = await getOrCreateSession(sessionId);
+
+            // Handle fill_form — LLMs may pass url/form_data as separate params
+            const cmd = action.trim().split(/\s+/)[0]?.toLowerCase();
+            if (cmd === 'fill_form') {
+                const formUrl = (args.url as string) || '';
+                const formDataStr = (args.form_data as string) || '';
+
+                // Try to get JSON from: 1) form_data param, 2) inline in action string
+                let fields: Record<string, string> | null = null;
+                if (formDataStr) {
+                    try { fields = JSON.parse(formDataStr); } catch { /* ignore */ }
+                }
+                if (!fields) {
+                    // Try parsing from the action string itself
+                    const jsonMatch = action.match(/\{[\s\S]+\}/);
+                    if (jsonMatch) {
+                        try { fields = JSON.parse(jsonMatch[0]); } catch { /* ignore */ }
+                    }
+                }
+                if (!fields) {
+                    return 'Error: fill_form requires form data. Pass as: action="fill_form URL {json}" or provide form_data parameter with JSON string.';
+                }
+
+                // Get URL from args or action string
+                let url = formUrl;
+                if (!url) {
+                    const urlMatch = action.match(/https?:\/\/\S+/);
+                    if (urlMatch) url = urlMatch[0];
+                }
+
+                return fillFormSmart(session, url, fields);
+            }
 
             // If this is the first action and it's not "open", return helpful error
             if (session.page.url() === 'about:blank' && !action.trim().toLowerCase().startsWith('open')) {

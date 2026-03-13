@@ -7,7 +7,7 @@
  */
 import { registerSkill } from '../registry.js';
 import logger from '../../utils/logger.js';
-import { getPage, releasePage } from '../../browsing/browserPool.js';
+import { getPage, releasePage, warmUpForCaptcha, humanDelay } from '../../browsing/browserPool.js';
 import { recordSuccessPattern, recordToolResult, learnFact } from '../../memory/learning.js';
 
 const COMPONENT = 'WebBrowseLLM';
@@ -28,7 +28,11 @@ interface PwPage {
     focus(sel: string): Promise<void>;
     keyboard: { press(key: string): Promise<void> };
     goBack(opts?: unknown): Promise<unknown>;
-    mouse: { wheel(dx: number, dy: number): Promise<void> };
+    mouse: { wheel(dx: number, dy: number): Promise<void>; move(x: number, y: number, opts?: unknown): Promise<void> };
+    viewportSize(): { width: number; height: number } | null;
+    waitForLoadState(state?: string): Promise<void>;
+    $$(sel: string): Promise<Array<{ hover(): Promise<void> }>>;
+    isClosed(): boolean;
     $eval(sel: string, fn: (el: unknown) => unknown): Promise<unknown>;
 }
 
@@ -432,6 +436,14 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         await page.waitForTimeout(2000); // Extra wait for form rendering
     }
 
+    // Warm up for reCAPTCHA v3 scoring — natural mouse movements, scrolling, hovering
+    // This builds trust score BEFORE we start filling the form
+    try {
+        await warmUpForCaptcha(page as unknown as import('playwright').Page);
+    } catch (e) {
+        logger.warn(COMPONENT, `Warm-up failed (non-fatal): ${(e as Error).message}`);
+    }
+
     const results: string[] = [];
     results.push(`Form filling: ${Object.keys(fields).length} fields to fill`);
     results.push('');
@@ -509,9 +521,11 @@ async function fillFormSmart(session: WebActSession, url: string, fields: Record
         }
     }
 
-    // Fill each field
+    // Fill each field (with human-like delays between fields)
     for (const [fieldName, value] of Object.entries(fields)) {
         const valueStr = String(value);
+        // Human-like pause between fields — bots fill instantly, humans don't
+        await humanDelay(300, 900);
         try {
             // Special case: if the field name itself matches a button/radio label, click it
             // (e.g., "I am not located in the EEA/UK": true → click that radio)

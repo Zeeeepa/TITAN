@@ -4,10 +4,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockMkdirSync = vi.hoisted(() => vi.fn());
+const mockExistsSync = vi.hoisted(() => vi.fn().mockReturnValue(false));
+const mockReadFileSync = vi.hoisted(() => vi.fn().mockReturnValue('{}'));
+const mockWriteFileSync = vi.hoisted(() => vi.fn());
 
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal<typeof import('fs')>();
-    return { ...actual, mkdirSync: mockMkdirSync };
+    return {
+        ...actual,
+        mkdirSync: mockMkdirSync,
+        existsSync: mockExistsSync,
+        readFileSync: mockReadFileSync,
+        writeFileSync: mockWriteFileSync,
+    };
 });
 vi.mock('../src/utils/logger.js', () => ({
     default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -23,6 +32,8 @@ const mockPage = {
 const mockContext = {
     newPage: vi.fn().mockResolvedValue(mockPage),
     close: vi.fn().mockResolvedValue(undefined),
+    addInitScript: vi.fn().mockResolvedValue(undefined),
+    storageState: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockBrowser = {
@@ -48,7 +59,13 @@ describe('BrowserPool', () => {
 
         vi.doMock('fs', async (importOriginal) => {
             const actual = await importOriginal<typeof import('fs')>();
-            return { ...actual, mkdirSync: mockMkdirSync };
+            return {
+                ...actual,
+                mkdirSync: mockMkdirSync,
+                existsSync: mockExistsSync,
+                readFileSync: mockReadFileSync,
+                writeFileSync: mockWriteFileSync,
+            };
         });
         vi.doMock('../src/utils/logger.js', () => ({
             default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

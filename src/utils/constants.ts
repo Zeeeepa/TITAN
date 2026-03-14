@@ -45,7 +45,7 @@ export const FREELANCE_PROFILE_PATH = join(TITAN_HOME, 'freelance-profile.json')
 export const LEADS_PATH = join(TITAN_HOME, 'leads.jsonl');
 
 // Gateway defaults
-export const DEFAULT_GATEWAY_HOST = '127.0.0.1';
+export const DEFAULT_GATEWAY_HOST = '0.0.0.0';
 export const DEFAULT_GATEWAY_PORT = 48420;
 export const DEFAULT_WEB_PORT = 48421;
 

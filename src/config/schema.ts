@@ -208,8 +208,8 @@ export const SandboxConfigSchema = z.object({
 export const BrainConfigSchema = z.object({
     /** Enable embedded small LLM for intelligent routing (tool selection, classification) */
     enabled: z.boolean().default(false),
-    /** Which small model to use */
-    model: z.enum(['smollm2-360m', 'qwen3.5-0.8b']).default('smollm2-360m'),
+    /** Which small model to use (e.g. 'smollm2-360m', 'qwen3.5-0.8b', or custom fine-tuned model name) */
+    model: z.string().default('smollm2-360m'),
     /** Auto-download model on first enable */
     autoDownload: z.boolean().default(true),
     /** Maximum tools to select per request */

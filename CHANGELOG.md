@@ -6,6 +6,13 @@ All notable changes to TITAN are documented in this file.
 
 ## [2026.10.22] — 2026-03-14
 
+### Added
+- **Internal health monitor** — 60-second interval checks Ollama, TTS, memory usage, and stuck LLM requests; exposes status via `/api/stats` `health` field
+- **fetchWithRetry timeout** — Default 2-minute timeout via `AbortSignal.timeout()` prevents gateway freeze from hung providers
+- **systemd service unit** — `scripts/titan-gateway.service` for crash recovery with `Restart=on-failure`, `WatchdogSec=120`
+- **Log rotation config** — `scripts/titan-logrotate.conf` for daily rotation with 7-day retention
+- **Deploy script systemd support** — `scripts/deploy.sh` detects and uses systemd service when available
+
 ### Fixed
 - **Voice session continuity** — Voice conversations now track `sessionId` across utterances for multi-turn memory
 - **Voice recognition stale closure** — `recognition.onend` now uses refs instead of stale state closures, fixing recognition silently stopping after first TTS response

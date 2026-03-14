@@ -1,7 +1,7 @@
 # TITAN Development Roadmap & Task Tracker
 
-**Last Updated:** 2026-03-09
-**Current Version:** 2026.9.5
+**Last Updated:** 2026-03-13
+**Current Version:** 2026.10.22
 
 ---
 
@@ -148,110 +148,120 @@
 - **README badges**: updated to current stats (34 providers, 112 tools, 15 channels, 3,549 tests)
 - 32 deploy config tests
 
+### Phase 15: Mission Control v2 (v2026.10.0)
+- **Mission Control v2**: Complete React 19 SPA replacing monolithic HTML dashboard
+  - Vite + Tailwind CSS 4 + React Router v7
+  - 17 admin panels (Settings, Learning, Autopilot, Security, Workflows, MemoryGraph, Integrations, etc.)
+  - ChatGPT-style chat interface with session management
+  - Voice health endpoint and voice button integration
+  - API client with server response transformation
+  - Distributed setup support
+
+### Phase 16: Settings & Auth Hardening (v2026.10.1–10.3)
+- Settings panel padding fixes, voice button
+- Docker/ESM compatibility fixes
+- Auth lockout fix (unconfigured token auth no longer blocks API)
+- Settings panel data binding (models API shape, nested config keys)
+
+### Phase 17: Onboarding & Discovery (v2026.10.4)
+- Onboarding wizard with pre-filled personality examples
+- `system_info` tool for hardware/environment detection
+- Tool discovery fix, new admin panels
+
+### Phase 18: Full Admin Suite (v2026.10.11)
+- Integrations panel (12 provider API keys + Google OAuth)
+- Workflows panel (Goals, Cron, Recipes, Autopilot)
+- Autonomous persona and research pipeline
+- Autoresearch, TopFacts plugin
+- Checkpoint/resume system
+- 117 tools, 82 skills, 17 admin panels
+
+### Phase 19: Browser Automation & CAPTCHA (v2026.10.17)
+- CapSolver CAPTCHA integration
+- Direct form-fill endpoint (`POST /api/browser/form-fill`)
+- Deferred button clicks (`postClicks`)
+- React-compatible form automation
+- `POST /api/browser/solve-captcha`
+
+### Phase 20: Self-Improvement & Fine-Tuning (v2026.10.20)
+- Autonomous self-improvement system (LLM-as-judge eval, autoresearch experiments)
+- Local model LoRA fine-tuning pipeline (unsloth → GGUF → Ollama)
+- Self-Improvement Mission Control panel
+- Autopilot self-improve mode
+- 8 new tools
+
+### Phase 21: Dual Training Pipelines (v2026.10.21)
+- Dual training pipelines (Tool Router + Main Agent)
+- Training type selector UI with customizable hyperparameters
+- Agent training data generator (530+ examples)
+- Ollama context management fix
+- New API endpoints (generate-data, deploy, type-filtered results)
+
+### Phase 22: Voice System Hardening (v2026.10.22)
+- 24 bug fixes across voice, gateway, and agent systems
+- VoiceOverlay rewrite: stale closure fixes (refs for phase/mute), AbortController cleanup, session continuity, emotion tag stripping, error feedback, mute mic monitor integration
+- FluidOrb canvas rewrite: single animation loop, props in refs, no 60fps teardown
+- TranscriptView: stable React keys via unique IDs
+- Gateway SSE leak fix: `req.on('close')` + `clientDisconnected` flag
+- TTS health probe fix: POST to actual `/v1/audio/speech` endpoint
+- Ollama context window: `num_ctx` 8192 → 16384
+- Agent: removed duplicate `addEpisode`, strengthened voice mode prompt
+- SettingsPanel: fixed VoiceHealth interface
+- useConfig: conditional voice health check
+- 3,839 tests across 123 files, ~149 tools, 91 skills
+
 ---
 
-## Current State (v2026.9.6)
+## Current State (v2026.10.22)
 
 | Metric | Value |
 |--------|-------|
 | Providers | 34 (4 native + 30 OpenAI-compat) |
-| Channels | 15 (Discord, Telegram, Slack, Google Chat, WhatsApp, Matrix, Signal, MS Teams, WebChat, IRC, Mattermost, Lark, Email, LINE, Zulip) |
-| Built-in Skills | 38 files |
-| Tools | ~108 registered |
-| Tests | ~3,561 across 107 files |
-| Line Coverage | ~82% |
-| MCP | Client + Server (expose tools to other agents) |
-| Voice | LiveKit WebRTC (replaced custom pipeline) |
+| Channels | 15 |
+| Built-in Skills | 91 loaded |
+| Tools | ~149 registered |
+| Tests | ~3,839 across 123 files |
+| Default Model | `anthropic/claude-sonnet-4-20250514` |
+| MCP | Client + Server |
+| Voice | LiveKit WebRTC + Orpheus TTS |
 | RAG/Vector Search | Yes (FTS5 + embeddings) |
 | Token Streaming | Yes (SSE + WebSocket) |
-| Adaptive Teaching | Yes (wizard, skill reveal, hints) |
+| Adaptive Teaching | Yes |
 | Plugin System | Yes (ContextEngine lifecycle hooks) |
 | Metrics | Yes (Prometheus /metrics endpoint) |
 | Fallback Chains | Yes (auto-cascade on model failure) |
 | Deep Research | Yes (multi-step with citations) |
-| Team Mode RBAC | Yes (owner/admin/operator/viewer, invites, per-role tool permissions) |
-| Plugin SDK | Yes (skill scaffolding CLI for JS/TS/YAML) |
-| Cloud Deploy | Yes (one-line install, Railway/Render/Replit, optimized Docker) |
-| Visual Workflows | Yes (drag-and-drop builder, YAML export/import, node-graph canvas, 7 recipe API endpoints) |
+| Team Mode RBAC | Yes |
+| Plugin SDK | Yes (skill scaffolding CLI) |
+| Cloud Deploy | Yes (one-line install, Railway/Render/Replit) |
+| Visual Workflows | Yes (drag-and-drop builder) |
+| Self-Improvement | Yes (LLM-as-judge, LoRA fine-tuning) |
+| Training Pipelines | Yes (dual: Tool Router + Main Agent) |
+| Browser Automation | Yes (Playwright + CapSolver CAPTCHA) |
+| Mission Control | v2 React 19 SPA with 17 admin panels |
 
 ---
 
-## NOW: Stabilize & Harden What We Have
+## NOW: Production Autonomy & Reliability
 
-Focus on making existing features work correctly before adding new ones.
+### Infrastructure
+- [ ] systemd service for crash recovery (auto-restart)
+- [ ] Internal health monitor (Ollama, memory, TTS watchdog)
+- [ ] Log rotation (prevent disk fill)
+- [ ] fetchWithRetry timeout (prevent gateway freeze)
+- [x] SSE client disconnect handling (v2026.10.22)
 
-### Testing & Quality
-- [x] Fix gateway-extended.test.ts (23 failing — auth mock issues)
-- [x] Push coverage from 56.6% → 80%+
-- [x] Integration tests for all 9 channels (mocked)
-- [x] Small model performance optimization (tool reduction, think:false, stall tuning)
-- [ ] E2E tests for gateway + dashboard (Playwright)
-- [ ] Performance benchmarks (startup time, memory, throughput)
-
-### Harden Existing Features
-- [x] Self-Healing — `titan doctor --fix`
-- [x] Tunnel support (Cloudflare Tunnel — quick + named modes)
-- [x] Audit logging with signed event trail (HMAC-SHA256 chained JSONL)
-- [x] Resource limits (memory, CPU, disk, subprocess caps)
-- [x] Encrypted secrets store (AES-256-GCM vault with PBKDF2)
-- [x] Port pre-check to prevent EADDRINUSE crashes on startup
-- [x] Config validation (reject unknown fields with 400)
-- [x] Concurrent LLM request limiting (503 when overloaded)
-- [x] Graph entity extraction hardening (JSON repair, skip weak models)
-- [x] Slash commands via REST API (not just WebSocket)
-- [x] Skill enable/disable toggle (dashboard + API)
-- [ ] Multi-layer sandbox (Landlock, Firejail, Bubblewrap auto-detect)
-
-### Expand What Works
-- [x] 34 providers (4 native + 30 OpenAI-compatible) — expanded in v2026.8.0
-- [x] 15 channels (added IRC, Mattermost, Lark, Email, LINE, Zulip in v2026.8.0)
-- [x] Vector search + RAG pipeline (SQLite FTS5 + embeddings) — shipped in v2026.7.0
-- [ ] Memory hygiene (auto-archive stale entities, configurable retention)
-- [x] Streaming to dashboard (SSE + WebSocket token delivery) — shipped in v2026.7.0
-- [x] Code interpreter skill (sandboxed JS/Python execution) — shipped as code_exec in v2026.6.0
-
----
-
-## NEXT: Batch 10 — Polish & Expand
-
-### Performance & Reliability
-- [x] Streaming response for /api/message — SSE with `Accept: text/event-stream` (v2026.7.0)
-- [ ] Ollama model auto-detect — read parameter count, auto-set small model mode
-- [ ] Inference timeout — configurable hard timeout for LLM calls
-- [ ] Connection pooling — reuse HTTP connections to providers
-- [ ] Warm model keep-alive — ping Ollama to keep model loaded in RAM
+### Autonomy Activation
+- [ ] Enable autopilot with safe defaults (goals mode, supervised)
+- [ ] Configure fallback chain (Ollama models)
+- [ ] Create initial self-maintenance goals
+- [ ] AUTOPILOT.md checklist for standing instructions
 
 ### Dashboard & UX
-- [ ] Hardware info panel — CPU, RAM, GPU status in Mission Control
-- [ ] Config query widget — matching CLI `titan config <key>` feature
-- [ ] Mobile-responsive dashboard — CSS media queries for small screens
-
-### New Capabilities
-- [x] Telemetry Dashboard — Prometheus metrics + /metrics endpoint (v2026.8.0)
-- [ ] Notion/Jira Skill — project management integration
-- [ ] OAuth Hub — one-click connection to SaaS services
-
----
-
-## LATER: Scale & Ecosystem
-
-- [x] Team Mode — multi-user with RBAC, invites, per-role tool permissions (v2026.9.2)
-- [ ] Mobile App — React Native companion for iOS/Android
-- [ ] Voice-First Mode — always-on voice assistant (wake word detection)
-- [ ] Agent-to-Agent Protocol — standardized inter-agent communication
-- [x] Visual workflow builder — drag-and-drop recipe editor with YAML export/import (v2026.9.5)
-- [x] Self-reflection loop — agent evaluates own responses (v2026.6.7)
-- [ ] Evaluation framework (benchmark agent quality)
-- [ ] WASM runtime / edge deployment
-- [ ] Hardware peripherals (Arduino, RPi GPIO)
-- [x] Plugin SDK — skill scaffolding CLI for JS/TS/YAML (v2026.9.1)
-- [ ] PWA version of Mission Control
-- [x] MCP Server Mode — expose tools via Model Context Protocol (v2026.9.0)
-- [x] Cloud Deploy — one-line install, Railway/Render/Replit (v2026.9.4)
-- [x] Fallback Model Chains — auto-cascade on provider failure (v2026.8.0)
-- [x] Deep Research Agent — multi-step search with citations (v2026.8.0)
-- [x] ContextEngine Plugins — lifecycle hooks for extensible context management (v2026.8.0)
-- [x] Adaptive Teaching — first-run wizard, progressive skill reveal (v2026.7.0)
+- [ ] E2E tests for gateway + dashboard (Playwright)
+- [ ] Performance benchmarks (startup time, memory, throughput)
+- [ ] Hardware info panel in Mission Control
+- [ ] Mobile-responsive dashboard
 
 ---
 
@@ -264,7 +274,8 @@ Focus on making existing features work correctly before adding new ones.
 | Phase 5 | 2,856 | 69 | ~72% |
 | Phase 6 | 3,171 | 81 | ~80.7% |
 | Phase 7 | 3,323 | 94 | ~82% |
-| Phase 9 (current) | 3,561 | 107 | ~82% |
+| Phase 9 | 3,561 | 107 | ~82% |
+| Phase 22 (current) | 3,839 | 123 | ~82% |
 
 ---
 

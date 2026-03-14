@@ -84,14 +84,26 @@ let httpServer: ReturnType<typeof createServer> | null = null;
 /** Interval IDs for cleanup on shutdown */
 let tokenCleanupInterval: ReturnType<typeof setInterval> | null = null;
 let rateLimitCleanupInterval: ReturnType<typeof setInterval> | null = null;
+let healthMonitorInterval: ReturnType<typeof setInterval> | null = null;
 let activeLlmRequests = 0;
 let maxConcurrentOverride: number | null = null;
+
+/** Internal health monitor state */
+const healthState = {
+  ollamaHealthy: false,
+  ttsHealthy: false,
+  lastCheck: null as string | null,
+  lastActiveLlm: 0,
+  lastActiveLlmTime: 0,
+  stuckDetected: false,
+};
 
 export function stopGateway(): Promise<void> {
     return new Promise((resolve) => {
         // Clear intervals to release the event loop
         if (tokenCleanupInterval) { clearInterval(tokenCleanupInterval); tokenCleanupInterval = null; }
         if (rateLimitCleanupInterval) { clearInterval(rateLimitCleanupInterval); rateLimitCleanupInterval = null; }
+        if (healthMonitorInterval) { clearInterval(healthMonitorInterval); healthMonitorInterval = null; }
 
         if (httpServer) {
             httpServer.close(() => { httpServer = null; resolve(); });
@@ -514,6 +526,15 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       version: TITAN_VERSION,
       uptime: process.uptime(),
       memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      health: {
+        ollamaHealthy: healthState.ollamaHealthy,
+        ttsHealthy: healthState.ttsHealthy,
+        lastCheck: healthState.lastCheck,
+        stuckDetected: healthState.stuckDetected,
+        uptimeSeconds: Math.round(process.uptime()),
+        memoryUsageMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        activeLlmRequests,
+      },
     });
   });
 
@@ -2863,6 +2884,61 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       logger.error(COMPONENT, `Server error: ${err.message}`);
     }
   });
+
+  // ── Internal Health Monitor (60s interval) ─────────────────────
+  const ollamaBaseUrl = config.providers?.ollama?.baseUrl || process.env.OLLAMA_HOST || 'http://localhost:11434';
+  const ttsBaseUrl = config.voice?.ttsBaseUrl || 'http://localhost:5005';
+
+  healthMonitorInterval = setInterval(async () => {
+    const now = Date.now();
+    healthState.lastCheck = new Date().toISOString();
+
+    // Check Ollama
+    try {
+      const resp = await fetch(`${ollamaBaseUrl}/api/tags`, { signal: AbortSignal.timeout(3000) });
+      healthState.ollamaHealthy = resp.ok;
+    } catch {
+      if (healthState.ollamaHealthy) {
+        logger.warn(COMPONENT, 'Health monitor: Ollama is unreachable');
+      }
+      healthState.ollamaHealthy = false;
+    }
+
+    // Check TTS
+    try {
+      const resp = await fetch(`${ttsBaseUrl}/v1/audio/speech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'orpheus', input: 'test', voice: 'tara', response_format: 'wav' }),
+        signal: AbortSignal.timeout(5000),
+      });
+      healthState.ttsHealthy = resp.ok;
+    } catch {
+      healthState.ttsHealthy = false;
+    }
+
+    // Check for stuck LLM requests (same count for > 5 minutes)
+    if (activeLlmRequests > 0 && activeLlmRequests === healthState.lastActiveLlm) {
+      if (now - healthState.lastActiveLlmTime > 300_000) {
+        if (!healthState.stuckDetected) {
+          logger.warn(COMPONENT, `Health monitor: ${activeLlmRequests} LLM requests stuck for >5 minutes`);
+          healthState.stuckDetected = true;
+        }
+      }
+    } else {
+      healthState.lastActiveLlm = activeLlmRequests;
+      healthState.lastActiveLlmTime = now;
+      healthState.stuckDetected = false;
+    }
+
+    // Check memory usage
+    const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    if (heapMB > 1500) {
+      logger.warn(COMPONENT, `Health monitor: High heap usage — ${heapMB}MB`);
+    }
+  }, 60_000);
+
+  logger.info(COMPONENT, 'Health monitor started (60s interval)');
 
   // ── Graceful Shutdown ───────────────────────────────────────────
   const gracefulShutdown = async (signal: string) => {

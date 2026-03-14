@@ -65,16 +65,22 @@ export function formatDuration(ms: number): string {
 export async function fetchWithRetry(
     url: string,
     options: RequestInit,
-    config?: { maxRetries?: number; initialDelayMs?: number; retryableStatuses?: number[] }
+    config?: { maxRetries?: number; initialDelayMs?: number; retryableStatuses?: number[]; timeoutMs?: number }
 ): Promise<Response> {
     const maxRetries = config?.maxRetries ?? 3;
     const initialDelay = config?.initialDelayMs ?? 1000;
     const retryable = new Set(config?.retryableStatuses ?? [429, 500, 502, 503]);
+    const timeoutMs = config?.timeoutMs ?? 120_000; // 2 minute default timeout
 
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(url, options);
+            // Apply timeout if caller hasn't already set an AbortSignal
+            const fetchOptions = { ...options };
+            if (!fetchOptions.signal) {
+                fetchOptions.signal = AbortSignal.timeout(timeoutMs);
+            }
+            const response = await fetch(url, fetchOptions);
             if (!retryable.has(response.status) || attempt === maxRetries) {
                 return response;
             }

@@ -5,14 +5,14 @@
 </p>
 
 <p align="center">
-  <strong>An autonomous AI agent framework that actually does things — and gets better at it every day. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, browser automation with CAPTCHA solving, autonomous self-improvement, local model fine-tuning with dual training pipelines, 15 channels, 34 providers, ~141 tools, ~3,839 tests. It trains itself. Pure JavaScript. No native compilation. No, seriously.</strong>
+  <strong>An autonomous AI agent framework that actually does things — and gets better at it every day. Sub-agent orchestration, goal-driven autopilot, deliberative reasoning, sandbox code execution, browser automation with CAPTCHA solving, autonomous self-improvement, local model fine-tuning with dual training pipelines, 15 channels, 34 providers, ~149 tools, ~3,839 tests. It trains itself. Pure JavaScript. No native compilation. No, seriously.</strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
-  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-141-orange" alt="141 Tools"/></a>
+  <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-149-orange" alt="149 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
   <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C839-brightgreen" alt="3,839 Tests"/></a>
 </p>
@@ -59,13 +59,13 @@
 
 ---
 
-> **A Note to Early Adopters (v2026.10.21)**
+> **A Note to Early Adopters (v2026.10.22)**
 >
 > First off — **thank you.** If you installed TITAN before this version, you are a certified pioneer. You survived the Settings panel that showed nothing, the auth system that locked you out of your own agent, and chat responses that confidently told you your CPU was a "high-performance processor" without actually checking. We know. We're sorry. We're also laughing a little.
 >
-> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Twenty-one point releases? Yes. We regret nothing. Each one fixed something real.
+> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Twenty-two point releases? Yes. We regret nothing. Each one fixed something real.
 >
-> **What's new in v2026.10.21:** TITAN's self-improvement system now supports **two training pipelines** — **Tool Router** (single-turn tool selection) and **Main Agent** (full multi-turn agent behavior with OpenAI function calling). Train both from Mission Control's Self-Improve panel with fully customizable hyperparameters (base model, LoRA rank, learning rate, epochs, time budget, max sequence length). Plus improved Ollama context management for faster local model inference.
+> **What's new in v2026.10.22:** 24 bug fixes across the voice system, gateway, and agent core. The voice overlay got a full rewrite — no more stale closures crashing your conversations, proper AbortController cleanup, session continuity across turns, and a FluidOrb canvas animation that no longer tears down 60 times per second. The gateway now handles SSE client disconnects without leaking request counters, Ollama gets a 16K context window, and the internal health monitor watches Ollama/TTS/memory so TITAN knows when something's wrong before you do.
 >
 > TITAN doesn't just follow orders anymore. It studies its own failures, experiments with better approaches, and comes back stronger. Every. Single. Day.
 >
@@ -154,7 +154,7 @@ TITAN SSHs into the target machine via the mesh network, pulls the latest code, 
 **"Get better at everything while I sleep"**
 TITAN runs self-improvement experiments overnight. It modifies its own prompts, evaluates the changes against a benchmark suite using LLM-as-judge scoring, and keeps only the improvements. It can even fine-tune its own local model on your GPU. You wake up to a smarter agent.
 
-No custom code required for any of the above. TITAN ships with 89 loaded skills exposing ~141 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
+No custom code required for any of the above. TITAN ships with 91 loaded skills exposing ~149 tools. When it needs a capability it doesn't have, it can generate a new skill on the fly.
 
 ---
 
@@ -632,7 +632,7 @@ print(f"Found {len(results)} results")
 
 ## Built-in Tools
 
-89 loaded skills exposing ~141 tools. All individually toggleable from Mission Control.
+91 loaded skills exposing ~149 tools. All individually toggleable from Mission Control.
 
 | Category | Tools |
 |----------|-------|
@@ -843,8 +843,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ### Current (v2026.10.x)
 
+- **v2026.10.22**: **Voice System Hardening** — 24 bug fixes across voice, gateway, and agent core. VoiceOverlay rewrite (stale closure fixes, AbortController cleanup, session continuity, emotion tag stripping). FluidOrb canvas rewrite (single animation loop, no 60fps teardown). Gateway SSE leak fix, TTS health probe fix, Ollama context 8K→16K, internal health monitor (Ollama/TTS/memory watchdog), fetchWithRetry timeout, systemd service unit, log rotation. 91 loaded skills, ~149 tools, 3,839 tests across 123 files.
 - **v2026.10.21**: **Dual Training Pipelines** — Tool Router (single-turn tool selection) and Main Agent (multi-turn ChatML with OpenAI function calling) training modes. Self-Improve panel training type selector with fully customizable hyperparameters (base model, LoRA rank, learning rate, epochs, time budget, max sequence length). Training data generation, model deployment, and benchmarking from the UI. Ollama provider context management fix (prevents context over-allocation). New API endpoints: generate-data, deploy, type-filtered results.
-- **v2026.10.20**: **Autonomous Self-Improvement** — TITAN experiments on its own prompts, tool selection, response quality, and error recovery using LLM-as-judge evaluation. LoRA fine-tuning pipeline (unsloth → GGUF → Ollama) for local model training on GPU. Configurable schedule (1–12 runs/day), budget caps, auto-apply, weekend pause. Mission Control Self-Improvement panel. Autopilot `self-improve` mode. 8 new tools, 141 total tools, 89 skills, 3,839 tests across 123 files.
+- **v2026.10.20**: **Autonomous Self-Improvement** — TITAN experiments on its own prompts, tool selection, response quality, and error recovery using LLM-as-judge evaluation. LoRA fine-tuning pipeline (unsloth → GGUF → Ollama) for local model training on GPU. Configurable schedule (1–12 runs/day), budget caps, auto-apply, weekend pause. Mission Control Self-Improvement panel. Autopilot `self-improve` mode. 8 new tools, 149 total tools, 91 skills, 3,839 tests across 123 files.
 - **v2026.10.17**: CapSolver CAPTCHA solving, direct form-fill API, deferred button clicks, React-compatible form automation
 - **v2026.10.10**: Integrations panel (12 provider API keys + Google OAuth), Workflows panel (Goals, Cron, Recipes, Autopilot), autonomous persona, research pipeline with autoresearch, TopFacts context plugin, checkpoint/resume, 17 admin panels, 117 tools, 82 skills, 3,691 tests across 114 files
 - **v2026.10.4**: Onboarding wizard, system_info tool, tool discovery fix, polished Mission Control

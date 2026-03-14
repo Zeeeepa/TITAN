@@ -75,11 +75,19 @@ if [ "$USE_DOCKER" = true ]; then
   echo ""
   echo "✅ Docker container 'titan-gateway' started"
 else
-  # Kill any existing process
-  ssh "$TARGET" "pkill -f 'node.*dist/index' 2>/dev/null || true"
-  ssh "$TARGET" "cd $REMOTE_PATH && nohup node dist/index.js > /tmp/titan-gateway.log 2>&1 &"
-  echo ""
-  echo "✅ TITAN started (logs: /tmp/titan-gateway.log)"
+  # Check if systemd service exists — prefer managed restart
+  if ssh "$TARGET" "systemctl is-enabled titan-gateway 2>/dev/null" >/dev/null 2>&1; then
+    echo "  (systemd service detected — restarting via systemctl)"
+    ssh "$TARGET" "sudo systemctl restart titan-gateway"
+    echo ""
+    echo "✅ TITAN restarted via systemd (logs: journalctl -u titan-gateway)"
+  else
+    # Fallback: manual process management
+    ssh "$TARGET" "pkill -f 'node.*dist/index' 2>/dev/null || true"
+    ssh "$TARGET" "cd $REMOTE_PATH && nohup node dist/cli/index.js gateway > /tmp/titan-gateway.log 2>&1 &"
+    echo ""
+    echo "✅ TITAN started (logs: /tmp/titan-gateway.log)"
+  fi
 fi
 
 # Get the target's IP

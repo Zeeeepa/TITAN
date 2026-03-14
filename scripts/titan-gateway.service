@@ -1,0 +1,20 @@
+[Unit]
+Description=TITAN Gateway — Autonomous AI Agent Framework
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dj
+WorkingDirectory=/opt/TITAN
+ExecStart=/usr/bin/node dist/cli/index.js gateway
+Restart=on-failure
+RestartSec=5
+WatchdogSec=120
+Environment=NODE_ENV=production
+Environment=TITAN_GATEWAY_HOST=0.0.0.0
+StandardOutput=append:/var/log/titan-gateway.log
+StandardError=append:/var/log/titan-gateway.log
+
+[Install]
+WantedBy=multi-user.target

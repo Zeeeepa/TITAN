@@ -24,6 +24,10 @@ vi.mock('../src/utils/logger.js', () => ({
 vi.mock('../src/utils/constants.js', () => ({
     TITAN_HOME: '/tmp/titan-test',
 }));
+vi.mock('../src/agent/daemon.js', () => {
+    const { EventEmitter } = require('events');
+    return { titanEvents: new EventEmitter() };
+});
 vi.mock('uuid', () => ({ v4: () => 'test-uuid-1234' }));
 
 let goalsModule: typeof import('../src/agent/goals.js');

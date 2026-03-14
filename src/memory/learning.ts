@@ -24,9 +24,29 @@ export interface LearningEntry {
     updatedAt: string;
 }
 
+/** Tool preference by task type (Phase 4 — Active Learning) */
+interface ToolPreference {
+    tool: string;
+    successRate: number;
+    totalUses: number;
+}
+
+/** Strategy memory — records what approaches worked for task patterns */
+interface StrategyEntry {
+    pattern: string;           // Task pattern description
+    toolsUsed: string[];
+    roundCount: number;
+    success: boolean;
+    timestamp: string;
+}
+
 interface KnowledgeBase {
     entries: LearningEntry[];
     toolSuccessRates: Record<string, { success: number; fail: number; total: number }>;
+    /** Tool success rates segmented by task type (coding, research, analysis, etc.) */
+    toolPreferencesByType: Record<string, Record<string, { success: number; total: number }>>;
+    /** Strategy memory — top 50 strategies, evicted by age + success */
+    strategies: StrategyEntry[];
     errorPatterns: Record<string, { count: number; lastSeen: string; resolution?: string }>;
     userCorrections: Array<{ original: string; correction: string; timestamp: string }>;
     conversationInsights: Array<{ topic: string; outcome: string; toolsUsed: string[]; timestamp: string }>;
@@ -43,6 +63,8 @@ function loadKnowledgeBase(): KnowledgeBase {
             // Ensure fields exist
             kb!.entries = kb!.entries || [];
             kb!.toolSuccessRates = kb!.toolSuccessRates || {};
+            kb!.toolPreferencesByType = kb!.toolPreferencesByType || {};
+            kb!.strategies = kb!.strategies || [];
             kb!.errorPatterns = kb!.errorPatterns || {};
             kb!.userCorrections = kb!.userCorrections || [];
             kb!.conversationInsights = kb!.conversationInsights || [];
@@ -59,6 +81,8 @@ function createEmptyKB(): KnowledgeBase {
     return {
         entries: [],
         toolSuccessRates: {},
+        toolPreferencesByType: {},
+        strategies: [],
         errorPatterns: {},
         userCorrections: [],
         conversationInsights: [],
@@ -304,6 +328,8 @@ export function getLearningStats(): {
     errorPatterns: number;
     corrections: number;
     insights: number;
+    strategies: number;
+    taskTypes: number;
 } {
     const k = loadKnowledgeBase();
     return {
@@ -312,5 +338,123 @@ export function getLearningStats(): {
         errorPatterns: Object.keys(k.errorPatterns).length,
         corrections: k.userCorrections.length,
         insights: k.conversationInsights.length,
+        strategies: k.strategies.length,
+        taskTypes: Object.keys(k.toolPreferencesByType).length,
     };
+}
+
+// ── Phase 4: Active Learning ──────────────────────────────────────
+
+/** Classify a message into a task type for preference tracking */
+export function classifyTaskType(message: string): string {
+    const lower = message.toLowerCase();
+    if (/\b(code|function|class|typescript|python|script|debug|compile|build)\b/.test(lower)) return 'coding';
+    if (/\b(search|research|find|look up|investigate|compare)\b/.test(lower)) return 'research';
+    if (/\b(analy[sz]e|data|csv|chart|graph|statistics|metrics)\b/.test(lower)) return 'analysis';
+    if (/\b(write|draft|blog|article|email|message|story)\b/.test(lower)) return 'writing';
+    if (/\b(deploy|server|docker|kubernetes|ci|cd|infrastructure)\b/.test(lower)) return 'devops';
+    if (/\b(file|folder|directory|rename|move|copy|delete)\b/.test(lower)) return 'filesystem';
+    if (/\b(schedule|cron|automat|workflow|remind)\b/.test(lower)) return 'automation';
+    return 'general';
+}
+
+/** Record a tool result against a specific task type */
+export function recordToolPreference(toolName: string, taskType: string, success: boolean): void {
+    const k = loadKnowledgeBase();
+    if (!k.toolPreferencesByType[taskType]) {
+        k.toolPreferencesByType[taskType] = {};
+    }
+    if (!k.toolPreferencesByType[taskType][toolName]) {
+        k.toolPreferencesByType[taskType][toolName] = { success: 0, total: 0 };
+    }
+
+    k.toolPreferencesByType[taskType][toolName].total++;
+    if (success) k.toolPreferencesByType[taskType][toolName].success++;
+    debouncedSave();
+}
+
+/** Get ranked tool preferences for a task type */
+export function getToolPreferences(taskType: string): ToolPreference[] {
+    const k = loadKnowledgeBase();
+    const prefs = k.toolPreferencesByType[taskType];
+    if (!prefs) return [];
+
+    return Object.entries(prefs)
+        .filter(([, stats]) => stats.total >= 3) // Minimum sample size
+        .map(([tool, stats]) => ({
+            tool,
+            successRate: stats.success / stats.total,
+            totalUses: stats.total,
+        }))
+        .sort((a, b) => b.successRate - a.successRate);
+}
+
+/** Record a successful strategy for future reference */
+export function recordStrategy(message: string, toolsUsed: string[], roundCount: number, success: boolean): void {
+    const k = loadKnowledgeBase();
+
+    const entry: StrategyEntry = {
+        pattern: message.slice(0, 200),
+        toolsUsed: [...new Set(toolsUsed)],
+        roundCount,
+        success,
+        timestamp: new Date().toISOString(),
+    };
+
+    k.strategies.push(entry);
+
+    // Evict old/failed strategies to keep at 50 max
+    if (k.strategies.length > 50) {
+        // Sort: keep successful + recent, evict failed + old
+        k.strategies.sort((a, b) => {
+            if (a.success !== b.success) return a.success ? -1 : 1;
+            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+        k.strategies = k.strategies.slice(0, 50);
+    }
+
+    debouncedSave();
+}
+
+/** Get strategy hints for a similar task */
+export function getStrategyHints(message: string): string | null {
+    const k = loadKnowledgeBase();
+    if (k.strategies.length === 0) return null;
+
+    // Simple keyword matching — find strategies with overlapping words
+    const words = new Set(message.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+    if (words.size === 0) return null;
+
+    let bestMatch: StrategyEntry | null = null;
+    let bestScore = 0;
+
+    for (const strategy of k.strategies.filter(s => s.success)) {
+        const patternWords = new Set(strategy.pattern.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        let overlap = 0;
+        for (const w of words) {
+            if (patternWords.has(w)) overlap++;
+        }
+        const score = overlap / Math.max(words.size, patternWords.size);
+        if (score > bestScore && score > 0.3) {
+            bestScore = score;
+            bestMatch = strategy;
+        }
+    }
+
+    if (!bestMatch) return null;
+
+    return `For similar tasks, a successful strategy used: ${bestMatch.toolsUsed.join(', ')} (${bestMatch.roundCount} rounds).`;
+}
+
+/** Get error resolution if a known pattern matches */
+export function getErrorResolution(error: string): string | null {
+    const k = loadKnowledgeBase();
+    const errorLower = error.toLowerCase();
+
+    for (const [pattern, info] of Object.entries(k.errorPatterns)) {
+        if (info.resolution && errorLower.includes(pattern.toLowerCase().slice(0, 50))) {
+            return info.resolution;
+        }
+    }
+    return null;
 }

@@ -97,6 +97,11 @@ vi.mock('../src/memory/learning.js', () => ({
     learnFact: vi.fn(),
     getToolWarnings: mockGetToolWarnings,
     recordErrorResolution: mockRecordErrorResolution,
+    classifyTaskType: vi.fn().mockReturnValue('general'),
+    recordToolPreference: vi.fn(),
+    recordStrategy: vi.fn(),
+    getStrategyHints: vi.fn().mockReturnValue(null),
+    getErrorResolution: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock('../src/memory/relationship.js', () => ({

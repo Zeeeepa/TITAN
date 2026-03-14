@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { TITAN_HOME } from '../utils/constants.js';
 import { ensureDir } from '../utils/helpers.js';
+import { titanEvents } from './daemon.js';
 import logger from '../utils/logger.js';
 
 const COMPONENT = 'Goals';
@@ -15,6 +16,16 @@ const GOALS_PATH = join(TITAN_HOME, 'goals.json');
 
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'failed';
 export type SubtaskStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface SubtaskTrigger {
+    type: 'schedule' | 'event' | 'dependency' | 'manual';
+    /** Event name to match (e.g., 'health:ollama:down', 'cron:stuck') */
+    event?: string;
+    /** Cron expression for scheduled triggers */
+    schedule?: string;
+    /** LLM-evaluated condition (e.g., "when error rate exceeds 50%") */
+    condition?: string;
+}
 
 export interface Subtask {
     id: string;
@@ -27,6 +38,8 @@ export interface Subtask {
     retries: number;
     /** Subtask IDs within the same goal that must complete before this one can start */
     dependsOn?: string[];
+    /** Optional trigger — when set, subtask activates on matching events instead of linearly */
+    trigger?: SubtaskTrigger;
 }
 
 export interface Goal {
@@ -159,6 +172,7 @@ export function createGoal(options: {
     saveGoals();
 
     logger.info(COMPONENT, `Goal created: "${goal.title}" (${goal.id}) with ${goal.subtasks.length} subtasks`);
+    titanEvents.emit('goal:created', { goalId: goal.id, title: goal.title, subtasks: goal.subtasks.length });
     return goal;
 }
 
@@ -265,6 +279,9 @@ export function completeSubtask(goalId: string, subtaskId: string, result: strin
         goal.status = 'completed';
         goal.completedAt = new Date().toISOString();
         logger.info(COMPONENT, `Goal auto-completed: "${goal.title}"`);
+        titanEvents.emit('goal:completed', { goalId: goal.id, title: goal.title });
+    } else {
+        titanEvents.emit('goal:progress', { goalId: goal.id, title: goal.title, progress: goal.progress, subtaskId, result });
     }
 
     goal.updatedAt = new Date().toISOString();
@@ -284,6 +301,7 @@ export function failSubtask(goalId: string, subtaskId: string, error: string): b
     if (subtask.retries >= 3) {
         subtask.status = 'failed';
         subtask.error = error;
+        titanEvents.emit('goal:failed', { goalId, subtaskId, title: subtask.title, error, retries: subtask.retries });
     } else {
         subtask.status = 'pending'; // Will retry
     }
@@ -351,6 +369,66 @@ export function getGoalsSummary(): string {
     }
 
     return lines.join('\n');
+}
+
+/** Check if any subtasks match a given event and mark them as ready */
+export function matchEventTriggers(eventName: string): Array<{ goal: Goal; subtask: Subtask }> {
+    const goals = loadGoals().filter(g => g.status === 'active');
+    const matched: Array<{ goal: Goal; subtask: Subtask }> = [];
+
+    for (const goal of goals) {
+        for (const subtask of goal.subtasks) {
+            if (subtask.status !== 'pending') continue;
+            if (!subtask.trigger || subtask.trigger.type !== 'event') continue;
+            if (!subtask.trigger.event) continue;
+
+            // Match exact event name or wildcard prefix (e.g., 'health:*' matches 'health:ollama:down')
+            const pattern = subtask.trigger.event;
+            const matches = pattern.endsWith('*')
+                ? eventName.startsWith(pattern.slice(0, -1))
+                : eventName === pattern;
+
+            if (matches) {
+                matched.push({ goal, subtask });
+                logger.info(COMPONENT, `Event trigger matched: "${subtask.title}" (goal: ${goal.title}) on event: ${eventName}`);
+            }
+        }
+    }
+
+    return matched;
+}
+
+/** Dynamically add a subtask after another completes (for adaptive goal planning) */
+export function addDynamicSubtask(goalId: string, afterSubtaskId: string, title: string, description: string): Subtask | undefined {
+    const goal = getGoal(goalId);
+    if (!goal) return undefined;
+
+    const maxSubtasks = 30; // Safety cap
+    if (goal.subtasks.length >= maxSubtasks) {
+        logger.warn(COMPONENT, `Cannot add dynamic subtask to "${goal.title}" — max ${maxSubtasks} reached`);
+        return undefined;
+    }
+
+    const subtask: Subtask = {
+        id: `st-dyn-${goal.subtasks.length + 1}`,
+        title,
+        description,
+        status: 'pending',
+        retries: 0,
+        dependsOn: [afterSubtaskId],
+    };
+
+    goal.subtasks.push(subtask);
+    goal.updatedAt = new Date().toISOString();
+
+    // Recalculate progress with new subtask
+    const done = goal.subtasks.filter(st => st.status === 'done' || st.status === 'skipped').length;
+    goal.progress = Math.round((done / goal.subtasks.length) * 100);
+
+    saveGoals();
+    logger.info(COMPONENT, `Dynamic subtask added to "${goal.title}": "${title}" (depends on ${afterSubtaskId})`);
+    titanEvents.emit('goal:subtask:added', { goalId, subtaskId: subtask.id, title, afterSubtaskId });
+    return subtask;
 }
 
 /** Force reload from disk (useful after external edits) */

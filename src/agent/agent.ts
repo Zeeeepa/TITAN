@@ -8,7 +8,7 @@ import { loadConfig } from '../config/config.js';
 import { getOrCreateSession, addMessage, getContextMessages } from './session.js';
 import { executeTools, getToolDefinitions, type ToolResult } from './toolRunner.js';
 import { recordUsage, searchMemories } from '../memory/memory.js';
-import { recordToolResult, getLearningContext, learnFact, getToolWarnings, recordErrorResolution } from '../memory/learning.js';
+import { recordToolResult, getLearningContext, learnFact, getToolWarnings, recordErrorResolution, classifyTaskType, recordToolPreference, recordStrategy, getStrategyHints, getErrorResolution } from '../memory/learning.js';
 import { buildPersonalContext } from '../memory/relationship.js';
 import { getTeachingContext, isCorrection } from './teaching.js';
 import { recordToolUsage, recordCorrection } from './userProfile.js';
@@ -278,6 +278,9 @@ async function buildSystemPrompt(config: ReturnType<typeof loadConfig>, userMess
     // Continuous learning context
     const learningContext = getLearningContext();
 
+    // Strategy hints — what worked for similar tasks before
+    const strategyHint = userMessage ? getStrategyHints(userMessage) : null;
+
     // Teaching context — adaptive skill level, corrections, tool suggestions
     const teachingContext = getTeachingContext();
 
@@ -330,6 +333,7 @@ You are ${TITAN_NAME}, The Intelligent Task Automation Network — a powerful pe
 ## Continuous Learning
 You get smarter with every interaction. Below is your accumulated knowledge:
 ${learningContext}
+${strategyHint ? `\n**Strategy hint**: ${strategyHint}` : ''}
 ${teachingContext ? `\n## Adaptive Teaching\n${teachingContext}` : ''}
 ${customPrompt ? `\n## Custom Instructions\n${customPrompt}` : ''}${workspaceContext}${memoryContext}${personalContext}${graphSection}
 
@@ -958,6 +962,22 @@ Use sparingly and naturally. They make you sound more human.`;
             recordToolResult(result.name, success, undefined, success ? undefined : result.content.slice(0, 200));
             recordToolUsage(result.name);
 
+            // Active Learning: record tool preference by task type
+            const taskType = classifyTaskType(message);
+            recordToolPreference(result.name, taskType, success);
+
+            // Active Learning: auto-inject known error resolutions
+            if (!success) {
+                const resolution = getErrorResolution(result.content);
+                if (resolution) {
+                    logger.info(COMPONENT, `[ActiveLearning] Known fix for error: ${resolution.slice(0, 80)}`);
+                    messages.push({
+                        role: 'user',
+                        content: `[Auto-fix hint] A known resolution for this error: ${resolution}. Try applying it.`,
+                    });
+                }
+            }
+
             // Track error resolutions: when a previous tool failed and this one succeeded
             if (success && lastFailedTool) {
                 recordErrorResolution(lastFailedTool.error, `Resolved by using ${result.name} instead of ${lastFailedTool.name}`);
@@ -1011,6 +1031,12 @@ Use sparingly and naturally. They make you sound more human.`;
     // Clean up stall detector for this session
     clearSession(session.id);
     resetLoopDetection(session.id);
+
+    // Active Learning: record strategy for future reference
+    if (toolsUsed.length > 0) {
+        const success = !finalContent.toLowerCase().includes('error') && !budgetExhausted;
+        recordStrategy(message, toolsUsed, toolsUsed.length, success);
+    }
 
     // Save assistant response to session
     addMessage(session, 'assistant', finalContent, {

@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.22
+- **Current version**: v2026.10.25
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -192,6 +192,9 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.25**: Production hardening — 0 TypeScript errors, 0 ESLint errors, SSE write safety, rate limit cap, `.unref()` intervals, unhandled rejection handler, hardcoded IPs removed
+- **v2026.10.24**: GitHub Actions CI, "Why TITAN?" comparison table, README badges, npm SEO keywords, CODE_OF_CONDUCT, examples/, migration guide, benchmarks doc
+- **v2026.10.23**: Production autonomy — systemd service unit, health monitor, log rotation, fetchWithRetry timeout, autopilot, fallback chain, goals
 - **v2026.10.22**: Voice system hardening (24 fixes), VoiceOverlay rewrite (stale closure fixes, AbortController cleanup, session continuity), FluidOrb canvas rewrite (single animation loop), Gateway SSE leak fix, TTS health probe fix, Ollama context 8K→16K, internal health monitor, fetchWithRetry timeout, systemd service unit, log rotation, ~149 tools across 91 skills
 - **v2026.10.21**: Dual training pipelines (Tool Router + Main Agent), training type selector UI with customizable hyperparameters, agent training data generator (530+ examples), Ollama context management fix, new API endpoints (generate-data, deploy, type-filtered results)
 - **v2026.10.20**: Autonomous self-improvement system (LLM-as-judge eval, autoresearch experiments), local model LoRA fine-tuning pipeline (unsloth → GGUF → Ollama), Self-Improvement Mission Control panel, autopilot self-improve mode, 8 new tools

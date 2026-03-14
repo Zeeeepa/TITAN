@@ -19,7 +19,7 @@ import { getCachedResponse, setCachedResponse } from './responseCache.js';
 import { buildSmartContext } from './contextManager.js';
 import { getSwarmRouterTools, runSubAgent, type Domain } from './swarm.js';
 import { shouldDeliberate, analyze, generatePlan, executePlan, handleApproval, getDeliberation, cancelDeliberation, formatPlanResults } from './deliberation.js';
-import type { ChatMessage, ChatResponse, ToolCall } from '../providers/base.js';
+import type { ChatMessage, ChatResponse, ToolCall, ToolDefinition } from '../providers/base.js';
 import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
 import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
@@ -136,17 +136,18 @@ function stripToolJson(text: string): string {
  */
 function extractToolCallFromContent(
     content: string,
-    activeTools: Array<{ name: string; parameters?: unknown }>,
-): { id: string; function: { name: string; arguments: string } } | null {
+    activeTools: ToolDefinition[],
+): ToolCall | null {
     if (!content || content.length < 10) return null;
 
-    const toolNames = activeTools.map(t => t.name);
+    const toolNames = activeTools.map(t => t.function.name);
 
     // Strategy 1: Look for embedded JSON tool calls
     const jsonMatch = content.match(/\{"(?:name|tool_call)":\s*"([^"]+)",\s*"(?:parameters|arguments)":\s*(\{[^}]*(?:\{[^}]*\}[^}]*)?\})\s*\}/);
     if (jsonMatch && toolNames.includes(jsonMatch[1])) {
         return {
             id: `rescue_${Date.now()}`,
+            type: 'function',
             function: { name: jsonMatch[1], arguments: jsonMatch[2] },
         };
     }
@@ -173,6 +174,7 @@ function extractToolCallFromContent(
                     }
                     return {
                         id: `rescue_${Date.now()}`,
+                        type: 'function',
                         function: { name: toolName, arguments: JSON.stringify(args) },
                     };
                 }
@@ -190,6 +192,7 @@ function extractToolCallFromContent(
                     JSON.parse(dataMatch[1]); // validate
                     return {
                         id: `rescue_${Date.now()}`,
+                        type: 'function' as const,
                         function: {
                             name: toolName,
                             arguments: JSON.stringify({
@@ -828,13 +831,14 @@ Use sparingly and naturally. They make you sound more human.`;
         }
 
         // Handle tool calls
-        logger.info(COMPONENT, `LLM requested ${response.toolCalls.length} tool call(s)`);
+        const toolCalls = response.toolCalls ?? [];
+        logger.info(COMPONENT, `LLM requested ${toolCalls.length} tool call(s)`);
 
         // Add assistant message with tool calls to history
         messages.push({
             role: 'assistant',
             content: response.content || '',
-            toolCalls: response.toolCalls,
+            toolCalls,
         });
 
         // Execute tools
@@ -842,7 +846,7 @@ Use sparingly and naturally. They make you sound more human.`;
         try {
             if (isKimiSwarm) {
                 // Intercept execution and route to Swarm Sub-Agents
-                for (const tc of response.toolCalls) {
+                for (const tc of toolCalls) {
                     if (tc.function.name.startsWith('delegate_to_')) {
                         const domainMatch = tc.function.name.match(/delegate_to_(.*)_agent/);
                         const domain = (domainMatch ? domainMatch[1] : 'file') as Domain;
@@ -862,7 +866,7 @@ Use sparingly and naturally. They make you sound more human.`;
                     }
                 }
             } else {
-                toolResults = await executeTools(response.toolCalls, channel);
+                toolResults = await executeTools(toolCalls, channel);
             }
         } catch (err) {
             logger.error(COMPONENT, `Tool execution error: ${(err as Error).message}`);

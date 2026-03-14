@@ -13,7 +13,7 @@ import { recordSuccessPattern, recordToolResult, learnFact } from '../../memory/
 const COMPONENT = 'WebBrowseLLM';
 
 // ─── Shared Playwright types (same as web_browser.ts) ────────────
-interface PwLocator { first(): PwLocator; waitFor(opts: unknown): Promise<unknown> }
+interface PwLocator { first(): PwLocator; waitFor(opts: unknown): Promise<unknown>; click(opts?: unknown): Promise<void>; pressSequentially(text: string, opts?: unknown): Promise<void> }
 interface PwPage {
     goto(url: string, opts?: unknown): Promise<unknown>;
     title(): Promise<string>;
@@ -634,7 +634,7 @@ export async function fillFormSmart(session: WebActSession, url: string, fields:
                 const locator = page.locator(el.selector);
                 await locator.click({ timeout: 3000 }).catch(() => {});
                 // Clear existing value first
-                await page.evaluate((sel) => {
+                await page.evaluate((sel: string) => {
                     const input = document.querySelector(sel) as HTMLInputElement;
                     if (input) { input.value = ''; input.dispatchEvent(new Event('input', { bubbles: true })); }
                 }, el.selector);

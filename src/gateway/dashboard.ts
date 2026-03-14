@@ -1061,7 +1061,7 @@ tr:hover{background:rgba(6,182,212,.03)}
             transcripts, interruption handling, and WebRTC-powered audio.
           </p>
           <div style="display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap">
-            <input id="voice-ui-url" type="text" value="http://192.168.1.11:3000" style="width:280px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:monospace"/>
+            <input id="voice-ui-url" type="text" value="http://localhost:3000" style="width:280px;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;font-family:monospace"/>
             <button class="btn" data-action="voice-open" style="font-size:14px;padding:10px 24px">Open Voice Chat</button>
           </div>
           <p style="color:var(--text-dim);margin-top:20px;font-size:12px">

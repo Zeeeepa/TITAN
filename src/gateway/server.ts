@@ -389,13 +389,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       };
   }
 
-  // Clean rate limit store every 60 seconds
+  // Clean rate limit store every 60 seconds (unref so it doesn't block shutdown)
   rateLimitCleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [key, entry] of rateLimitStore) {
           if (now > entry.resetAt) rateLimitStore.delete(key);
       }
+      // Cap rate limit store to prevent unbounded growth
+      if (rateLimitStore.size > 10_000) {
+          const entries = [...rateLimitStore.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt);
+          const toRemove = entries.slice(0, entries.length - 10_000);
+          for (const [key] of toRemove) rateLimitStore.delete(key);
+      }
   }, 60_000);
+  rateLimitCleanupInterval.unref();
 
   // Create Express app
   const app = express();
@@ -814,6 +821,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
     activeLlmRequests++;
     titanActiveSessions.inc();
+    // Track client disconnect to avoid writing to dead connections
+    let clientDisconnected = false;
     try {
       if (wantsSSE) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -822,16 +831,19 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         res.setHeader('X-Accel-Buffering', 'no');
         res.flushHeaders();
 
-        // Track client disconnect to avoid writing to dead connections
-        let clientDisconnected = false;
         req.on('close', () => { clientDisconnected = true; });
+
+        const safeWrite = (data: string) => {
+          if (clientDisconnected) return;
+          try { res.write(data); } catch { clientDisconnected = true; }
+        };
 
         const response = await routeMessage(content, channel, userId, {
           onToken: (token) => {
-            if (!clientDisconnected) res.write(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
+            safeWrite(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
           },
           onToolCall: (name, args) => {
-            if (!clientDisconnected) res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
+            safeWrite(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
           },
         }, agentId);
         titanRequestsTotal.increment({ channel, status: 'ok' });
@@ -844,8 +856,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         }
         if (response.model) titanModelRequestsTotal.increment({ model: response.model, provider: 'default' });
         if (!clientDisconnected) {
-          res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
-          res.end();
+          safeWrite(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
+          try { res.end(); } catch { /* client gone */ }
         }
       } else {
         const response = await routeMessage(content, channel, userId, undefined, agentId);
@@ -864,8 +876,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       titanRequestsTotal.increment({ channel, status: 'error' });
       titanErrorsTotal.increment({ type: 'request' });
       if (wantsSSE && !clientDisconnected) {
-        res.write(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
-        res.end();
+        try { res.write(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`); res.end(); } catch { /* client gone */ }
       } else if (!wantsSSE) {
         res.status(500).json({ error: (error as Error).message });
       }
@@ -1612,11 +1623,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   });
 
   // ── Self-Improvement API ────────────────────────────────────
-  app.get('/api/self-improve/history', (_req, res) => {
+  app.get('/api/self-improve/history', async (_req, res) => {
     try {
-      const { existsSync, readFileSync } = require('fs');
-      const { join } = require('path');
-      const { TITAN_HOME } = require('../utils/constants.js');
+      const { existsSync, readFileSync } = await import('fs');
+      const { join } = await import('path');
+      const { TITAN_HOME } = await import('../utils/constants.js');
       const historyPath = join(TITAN_HOME, 'self-improve', 'history.jsonl');
       if (!existsSync(historyPath)) {
         res.json({ sessions: [] });
@@ -1637,11 +1648,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json((cfg as Record<string, unknown>).selfImprove || {});
   });
 
-  app.get('/api/training/runs', (_req, res) => {
+  app.get('/api/training/runs', async (_req, res) => {
     try {
-      const { existsSync, readdirSync, readFileSync } = require('fs');
-      const { join } = require('path');
-      const { TITAN_HOME } = require('../utils/constants.js');
+      const { existsSync, readdirSync, readFileSync } = await import('fs');
+      const { join } = await import('path');
+      const { TITAN_HOME } = await import('../utils/constants.js');
       const runsDir = join(TITAN_HOME, 'training-runs');
       if (!existsSync(runsDir)) {
         res.json({ runs: [] });
@@ -1753,9 +1764,11 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.post('/api/autoresearch/generate-data', async (req, res) => {
     try {
       const type = req.body?.type || 'tool_router';
+      const trainHost = process.env.TITAN_TRAIN_HOST || 'localhost';
+      const trainUser = process.env.TITAN_TRAIN_USER || process.env.USER || 'user';
       const prompt = type === 'agent'
-        ? 'Generate training data for the Main Agent model. Run the generate_agent_data.py script on Titan PC via SSH: ssh dj@192.168.1.11 "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_agent_data.py --no-llm"'
-        : 'Generate training data for the tool router model. Run the generate_data.py script on Titan PC via SSH: ssh dj@192.168.1.11 "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_data.py"';
+        ? `Generate training data for the Main Agent model. Run the generate_agent_data.py script via SSH: ssh ${trainUser}@${trainHost} "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_agent_data.py --no-llm"`
+        : `Generate training data for the tool router model. Run the generate_data.py script via SSH: ssh ${trainUser}@${trainHost} "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_data.py"`;
       const response = await processMessage(prompt, `autoresearch-gendata-${type}`, 'system', {});
       res.json({ success: true, content: response.content?.slice(0, 500) });
     } catch (e) {
@@ -2299,13 +2312,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         const fieldsMatched = lines.filter((l: string) => l.startsWith('✅')).length;
         const fieldsFailed = lines.filter((l: string) => l.startsWith('❌'))
           .map((l: string) => l.replace(/^❌\s*/, '').split(':')[0]?.trim() || '');
-        res.json({ success: fieldsFailed.length === 0, result: fullResult, fieldsMatched, fieldsFailed });
+        return res.json({ success: fieldsFailed.length === 0, result: fullResult, fieldsMatched, fieldsFailed });
       } finally {
         await releasePage(page);
       }
     } catch (e) {
       logger.error(COMPONENT, `form-fill error: ${(e as Error).message}`);
-      res.status(500).json({ success: false, error: (e as Error).message });
+      return res.status(500).json({ success: false, error: (e as Error).message });
     }
   });
 
@@ -2322,13 +2335,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
         await page.waitForTimeout(3000);
         const result = await solveCaptcha(page);
-        res.json(result);
+        return res.json(result);
       } finally {
         await releasePage(page);
       }
     } catch (e) {
       logger.error(COMPONENT, `solve-captcha error: ${(e as Error).message}`);
-      res.status(500).json({ solved: false, error: (e as Error).message });
+      return res.status(500).json({ solved: false, error: (e as Error).message });
     }
   });
 
@@ -2887,9 +2900,9 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
   // ── Internal Health Monitor (60s interval) ─────────────────────
   const ollamaBaseUrl = config.providers?.ollama?.baseUrl || process.env.OLLAMA_HOST || 'http://localhost:11434';
-  const ttsBaseUrl = config.voice?.ttsBaseUrl || 'http://localhost:5005';
+  const ttsBaseUrl = config.voice?.ttsUrl || 'http://localhost:5005';
 
-  healthMonitorInterval = setInterval(async () => {
+  healthMonitorInterval = setInterval(async () => {  // eslint-disable-line @typescript-eslint/no-misused-promises
     const now = Date.now();
     healthState.lastCheck = new Date().toISOString();
 
@@ -2937,8 +2950,14 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
       logger.warn(COMPONENT, `Health monitor: High heap usage — ${heapMB}MB`);
     }
   }, 60_000);
+  healthMonitorInterval.unref();
 
   logger.info(COMPONENT, 'Health monitor started (60s interval)');
+
+  // Catch unhandled promise rejections to prevent silent crashes
+  process.on('unhandledRejection', (reason) => {
+    logger.error(COMPONENT, `Unhandled rejection: ${reason}`);
+  });
 
   // ── Graceful Shutdown ───────────────────────────────────────────
   const gracefulShutdown = async (signal: string) => {

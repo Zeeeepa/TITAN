@@ -467,8 +467,8 @@ async function runSelfImproveAutopilot(config: TitanConfig, startTime: number): 
     logger.info(COMPONENT, `Self-improve autopilot: targeting ${areas.length} areas with ${budgetPerArea} min each`);
 
     const results: string[] = [];
-    let totalKeeps = 0;
-    let totalDiscards = 0;
+    const _totalKeeps = 0;
+    const _totalDiscards = 0;
 
     for (const area of areas) {
         try {

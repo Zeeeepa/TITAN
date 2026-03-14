@@ -24,7 +24,6 @@ let stagehandAvailable: boolean | null = null;
 async function isStagehandAvailable(): Promise<boolean> {
     if (stagehandAvailable !== null) return stagehandAvailable;
     try {
-        // @ts-expect-error — optional dependency, loaded dynamically
         const mod = await import('@browserbasehq/stagehand');
         StagehandClass = mod.Stagehand;
         stagehandAvailable = true;

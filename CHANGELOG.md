@@ -4,6 +4,19 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.25] — 2026-03-14
+
+### Fixed
+- **Zero TypeScript errors** — Fixed 15 type errors across agent.ts, server.ts, web_browse_llm.ts, stagehand.ts, autopilot.ts
+- **Zero ESLint errors** — Converted `require()` to ESM `await import()`, fixed `prefer-const` violations
+- **SSE write safety** — `res.write()` calls wrapped in try/catch to prevent crashes when clients disconnect mid-stream
+- **Rate limit store cap** — Rate limit map now capped at 10,000 entries with LRU eviction to prevent unbounded memory growth
+- **Interval cleanup** — `rateLimitCleanupInterval` and `healthMonitorInterval` use `.unref()` so they don't block graceful shutdown
+- **Unhandled rejection handler** — Added `process.on('unhandledRejection')` to log and prevent silent crashes
+- **Hardcoded IPs removed** — Training endpoint SSH commands now use `TITAN_TRAIN_HOST` and `TITAN_TRAIN_USER` env vars instead of hardcoded `192.168.1.11`
+
+---
+
 ## [2026.10.24] — 2026-03-14
 
 ### Added

@@ -63,7 +63,7 @@
 >
 > First off — **thank you.** If you installed TITAN before this version, you are a certified pioneer. You survived the Settings panel that showed nothing, the auth system that locked you out of your own agent, and chat responses that confidently told you your CPU was a "high-performance processor" without actually checking. We know. We're sorry. We're also laughing a little.
 >
-> TITAN is experimental software built by one person between college classes and diaper changes. The update frequency has been... aggressive. Twenty-two point releases? Yes. We regret nothing. Each one fixed something real.
+> TITAN is experimental software built by one dad between college classes, a 14-year-old son full-time, and a 9-year-old daughter week-on week-off. The update frequency has been... aggressive. Twenty-two point releases? Yes. We regret nothing. Each one fixed something real.
 >
 > **What's new in v2026.10.22:** 24 bug fixes across the voice system, gateway, and agent core. The voice overlay got a full rewrite — no more stale closures crashing your conversations, proper AbortController cleanup, session continuity across turns, and a FluidOrb canvas animation that no longer tears down 60 times per second. The gateway now handles SSE client disconnects without leaking request counters, Ollama gets a 16K context window, and the internal health monitor watches Ollama/TTS/memory so TITAN knows when something's wrong before you do.
 >

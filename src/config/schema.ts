@@ -112,6 +112,7 @@ export const AgentConfigSchema = z.object({
         reasoning: 'openai/o3-mini',
         cheap: 'google/gemini-2.0-flash',
         local: 'ollama/qwen3.5:4b',
+        cloud: 'ollama/qwen3.5:397b-cloud',
     }),
     costOptimization: z.object({
         smartRouting: z.boolean().default(true),
@@ -138,6 +139,9 @@ export const AgentConfigSchema = z.object({
     selfHealThreshold: z.number().min(2).max(10).default(3),
     /** Models known to reliably support tool calling — used as self-heal fallbacks */
     toolCapableModels: z.array(z.string()).default([]),
+    /** Force API-level tool_choice on round 0 for task-enforcement scenarios (file writes, research, shell).
+     *  Adds a hard guarantee on top of prompt-level tool instructions. Default: true. */
+    forceToolUse: z.boolean().default(true),
 });
 
 export const MeshConfigSchema = z.object({

@@ -6,7 +6,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import net from 'net';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir, hostname as osHostname, cpus, loadavg } from 'os';
 import { randomBytes, timingSafeEqual } from 'crypto';
@@ -46,7 +46,8 @@ import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
 import { serializePrometheus, getMetricsSummary, titanRequestsTotal, titanRequestDuration, titanErrorsTotal, titanActiveSessions, titanToolCallsTotal, titanTokensTotal, titanModelRequestsTotal } from './metrics.js';
 import { initSlashCommands, handleSlashCommand } from './slashCommands.js';
-import { initMcpServers } from '../mcp/registry.js';
+import { initMcpServers, listMcpServers, addMcpServer, removeMcpServer, setMcpServerEnabled, getMcpStatus, BUILTIN_PRESETS } from '../mcp/registry.js';
+import { connectMcpServer, testMcpServer } from '../mcp/client.js';
 import { mountMcpHttpEndpoints, getMcpServerStatus } from '../mcp/server.js';
 import { initMonitors, setMonitorTriggerHandler } from '../agent/monitor.js';
 import { seedBuiltinRecipes, listRecipes, getRecipe, saveRecipe, deleteRecipe, getBuiltinRecipes, importRecipeYaml } from '../recipes/store.js';
@@ -751,6 +752,77 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // MCP server status
   app.get('/api/mcp/server', (_req, res) => {
     res.json(getMcpServerStatus());
+  });
+
+  // MCP client management
+  app.get('/api/mcp/clients', (_req, res) => {
+    const servers = listMcpServers();
+    const status = getMcpStatus();
+    const merged = servers.map(s => {
+      const live = status.find(st => st.server.id === s.id);
+      return { ...s, status: live?.status || 'disconnected', toolCount: live?.toolCount || 0 };
+    });
+    res.json({ servers: merged });
+  });
+
+  app.post('/api/mcp/clients', async (req, res) => {
+    try {
+      const { presetId, ...serverConfig } = req.body;
+      let server;
+      if (presetId) {
+        const preset = BUILTIN_PRESETS.find(p => p.id === presetId);
+        if (!preset) { res.status(400).json({ error: `Unknown preset: ${presetId}` }); return; }
+        server = addMcpServer(preset as Parameters<typeof addMcpServer>[0]);
+      } else {
+        server = addMcpServer(serverConfig);
+      }
+      if (server.enabled) {
+        await connectMcpServer(server).catch(() => { /* connect errors are non-fatal */ });
+      }
+      res.json({ ok: true, server });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  app.delete('/api/mcp/clients/:id', (req, res) => {
+    try {
+      removeMcpServer(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/mcp/clients/:id/toggle', (req, res) => {
+    try {
+      const { enabled } = req.body;
+      setMcpServerEnabled(req.params.id, !!enabled);
+      if (enabled) {
+        const servers = listMcpServers();
+        const server = servers.find(s => s.id === req.params.id);
+        if (server) connectMcpServer(server).catch(() => {});
+      }
+      res.json({ ok: true, enabled: !!enabled });
+    } catch (err) {
+      res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/mcp/clients/:id/test', async (req, res) => {
+    try {
+      const servers = listMcpServers();
+      const server = servers.find(s => s.id === req.params.id);
+      if (!server) { res.status(404).json({ error: 'Server not found' }); return; }
+      const result = await testMcpServer(server);
+      res.json(result);
+    } catch (err) {
+      res.json({ ok: false, tools: 0, error: (err as Error).message });
+    }
+  });
+
+  app.get('/api/mcp/presets', (_req, res) => {
+    res.json({ presets: BUILTIN_PRESETS });
   });
 
   // Multi-agent endpoints
@@ -1636,6 +1708,87 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         titanEvents.removeAllListeners(evt);
       }
     });
+  });
+
+  // ── Files API (Workspace file browser) ────────────────────
+
+  app.get('/api/files', (req, res) => {
+    const reqPath = (req.query.path as string) || '';
+    const basePath = homedir() + '/.titan';
+    const fullPath = resolve(basePath, reqPath.replace(/^\//, ''));
+
+    // Security: prevent traversal above TITAN_HOME
+    if (!fullPath.startsWith(basePath)) {
+      res.status(403).json({ error: 'Access denied: path outside TITAN home' });
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(fullPath)) {
+        res.status(404).json({ error: 'Path not found' });
+        return;
+      }
+      const stat = fs.statSync(fullPath);
+      if (!stat.isDirectory()) {
+        res.status(400).json({ error: 'Not a directory. Use /api/files/read for files.' });
+        return;
+      }
+      const entries = fs.readdirSync(fullPath).map(name => {
+        try {
+          const entryPath = join(fullPath, name);
+          const entryStat = fs.statSync(entryPath);
+          return {
+            name,
+            path: reqPath ? `${reqPath}/${name}` : name,
+            type: entryStat.isDirectory() ? 'directory' as const : 'file' as const,
+            size: entryStat.size,
+            modified: entryStat.mtime.toISOString(),
+          };
+        } catch {
+          return { name, path: reqPath ? `${reqPath}/${name}` : name, type: 'file' as const, size: 0, modified: '' };
+        }
+      });
+      // Sort: directories first, then alphabetical
+      entries.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      res.json({ path: reqPath || '/', entries, basePath });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.get('/api/files/read', (req, res) => {
+    const reqPath = req.query.path as string;
+    if (!reqPath) { res.status(400).json({ error: 'path parameter required' }); return; }
+
+    const basePath = homedir() + '/.titan';
+    const fullPath = resolve(basePath, reqPath.replace(/^\//, ''));
+
+    if (!fullPath.startsWith(basePath)) {
+      res.status(403).json({ error: 'Access denied: path outside TITAN home' });
+      return;
+    }
+
+    try {
+      if (!fs.existsSync(fullPath)) { res.status(404).json({ error: 'File not found' }); return; }
+      const stat = fs.statSync(fullPath);
+      if (stat.isDirectory()) { res.status(400).json({ error: 'Path is a directory' }); return; }
+
+      // Cap at 1MB to prevent browser hangs
+      const MAX_SIZE = 1024 * 1024;
+      if (stat.size > MAX_SIZE) {
+        const content = fs.readFileSync(fullPath, 'utf-8').slice(0, MAX_SIZE);
+        res.json({ path: reqPath, content, truncated: true, size: stat.size, modified: stat.mtime.toISOString() });
+        return;
+      }
+
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      res.json({ path: reqPath, content, truncated: false, size: stat.size, modified: stat.mtime.toISOString() });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
   });
 
   // ── Audit API ────────────────────────────────────────────

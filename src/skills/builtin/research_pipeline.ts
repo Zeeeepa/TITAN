@@ -266,6 +266,7 @@ export function registerResearchPipelineSkill(): void {
                             task: prompt,
                             tools: template.tools,
                             systemPrompt: template.systemPrompt,
+                            tier: (template as Record<string, unknown>).tier as 'cloud' | 'smart' | 'fast' | 'local' | undefined,
                             maxRounds: depth === 'deep' ? 10 : depth === 'quick' ? 3 : 5,
                         }).then(
                             (result) => {

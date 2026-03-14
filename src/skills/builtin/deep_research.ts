@@ -139,6 +139,7 @@ export function registerDeepResearchSkill(): void {
                         task: prompt,
                         tools: template.tools,
                         systemPrompt: template.systemPrompt,
+                        tier: (template as Record<string, unknown>).tier as 'cloud' | 'smart' | 'fast' | 'local' | undefined,
                         maxRounds,
                     });
 

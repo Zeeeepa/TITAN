@@ -379,19 +379,21 @@ async function runGoalBasedAutopilot(config: TitanConfig, startTime: number): Pr
 
     try {
         // Infer template from subtask description
-        const lower = subtask.description.toLowerCase();
+        const lower = (subtask.description || subtask.title || '').toLowerCase();
         let templateKey = 'explorer';
         if (/\b(write|create|build|code|implement)\b/.test(lower)) templateKey = 'coder';
         else if (/\b(browse|navigate|login|click)\b/.test(lower)) templateKey = 'browser';
         else if (/\b(analyze|report|summarize|compare)\b/.test(lower)) templateKey = 'analyst';
 
         const template = SUB_AGENT_TEMPLATES[templateKey] || {};
+        const templateTier = (template as Record<string, unknown>).tier as string | undefined;
         const result = await spawnSubAgent({
             name: `Autopilot-${template.name || templateKey}`,
             task: `Goal: ${goal.title}\n\nSubtask: ${subtask.title}\n\nInstructions: ${subtask.description}`,
             tools: template.tools,
             systemPrompt: template.systemPrompt,
-            model: config.autopilot.model,
+            // Autopilot model is the floor — use cloud tier if template calls for it
+            tier: templateTier as 'cloud' | 'smart' | 'fast' | 'local' | undefined,
             maxRounds: config.autopilot.maxToolRounds,
         });
 

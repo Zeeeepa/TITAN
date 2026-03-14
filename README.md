@@ -94,15 +94,20 @@ TITAN is the only open-source agent framework that **trains itself on your GPU**
 
 ---
 
-> **A Note to Early Adopters (v2026.10.22)**
+> **What's New in v2026.10.27 — System Prompt Architecture Overhaul**
 >
-> First off — **thank you.** If you installed TITAN before this version, you are a certified pioneer. You survived the Settings panel that showed nothing, the auth system that locked you out of your own agent, and chat responses that confidently told you your CPU was a "high-performance processor" without actually checking. We know. We're sorry. We're also laughing a little.
+> The system prompt is the brain of an AI agent — it's the instruction set every model reads before responding. TITAN's just got a complete redesign based on deep research across Ollama, OpenAI, Anthropic, Gemini, LangChain, AutoGen, and CrewAI.
 >
-> TITAN is experimental software built by one dad between college classes, a 14-year-old son full-time, and a 9-year-old daughter week-on week-off. The update frequency has been... aggressive. Twenty-two point releases? Yes. We regret nothing. Each one fixed something real.
+> **The problem**: Local models like Qwen and Devstral would write "Here is your file:" and output the content as text instead of calling `write_file`. Or respond "Based on my knowledge..." instead of calling `web_search`. The instructions existed, but they were buried in a long bullet list after the identity section.
 >
-> **What's new in v2026.10.22:** 24 bug fixes across the voice system, gateway, and agent core. The voice overlay got a full rewrite — no more stale closures crashing your conversations, proper AbortController cleanup, session continuity across turns, and a FluidOrb canvas animation that no longer tears down 60 times per second. The gateway now handles SSE client disconnects without leaking request counters, Ollama gets a 16K context window, and the internal health monitor watches Ollama/TTS/memory so TITAN knows when something's wrong before you do.
->
-> TITAN doesn't just follow orders anymore. It studies its own failures, experiments with better approaches, and comes back stronger. Every. Single. Day.
+> **What changed:**
+> - **Tool Execution rules are now first** — before identity, before capabilities. Models prioritize early context.
+> - **ReAct loop (Reason→Act→Observe)** taught explicitly — every model now knows: think about what tool you need, call it, read the result, repeat.
+> - **MUST/NEVER + negative examples** — "❌ Asked to write a file → you output content as text. ✓ Called write_file immediately."
+> - **Task-aware injection** — when you ask to write a file, research something, or run a command, a `[TASK ENFORCEMENT]` block is appended targeting that exact task.
+> - **API-level `tool_choice: "required"`** — on enforced first rounds, we tell the API itself to force a tool call, not just the prompt.
+> - **Cloud model compression fixed** — the compressed prompt for cloud models used to strip all the enforcement rules. Now they're the first thing preserved.
+> - **All 11 sub-agent prompts rewritten** — was: one-liner descriptions. Now: full tool guidance with MUST rules and output format per agent.
 >
 > **— Tony**
 
@@ -878,6 +883,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ### Current (v2026.10.x)
 
+- **v2026.10.27**: **System Prompt Architecture Overhaul** — Complete redesign of how TITAN instructs AI models to use tools reliably. Tool Execution rules now appear first in the system prompt (before identity/capabilities). ReAct loop (Reason→Act→Observe) taught to every model. MUST/NEVER directives and negative examples (wrong vs. right behavior) burn in correct tool-call patterns. Task-aware dynamic injection appends `[TASK ENFORCEMENT]` blocks for file-write, research, and shell tasks detected in the message. API-level `tool_choice: "required"` added for OpenAI/Ollama and `tool_choice: {type: "any"}` for Anthropic on enforced first rounds. Ollama cloud prompt compression fixed — tool enforcement rules now survive compression (limit raised 2000→3500 chars). All 11 sub-agent templates (Explorer, Coder, Browser, Analyst, Researcher, Reporter, Fact Checker, Dev Debugger, Dev Tester, Dev Reviewer, Dev Architect) rewritten with tool-specific guidance, MUST rules, and output format requirements. New `agent.forceToolUse` config flag.
+- **v2026.10.26**: **Live Training Feed** — Real-time SSE streaming of training progress in Self-Improvement panel, incremental training data writes (data survives tool timeouts), cloud-assisted training pipeline
 - **v2026.10.22**: **Voice System Hardening** — 24 bug fixes across voice, gateway, and agent core. VoiceOverlay rewrite (stale closure fixes, AbortController cleanup, session continuity, emotion tag stripping). FluidOrb canvas rewrite (single animation loop, no 60fps teardown). Gateway SSE leak fix, TTS health probe fix, Ollama context 8K→16K, internal health monitor (Ollama/TTS/memory watchdog), fetchWithRetry timeout, systemd service unit, log rotation. 91 loaded skills, ~149 tools, 3,839 tests across 123 files.
 - **v2026.10.21**: **Dual Training Pipelines** — Tool Router (single-turn tool selection) and Main Agent (multi-turn ChatML with OpenAI function calling) training modes. Self-Improve panel training type selector with fully customizable hyperparameters (base model, LoRA rank, learning rate, epochs, time budget, max sequence length). Training data generation, model deployment, and benchmarking from the UI. Ollama provider context management fix (prevents context over-allocation). New API endpoints: generate-data, deploy, type-filtered results.
 - **v2026.10.20**: **Autonomous Self-Improvement** — TITAN experiments on its own prompts, tool selection, response quality, and error recovery using LLM-as-judge evaluation. LoRA fine-tuning pipeline (unsloth → GGUF → Ollama) for local model training on GPU. Configurable schedule (1–12 runs/day), budget caps, auto-apply, weekend pause. Mission Control Self-Improvement panel. Autopilot `self-improve` mode. 8 new tools, 149 total tools, 91 skills, 3,839 tests across 123 files.

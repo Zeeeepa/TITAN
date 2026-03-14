@@ -16,29 +16,47 @@ import { v4 as uuid } from 'uuid';
 const COMPONENT = 'Ollama';
 
 /** Max system prompt length for cloud models with tool calling.
- *  Cloud models routed via Ollama have limited context for tool-calling;
- *  massive system prompts cause them to generate text instead of tool_calls.
+ *  Cloud models routed via Ollama have generous context — keep it high enough
+ *  to preserve the full tool enforcement rules which are critical for reliability.
  */
-const CLOUD_MAX_SYSTEM_PROMPT = 2000;
+const CLOUD_MAX_SYSTEM_PROMPT = 3500;
 
 /** Compress a system prompt for cloud models with tool calling.
- *  Keeps core identity + behavior, strips verbose sections.
+ *  Preserves the Tool Execution rules (most critical) + identity.
+ *  Strips verbose learning/memory/graph context which isn't needed for sub-tasks.
  */
 function compressSystemPrompt(content: string): string {
     if (content.length <= CLOUD_MAX_SYSTEM_PROMPT) return content;
 
-    // Extract just the critical sections
     const sections: string[] = [];
 
-    // Keep identity section (## CRITICAL: Your Identity)
+    // 1. Always keep the Tool Execution section (highest priority — the new top section)
+    const toolExecMatch = content.match(/## Tool Execution — HIGHEST PRIORITY[\s\S]*?(?=\n## CRITICAL)/);
+    if (toolExecMatch) {
+        sections.push(toolExecMatch[0].trim());
+    } else {
+        // Fallback: inject the core rules directly if section not found
+        sections.push(`## Tool Execution — HIGHEST PRIORITY
+You are an AI agent. Your PRIMARY function is to execute tasks using tools.
+
+ReAct Loop: THINK → ACT (call tool) → OBSERVE (read result) → REPEAT until done.
+
+MUST: call web_search+web_fetch for factual questions, call write_file/edit_file to save files (NEVER output file content as text), call shell for commands, call tool_search if unsure which tool to use.
+NEVER: describe what you could do, output file content inline, generate current facts from memory, tell user to visit a URL.
+
+Right: asked to write a file → call write_file immediately.
+Wrong: asked to write a file → output the content as text in your reply.`);
+    }
+
+    // 2. Keep identity (shortened)
     const identityMatch = content.match(/## CRITICAL: Your Identity[\s\S]*?(?=\n## )/);
     if (identityMatch) sections.push(identityMatch[0].trim());
 
-    // Keep core capabilities (abbreviated)
-    sections.push('## Core Capabilities\nYou have tools for: shell commands, file operations, web search/fetch, memory, weather, and more. ALWAYS use your tools — never describe what could be done.');
+    // 3. Brief capabilities reminder
+    sections.push('## Tools Available\nShell, file read/write/edit, web search/fetch, browser, memory, weather, code execution, and more. Use tool_search to find any tool not immediately visible.');
 
-    // Keep behavior guidelines (abbreviated)
-    sections.push('## Behavior\n- Lead with the answer, be concise\n- Use tools to complete tasks, do not just describe\n- If web_search results lack detail, follow up with web_fetch\n- Remember important user info for future conversations');
+    // 4. Brief behavior
+    sections.push('## Behavior\n- Lead with action — use tools immediately, explain briefly after\n- If web_search results lack detail, follow up with web_fetch on the best URL\n- Confirm before destructive operations');
 
     const compressed = sections.join('\n\n');
     logger.info(COMPONENT, `Compressed system prompt for cloud model: ${content.length} → ${compressed.length} chars`);
@@ -147,7 +165,12 @@ export class OllamaProvider extends LLMProvider {
                     }));
                 }
                 if (m.toolCallId) msg.tool_call_id = m.toolCallId;
-                if (m.name) msg.name = m.name;
+                // Cloud models (Gemini API) require function_response.name to be non-empty
+                if (m.role === 'tool') {
+                    msg.name = m.name || 'tool';
+                } else if (m.name) {
+                    msg.name = m.name;
+                }
                 return msg;
             }),
             stream: false,
@@ -177,6 +200,10 @@ export class OllamaProvider extends LLMProvider {
             }));
             // Lower temperature for better tool-calling compliance
             (body.options as Record<string, unknown>).temperature = options.temperature ?? 0.3;
+            // Force a tool call on the first round when the task requires it
+            if (options.forceToolUse) {
+                body.tool_choice = 'required';
+            }
         }
 
         // Cloud models: trim conversation history preserving tool call/response pairs
@@ -290,7 +317,12 @@ export class OllamaProvider extends LLMProvider {
                     msg.tool_calls = m.toolCalls.map(tc => ({ function: { name: tc.function.name, arguments: JSON.parse(tc.function.arguments || '{}') } }));
                 }
                 if (m.toolCallId) msg.tool_call_id = m.toolCallId;
-                if (m.name) msg.name = m.name;
+                // Cloud models (Gemini API) require function_response.name to be non-empty
+                if (m.role === 'tool') {
+                    msg.name = m.name || 'tool';
+                } else if (m.name) {
+                    msg.name = m.name;
+                }
                 return msg;
             }),
             stream: true,

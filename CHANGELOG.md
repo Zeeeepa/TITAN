@@ -4,6 +4,25 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.27] — 2026-03-14
+
+### Changed — System Prompt Architecture Overhaul
+- **Tool Execution section moved to top of system prompt** — Critical tool-use rules now appear before identity/capabilities, ensuring models process enforcement instructions first (LLMs prioritize early context)
+- **ReAct loop pattern added** — All models now receive explicit Reason→Act→Observe loop instructions, dramatically increasing tool-call reliability vs. inline text responses
+- **MUST/NEVER directives** — Replaced scattered behavior bullets with clear non-negotiable rules: MUST call write_file for files, MUST call web_search for research, MUST call shell for commands, NEVER output file content as text
+- **Negative examples injected** — Side-by-side ❌/✓ examples show models exactly what wrong vs. correct behavior looks like for common tasks (write file, research, run command)
+- **Task-aware dynamic injection** — System prompt now auto-appends `[TASK ENFORCEMENT]` sections based on message intent detection (file write / research / shell patterns), adding targeted enforcement for each task type
+- **API-level `tool_choice` forcing** — When task enforcement is active, round 0 now passes `tool_choice: "required"` (OpenAI/Ollama) or `tool_choice: {type: "any"}` (Anthropic) via API, adding a hard guarantee on top of prompt instructions
+- **Cloud model compressed prompt fixed** — `compressSystemPrompt()` in Ollama provider now preserves the full Tool Execution rules section (previously it was stripped, leaving only a vague "use tools" line). Limit raised from 2000 → 3500 chars
+- **All 11 sub-agent prompts rewritten** — Explorer, Coder, Browser, Analyst, Researcher, Reporter, Fact Checker, Dev Debugger, Dev Tester, Dev Reviewer, Dev Architect now each have detailed prompts with tool-specific guidance, MUST rules, and output format requirements (was: one-liner descriptions with no enforcement)
+- **`forceToolUse` config flag** — New `agent.forceToolUse: boolean` (default: true) controls API-level tool forcing
+
+### Added
+- `forceToolUse?: boolean` field in `ChatOptions` interface (base.ts)
+- `forceToolUse` config option in `AgentConfigSchema` (schema.ts)
+
+---
+
 ## [2026.10.26] — 2026-03-14
 
 ### Added

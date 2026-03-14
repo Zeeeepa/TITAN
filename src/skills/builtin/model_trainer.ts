@@ -556,6 +556,263 @@ SYSTEM You are TITAN, an intelligent task automation agent. You help users accom
     }
 }
 
+// ── Cloud-Assisted Training Data Generation ──────────────────────────
+
+const TITAN_SYSTEM_PROMPT = `You are TITAN (The Intelligent Task Automation Network), an autonomous AI agent framework. You help users accomplish complex tasks by selecting and executing tools efficiently. Always respond concisely and accurately. Use tools when appropriate — answer directly when you can.`;
+
+const CLOUD_TRAINING_CATEGORIES: Record<string, { description: string; prompts: string[] }> = {
+    tool_use: {
+        description: 'Single and multi-tool usage with proper function calling format',
+        prompts: [
+            'What is the weather in San Francisco right now?',
+            'Search the web for the latest news about AI agents',
+            'Read the file at /home/user/project/README.md',
+            'Create a new file called notes.txt with my meeting notes',
+            'Find all Python files in the current directory',
+            'Send an email to team@company.com with the weekly report',
+            'Check the disk usage on this machine',
+            'What time is it in Tokyo?',
+            'Search GitHub for repositories related to autonomous agents',
+            'Take a screenshot of https://news.ycombinator.com',
+            'Browse to https://example.com and extract the main heading',
+            'Run the command "npm test" and tell me if the tests pass',
+            'Look up the DNS records for anthropic.com',
+            'Download the file at https://example.com/data.csv',
+            'Check if port 8080 is in use on this machine',
+        ],
+    },
+    reasoning: {
+        description: 'Multi-step reasoning, planning, and problem decomposition',
+        prompts: [
+            'I need to deploy a Node.js app to production. Walk me through the steps.',
+            'Compare PostgreSQL vs MongoDB for a real-time chat application',
+            'My API is returning 500 errors intermittently. How should I debug this?',
+            'Design a caching strategy for an e-commerce product catalog',
+            'What are the tradeoffs between microservices and a monolith for a startup?',
+            'Plan a migration from REST to GraphQL for an existing API',
+            'How do I set up CI/CD for a TypeScript project with GitHub Actions?',
+            'Explain the CAP theorem and how it applies to distributed databases',
+            'What is the best approach to handle rate limiting in a public API?',
+            'How should I structure a React app with 50+ components?',
+        ],
+    },
+    coding: {
+        description: 'Code generation, debugging, and refactoring',
+        prompts: [
+            'Write a TypeScript function that retries a fetch request with exponential backoff',
+            'Debug this code: const result = await fetch(url); const data = result.json();',
+            'Refactor this function to use async/await instead of .then() chains',
+            'Write a Python script to process a CSV file and output JSON',
+            'Create a React hook that debounces user input',
+            'Write a SQL query to find the top 10 customers by total spend',
+            'Implement a simple LRU cache in TypeScript',
+            'Write a bash script that monitors disk usage and alerts if over 90%',
+            'Create an Express middleware for request logging with timestamps',
+            'Write unit tests for a function that validates email addresses',
+        ],
+    },
+    research: {
+        description: 'Web research, information gathering, and synthesis',
+        prompts: [
+            'Research the current state of autonomous AI agent frameworks in 2026',
+            'Find the top 5 competitors to TITAN and compare their features',
+            'What are the latest developments in LoRA fine-tuning techniques?',
+            'Summarize the key findings from the latest GPT-5 benchmarks',
+            'Research best practices for securing a Node.js production server',
+            'What are the most popular MCP servers available right now?',
+            'Find recent papers on multi-agent orchestration systems',
+            'Research the current pricing for cloud GPU instances for AI training',
+        ],
+    },
+    conversation: {
+        description: 'Natural dialogue, follow-ups, and context maintenance',
+        prompts: [
+            'Hey TITAN, what can you do?',
+            'Tell me about yourself',
+            'What tools do you have available?',
+            'Can you help me with my project?',
+            'Thanks for your help earlier with the deployment',
+            'I changed my mind about the previous request, can we try a different approach?',
+            'What was the last thing we worked on?',
+            'How many tools do you have loaded right now?',
+        ],
+    },
+    error_recovery: {
+        description: 'Handling errors, failed tools, and graceful degradation',
+        prompts: [
+            'The web_search tool just returned an error. Can you try a different approach?',
+            'I got a timeout when trying to fetch that URL. What should we do?',
+            'The file I asked you to read does not exist. Can you help me find it?',
+            'The shell command failed with exit code 1. What went wrong?',
+            'Ollama is not responding. Can you still help me?',
+            'The API returned a 429 rate limit error. How do we handle this?',
+            'My browser automation script is failing because the page layout changed',
+            'The database connection timed out. What are our options?',
+        ],
+    },
+};
+
+async function callOllamaCloud(model: string, systemPrompt: string, userPrompt: string): Promise<string> {
+    const ollamaUrl = process.env.OLLAMA_HOST || 'http://localhost:11434';
+    try {
+        const resp = await fetch(`${ollamaUrl}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt },
+                ],
+                stream: false,
+                options: { temperature: 0.8, num_predict: 1024 },
+            }),
+            signal: AbortSignal.timeout(120_000),
+        });
+        if (!resp.ok) throw new Error(`Ollama returned ${resp.status}`);
+        const data = await resp.json() as { message?: { content?: string } };
+        return data.message?.content || '';
+    } catch (err) {
+        logger.warn(COMPONENT, `Cloud model call failed: ${(err as Error).message}`);
+        return '';
+    }
+}
+
+async function trainGenerateCloud(args: Record<string, unknown>): Promise<string> {
+    const teacherModel = (args.teacherModel as string) || 'qwen3.5:397b-cloud';
+    const totalCount = (args.count as number) || 200;
+    const appendMode = args.append !== false; // default true
+    const categoryFilter = args.categories
+        ? (args.categories as string).split(',').map(c => c.trim())
+        : Object.keys(CLOUD_TRAINING_CATEGORIES);
+
+    ensureDirs();
+
+    logger.info(COMPONENT, `Cloud training data generation: teacher=${teacherModel}, count=${totalCount}, categories=${categoryFilter.join(',')}`);
+
+    // Validate teacher model is accessible
+    const testResp = await callOllamaCloud(teacherModel, 'You are a helpful assistant.', 'Say OK');
+    if (!testResp) {
+        return `Error: Cannot reach teacher model "${teacherModel}". Make sure it is pulled in Ollama.\nAvailable cloud models: qwen3.5:397b-cloud, nemotron-3-super:cloud, qwen3-coder-next:cloud, glm-5:cloud, kimi-k2.5:cloud, gemini-3-flash-preview`;
+    }
+
+    const activeCategories = categoryFilter.filter(c => c in CLOUD_TRAINING_CATEGORIES);
+    if (activeCategories.length === 0) {
+        return `No valid categories. Choose from: ${Object.keys(CLOUD_TRAINING_CATEGORIES).join(', ')}`;
+    }
+
+    const perCategory = Math.ceil(totalCount / activeCategories.length);
+    const allExamples: Array<{ messages: Array<{ role: string; content: string | null; tool_calls?: unknown[] }> }> = [];
+    const stats: Record<string, { generated: number; failed: number }> = {};
+
+    for (const catName of activeCategories) {
+        const cat = CLOUD_TRAINING_CATEGORIES[catName];
+        stats[catName] = { generated: 0, failed: 0 };
+        const prompts = cat.prompts;
+
+        logger.info(COMPONENT, `Generating ${perCategory} "${catName}" examples with ${teacherModel}...`);
+
+        for (let i = 0; i < perCategory; i++) {
+            // Pick a prompt (cycle through available, then ask teacher to generate new ones)
+            let userPrompt: string;
+            if (i < prompts.length) {
+                userPrompt = prompts[i];
+            } else {
+                // Ask teacher to generate a novel prompt for this category
+                const novelPrompt = await callOllamaCloud(teacherModel,
+                    'You generate diverse, realistic user prompts for an AI agent assistant. Output ONLY the user prompt, nothing else.',
+                    `Generate a unique, realistic user prompt for the category "${catName}" (${cat.description}). Make it different from these existing ones:\n${prompts.slice(0, 5).join('\n')}\n\nOutput only the prompt text.`,
+                );
+                userPrompt = novelPrompt.trim() || prompts[i % prompts.length];
+            }
+
+            // Generate the ideal TITAN response from the teacher
+            const teacherSystemPrompt = `${TITAN_SYSTEM_PROMPT}
+
+You are generating a training example for the TITAN agent. Respond exactly as TITAN should respond to this user message. Be concise, helpful, and use the appropriate approach:
+- If the task requires a tool, describe what tool you would use and how
+- If you can answer directly, give a clear, accurate response
+- Show your reasoning for complex questions
+- Be practical and action-oriented`;
+
+            const response = await callOllamaCloud(teacherModel, teacherSystemPrompt, userPrompt);
+
+            if (response && response.length > 20) {
+                allExamples.push({
+                    messages: [
+                        { role: 'system', content: TITAN_SYSTEM_PROMPT },
+                        { role: 'user', content: userPrompt },
+                        { role: 'assistant', content: response },
+                    ],
+                });
+                stats[catName].generated++;
+            } else {
+                stats[catName].failed++;
+            }
+
+            // Small delay to avoid overwhelming Ollama Pro
+            if (i > 0 && i % 10 === 0) {
+                logger.info(COMPONENT, `  ${catName}: ${i}/${perCategory} generated...`);
+            }
+        }
+    }
+
+    if (allExamples.length === 0) {
+        return 'Error: No training examples generated. Check teacher model connectivity.';
+    }
+
+    // Write to JSONL
+    const jsonlPath = join(TRAINING_DIR, 'train.jsonl');
+    const jsonlContent = allExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n';
+
+    if (appendMode && existsSync(jsonlPath)) {
+        appendFileSync(jsonlPath, jsonlContent, 'utf-8');
+        const existingLines = readFileSync(jsonlPath, 'utf-8').split('\n').filter(l => l.trim()).length;
+        logger.info(COMPONENT, `Appended ${allExamples.length} examples (total now: ${existingLines})`);
+    } else {
+        writeFileSync(jsonlPath, jsonlContent, 'utf-8');
+    }
+
+    // Create validation split from new data (10%)
+    const valSize = Math.max(1, Math.floor(allExamples.length * 0.1));
+    const valExamples = allExamples.slice(0, valSize);
+    const valPath = join(TRAINING_DIR, 'val.jsonl');
+    if (appendMode && existsSync(valPath)) {
+        appendFileSync(valPath, valExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n', 'utf-8');
+    } else {
+        writeFileSync(valPath, valExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n', 'utf-8');
+    }
+
+    // Build report
+    const totalGenerated = Object.values(stats).reduce((s, v) => s + v.generated, 0);
+    const totalFailed = Object.values(stats).reduce((s, v) => s + v.failed, 0);
+
+    const lines = [
+        `## Cloud-Assisted Training Data Generated`,
+        ``,
+        `| Setting | Value |`,
+        `|---------|-------|`,
+        `| Teacher model | ${teacherModel} |`,
+        `| Examples generated | ${totalGenerated} |`,
+        `| Failed | ${totalFailed} |`,
+        `| Mode | ${appendMode ? 'append' : 'overwrite'} |`,
+        `| Output | \`${jsonlPath}\` |`,
+        ``,
+        `### By Category`,
+        `| Category | Generated | Failed |`,
+        `|----------|-----------|--------|`,
+    ];
+
+    for (const [cat, s] of Object.entries(stats)) {
+        lines.push(`| ${cat} | ${s.generated} | ${s.failed} |`);
+    }
+
+    lines.push('');
+    lines.push(`Ready to fine-tune. Use \`train_start\` to begin LoRA training on the local GPU.`);
+
+    return lines.join('\n');
+}
+
 // ── Registration ─────────────────────────────────────────────────────
 
 export function registerModelTrainerSkill(): void {
@@ -676,5 +933,44 @@ export function registerModelTrainerSkill(): void {
         },
     );
 
-    logger.info(COMPONENT, 'Model trainer skill registered (4 tools)');
+    // ── Cloud-Assisted Training Data Generation ──────────────────────
+
+    registerSkill(
+        {
+            name: 'model_trainer',
+            description: 'Fine-tune local LLM models on TITAN\'s conversation history using GPU',
+            version: '1.0.0',
+            source: 'bundled',
+            enabled: true,
+        },
+        {
+            name: 'train_generate_cloud',
+            description: 'Generate high-quality synthetic training data using cloud models as teachers. Uses Ollama cloud models (qwen3.5:397b-cloud, nemotron-3-super:cloud, etc.) to produce diverse agent training examples for fine-tuning the local model.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    teacherModel: {
+                        type: 'string',
+                        description: 'Cloud model to use as teacher (default: qwen3.5:397b-cloud)',
+                    },
+                    count: {
+                        type: 'number',
+                        description: 'Number of training examples to generate (default: 200)',
+                    },
+                    categories: {
+                        type: 'string',
+                        description: 'Comma-separated categories: tool_use,reasoning,coding,research,conversation,error_recovery (default: all)',
+                    },
+                    append: {
+                        type: 'boolean',
+                        description: 'Append to existing training data instead of overwriting (default: true)',
+                    },
+                },
+                required: [],
+            },
+            execute: trainGenerateCloud,
+        },
+    );
+
+    logger.info(COMPONENT, 'Model trainer skill registered (5 tools)');
 }

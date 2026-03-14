@@ -4,6 +4,19 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.26] — 2026-03-14
+
+### Added
+- **Live Training Feed** — Real-time SSE streaming of training progress in Mission Control's Self-Improvement panel
+- **Training SSE endpoint** — `GET /api/training/stream` for live progress events, with poll fallback at `GET /api/training/progress`
+- **EventEmitter progress system** — `trainingEvents` emitter in model_trainer.ts broadcasts progress to SSE subscribers
+- **Terminal-style training log** — Color-coded event display with progress bar, success/error counts, and auto-scroll
+
+### Fixed
+- **Critical: Incremental training data writes** — `trainGenerateCloud` now writes each example to disk immediately via `appendFileSync` instead of batching in memory. Previously, all data was lost when TITAN's tool execution timeout killed the long-running generation before it could write the accumulated batch.
+
+---
+
 ## [2026.10.25] — 2026-03-14
 
 ### Fixed

@@ -245,17 +245,17 @@
 ## NOW: Production Autonomy & Reliability
 
 ### Infrastructure
-- [ ] systemd service for crash recovery (auto-restart)
-- [ ] Internal health monitor (Ollama, memory, TTS watchdog)
-- [ ] Log rotation (prevent disk fill)
-- [ ] fetchWithRetry timeout (prevent gateway freeze)
+- [x] systemd service for crash recovery (auto-restart)
+- [x] Internal health monitor (Ollama, memory, TTS watchdog)
+- [x] Log rotation (prevent disk fill)
+- [x] fetchWithRetry timeout (prevent gateway freeze)
 - [x] SSE client disconnect handling (v2026.10.22)
 
 ### Autonomy Activation
-- [ ] Enable autopilot with safe defaults (goals mode, supervised)
-- [ ] Configure fallback chain (Ollama models)
-- [ ] Create initial self-maintenance goals
-- [ ] AUTOPILOT.md checklist for standing instructions
+- [x] Enable autopilot with safe defaults (goals mode, supervised)
+- [x] Configure fallback chain (Ollama models)
+- [x] Create initial self-maintenance goals
+- [x] AUTOPILOT.md checklist for standing instructions
 
 ### Dashboard & UX
 - [ ] E2E tests for gateway + dashboard (Playwright)

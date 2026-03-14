@@ -4,6 +4,16 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.28] — 2026-03-14
+
+### Fixed
+
+- **Vector search circular dependency** — `initVectors()` was calling `embed('test')` to verify the embedding model was available, but `embed()` starts with `if (!available) return null` — and `available` is `false` during init. This meant the test always failed, the init always bailed, and RAG/vector search never initialized. Fixed by replacing the test call with a direct `fetch()` to Ollama's `/api/embed` endpoint (bypassing the availability guard) and using the response to confirm dimensions before setting `available = true`. `src/memory/vectors.ts`
+- **ActiveLearning recording no-op resolutions** — When a tool call failed and then succeeded on retry with the *same* tool, `recordErrorResolution()` stored entries like "Resolved by using shell instead of shell." Added a guard: `if (result.name !== lastFailedTool.name)` before recording. `lastFailedTool` is now always cleared on success regardless. `src/agent/agent.ts`
+- **ESLint prefer-const** — `let failedApproaches` in `agent.ts` was never reassigned (only `.push()` used), changed to `const`. `src/agent/agent.ts`
+
+---
+
 ## [2026.10.27] — 2026-03-14
 
 ### Changed — System Prompt Architecture Overhaul

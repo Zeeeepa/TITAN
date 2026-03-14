@@ -1027,10 +1027,13 @@ Use sparingly and naturally. They make you sound more human.`;
                 }
             }
 
-            // Track error resolutions: when a previous tool failed and this one succeeded
+            // Track error resolutions: when a previous tool failed and a DIFFERENT tool succeeded
             if (success && lastFailedTool) {
-                recordErrorResolution(lastFailedTool.error, `Resolved by using ${result.name} instead of ${lastFailedTool.name}`);
-                lastFailedTool = null;
+                if (result.name !== lastFailedTool.name) {
+                    // Different tool resolved it — that's a meaningful pattern worth recording
+                    recordErrorResolution(lastFailedTool.error, `Resolved by using ${result.name} instead of ${lastFailedTool.name}`);
+                }
+                lastFailedTool = null; // Clear regardless — the error is no longer active
             } else if (!success) {
                 lastFailedTool = { name: result.name, error: result.content.slice(0, 200) };
             }

@@ -94,20 +94,13 @@ TITAN is the only open-source agent framework that **trains itself on your GPU**
 
 ---
 
-> **What's New in v2026.10.27 — System Prompt Architecture Overhaul**
+> **What's New in v2026.10.28 — Bug Fixes: Vector Search + Active Learning**
 >
-> The system prompt is the brain of an AI agent — it's the instruction set every model reads before responding. TITAN's just got a complete redesign based on deep research across Ollama, OpenAI, Anthropic, Gemini, LangChain, AutoGen, and CrewAI.
+> Two bugs found in production logs on Titan PC, both fixed:
 >
-> **The problem**: Local models like Qwen and Devstral would write "Here is your file:" and output the content as text instead of calling `write_file`. Or respond "Based on my knowledge..." instead of calling `web_search`. The instructions existed, but they were buried in a long bullet list after the identity section.
+> **Vector search was broken since startup.** `initVectors()` called `embed()` to test if embeddings were available — but `embed()` checks `if (!available) return null` at the top, and `available` starts as `false`. So it always returned null, the test always failed, and RAG never initialized. Fixed by calling the Ollama `/api/embed` API directly (bypassing the guard) to warm up the embedding model and confirm dimensions before marking `available = true`.
 >
-> **What changed:**
-> - **Tool Execution rules are now first** — before identity, before capabilities. Models prioritize early context.
-> - **ReAct loop (Reason→Act→Observe)** taught explicitly — every model now knows: think about what tool you need, call it, read the result, repeat.
-> - **MUST/NEVER + negative examples** — "❌ Asked to write a file → you output content as text. ✓ Called write_file immediately."
-> - **Task-aware injection** — when you ask to write a file, research something, or run a command, a `[TASK ENFORCEMENT]` block is appended targeting that exact task.
-> - **API-level `tool_choice: "required"`** — on enforced first rounds, we tell the API itself to force a tool call, not just the prompt.
-> - **Cloud model compression fixed** — the compressed prompt for cloud models used to strip all the enforcement rules. Now they're the first thing preserved.
-> - **All 11 sub-agent prompts rewritten** — was: one-liner descriptions. Now: full tool guidance with MUST rules and output format per agent.
+> **ActiveLearning was recording useless entries.** When a tool call failed and then succeeded on retry, TITAN logged "Resolved by using shell instead of shell" — same tool, no new information. Fixed by only recording the resolution when the successful tool is *different* from the failed one. `lastFailedTool` is now always cleared on any success.
 >
 > **— Tony**
 
@@ -883,6 +876,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide and [ARCHI
 
 ### Current (v2026.10.x)
 
+- **v2026.10.28**: **Bug Fixes** — Vector search circular dependency fixed (`initVectors` now calls Ollama `/api/embed` directly instead of `embed()` which was gated on `available=false` during init, causing RAG to never initialize). ActiveLearning no-op fixed (no longer records "use X instead of X" when same tool succeeds on retry). ESLint prefer-const fix.
 - **v2026.10.27**: **System Prompt Architecture Overhaul** — Complete redesign of how TITAN instructs AI models to use tools reliably. Tool Execution rules now appear first in the system prompt (before identity/capabilities). ReAct loop (Reason→Act→Observe) taught to every model. MUST/NEVER directives and negative examples (wrong vs. right behavior) burn in correct tool-call patterns. Task-aware dynamic injection appends `[TASK ENFORCEMENT]` blocks for file-write, research, and shell tasks detected in the message. API-level `tool_choice: "required"` added for OpenAI/Ollama and `tool_choice: {type: "any"}` for Anthropic on enforced first rounds. Ollama cloud prompt compression fixed — tool enforcement rules now survive compression (limit raised 2000→3500 chars). All 11 sub-agent templates (Explorer, Coder, Browser, Analyst, Researcher, Reporter, Fact Checker, Dev Debugger, Dev Tester, Dev Reviewer, Dev Architect) rewritten with tool-specific guidance, MUST rules, and output format requirements. New `agent.forceToolUse` config flag.
 - **v2026.10.26**: **Live Training Feed** — Real-time SSE streaming of training progress in Self-Improvement panel, incremental training data writes (data survives tool timeouts), cloud-assisted training pipeline
 - **v2026.10.22**: **Voice System Hardening** — 24 bug fixes across voice, gateway, and agent core. VoiceOverlay rewrite (stale closure fixes, AbortController cleanup, session continuity, emotion tag stripping). FluidOrb canvas rewrite (single animation loop, no 60fps teardown). Gateway SSE leak fix, TTS health probe fix, Ollama context 8K→16K, internal health monitor (Ollama/TTS/memory watchdog), fetchWithRetry timeout, systemd service unit, log rotation. 91 loaded skills, ~149 tools, 3,839 tests across 123 files.

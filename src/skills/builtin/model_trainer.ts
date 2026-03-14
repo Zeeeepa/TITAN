@@ -272,7 +272,7 @@ async function trainStart(args: Record<string, unknown>): Promise<string> {
     // Generate training script
     const trainScript = `#!/usr/bin/env python3
 """TITAN Auto-Training Script — LoRA fine-tuning via unsloth"""
-import os, sys, json, time
+import os, sys, json, time, torch
 
 # Check if unsloth is available
 try:
@@ -291,6 +291,32 @@ DATA_PATH = "${trainDataPath}"
 BASE_MODEL = "${baseModel}"
 EPOCHS = ${epochs}
 MAX_MINUTES = ${budgetMinutes}
+
+# Map Ollama model names to HuggingFace model IDs
+OLLAMA_TO_HF = {
+    "qwen3.5:35b": "Qwen/Qwen3.5-9B",  # 35B MoE too large for single GPU — use 9B dense
+    "qwen3.5:7b": "Qwen/Qwen3.5-7B",
+    "qwen3:30b": "Qwen/Qwen3-30B-A3B",
+    "qwen3:8b": "Qwen/Qwen3-8B",
+    "llama3.1:8b": "meta-llama/Llama-3.1-8B-Instruct",
+    "llama3.1:70b": "meta-llama/Llama-3.1-70B-Instruct",
+    "mistral:7b": "mistralai/Mistral-7B-Instruct-v0.3",
+    "gemma2:9b": "google/gemma-2-9b-it",
+    "phi3:14b": "microsoft/Phi-3-medium-128k-instruct",
+    "devstral-small-2": "mistralai/Devstral-Small-2505",
+}
+
+def resolve_model_name(name):
+    """Resolve Ollama model name to HuggingFace model ID."""
+    if name in OLLAMA_TO_HF:
+        hf_name = OLLAMA_TO_HF[name]
+        print(f"Resolved Ollama model '{name}' -> HuggingFace '{hf_name}'")
+        return hf_name
+    # If it looks like a HF model (contains /), use as-is
+    if "/" in name:
+        return name
+    print(f"WARNING: Unknown model '{name}', trying as HuggingFace ID directly")
+    return name
 
 def main():
     start = time.time()
@@ -316,9 +342,10 @@ def main():
         return
 
     # Real training with unsloth
-    print(f"Loading base model: {BASE_MODEL}")
+    hf_model = resolve_model_name(BASE_MODEL)
+    print(f"Loading base model: {hf_model}")
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=BASE_MODEL,
+        model_name=hf_model,
         max_seq_length=2048,
         dtype=None,  # Auto-detect
         load_in_4bit=True,
@@ -335,38 +362,71 @@ def main():
     )
 
     dataset = load_dataset("json", data_files=DATA_PATH, split="train")
+    print(f"Loaded {len(dataset)} training examples")
+
+    # Format chat messages into text using the tokenizer's chat template
+    def format_chat(example):
+        text = tokenizer.apply_chat_template(example["messages"], tokenize=False, add_generation_prompt=False)
+        return {"text": text}
+
+    dataset = dataset.map(format_chat)
+    print(f"Formatted dataset — sample length: {len(dataset[0]['text'])} chars")
 
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
         train_dataset=dataset,
+        dataset_text_field="text",
         max_seq_length=2048,
+        packing=True,
         args=TrainingArguments(
             output_dir=OUTPUT_DIR,
-            per_device_train_batch_size=2,
+            per_device_train_batch_size=${(args.batchSize as number) || 4},
             gradient_accumulation_steps=4,
             num_train_epochs=EPOCHS,
-            learning_rate=2e-4,
-            fp16=True,
+            learning_rate=${(args.learningRate as number) || 2e-4},
+            fp16=False,
+            bf16=True,
             logging_steps=1,
             save_strategy="epoch",
+            warmup_steps=10,
+            weight_decay=0.01,
+            lr_scheduler_type="cosine",
             max_steps=-1,
+            report_to="none",
         ),
     )
 
     print("Starting training...")
+    gpu_stats = torch.cuda.get_device_properties(0)
+    print(f"GPU: {gpu_stats.name}, VRAM: {gpu_stats.total_memory / 1024**3:.1f} GB")
     result = trainer.train()
 
-    # Save
-    model.save_pretrained(os.path.join(OUTPUT_DIR, "lora_adapter"))
-    tokenizer.save_pretrained(os.path.join(OUTPUT_DIR, "lora_adapter"))
+    # Save LoRA adapter
+    adapter_dir = os.path.join(OUTPUT_DIR, "lora_adapter")
+    model.save_pretrained(adapter_dir)
+    tokenizer.save_pretrained(adapter_dir)
+    print(f"LoRA adapter saved to {adapter_dir}")
+
+    # Also save as merged GGUF for Ollama
+    print("Saving merged model as GGUF (Q4_K_M)...")
+    try:
+        model.save_pretrained_gguf(
+            os.path.join(OUTPUT_DIR, "gguf"),
+            tokenizer,
+            quantization_method="q4_k_m",
+        )
+        print("GGUF export complete")
+    except Exception as e:
+        print(f"GGUF export failed (non-fatal): {e}")
 
     with open(os.path.join(OUTPUT_DIR, "results.json"), "w") as f:
         json.dump({
             "status": "completed",
             "epochs": EPOCHS,
             "final_loss": result.training_loss,
-            "model_path": os.path.join(OUTPUT_DIR, "lora_adapter"),
+            "model_path": adapter_dir,
+            "gguf_path": os.path.join(OUTPUT_DIR, "gguf"),
         }, f)
 
     print(f"Training complete — loss: {result.training_loss:.4f}")
@@ -380,7 +440,13 @@ if __name__ == "__main__":
 
     // Launch training as background process
     try {
-        execSync(`python3 "${scriptPath}" > "${join(runDir, 'train.log')}" 2>&1 &`, {
+        // Prefer venv python (has unsloth installed), fall back to system python3
+        const venvCandidates = [
+            join(TITAN_HOME, 'venv', 'bin', 'python'),   // ~/.titan/venv
+            '/opt/TITAN/venv/bin/python',                  // production deploy
+        ];
+        const pythonBin = venvCandidates.find(p => existsSync(p)) ?? 'python3';
+        execSync(`${pythonBin} "${scriptPath}" > "${join(runDir, 'train.log')}" 2>&1 &`, {
             stdio: 'pipe',
             timeout: 5000,
         });

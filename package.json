@@ -1,6 +1,6 @@
 {
   "name": "titan-agent",
-  "version": "2026.10.23",
+  "version": "2026.10.24",
   "description": "TITAN — The Intelligent Task Automation Network. A premium, autonomous AI agent framework with configurable autonomy, prompt injection shield, and Mission Control GUI.",
   "author": "Tony Elliott (https://github.com/Djtony707)",
   "repository": {
@@ -8,6 +8,10 @@
     "url": "git+https://github.com/Djtony707/TITAN.git"
   },
   "license": "MIT",
+  "homepage": "https://github.com/Djtony707/TITAN",
+  "bugs": {
+    "url": "https://github.com/Djtony707/TITAN/issues"
+  },
   "funding": {
     "type": "thanks_dev",
     "url": "https://thanks.dev/Djtony707/TITAN"
@@ -63,7 +67,17 @@
     "discord",
     "telegram",
     "slack",
-    "whatsapp"
+    "whatsapp",
+    "self-improving",
+    "autonomous-agent",
+    "ai-framework",
+    "multi-agent",
+    "mcp",
+    "voice-ai",
+    "fine-tuning",
+    "lora",
+    "mission-control",
+    "mesh-networking"
   ],
   "engines": {
     "node": ">=20.0.0"

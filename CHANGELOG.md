@@ -4,6 +4,20 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.24] — 2026-03-14
+
+### Added
+- **GitHub Actions CI** — `.github/workflows/ci.yml` runs tests on Node 20/22 for every push and PR
+- **"Why TITAN?" comparison table** — Honest feature comparison vs OpenClaw, NemoClaw, Auto-GPT, CrewAI, LangGraph in README
+- **README growth assets** — GitHub stars badge, npm downloads badge, CI status badge, contributors badge, star CTA section
+- **npm SEO** — Added homepage, bugs fields, expanded keywords from 15 to 25
+- **CODE_OF_CONDUCT.md** — Community standards for contributors
+- **Examples directory** — 5 runnable demo scripts (quick-start, discord-bot, research-agent, self-improve, mcp-server)
+- **Migration guide** — `docs/MIGRATION.md` for developers coming from OpenClaw, CrewAI, LangChain, Auto-GPT
+- **Benchmarks doc** — `docs/BENCHMARKS.md` with system requirements, performance characteristics, codebase stats
+
+---
+
 ## [2026.10.23] — 2026-03-14
 
 ### Changed

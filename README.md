@@ -1,3 +1,7 @@
+[//]: # (npm-text-start)
+> **TITAN** — A TypeScript AI agent framework with autonomous self-improvement, LoRA fine-tuning, ~149 tools, 34 LLM providers, 15 channels, mesh networking, LiveKit voice, and a React dashboard. It trains itself. `npm i -g titan-agent`
+[//]: # (npm-text-end)
+
 # TITAN — The Intelligent Task Automation Network
 
 <p align="center">
@@ -9,12 +13,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Djtony707/TITAN/stargazers"><img src="https://img.shields.io/github/stars/Djtony707/TITAN?style=social" alt="GitHub Stars"/></a>
+  &nbsp;
+  <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/dw/titan-agent?label=npm%20downloads" alt="npm downloads"/></a>
+</p>
+
+<p align="center">
   <a href="https://www.npmjs.com/package/titan-agent"><img src="https://img.shields.io/npm/v/titan-agent?color=blue&label=npm" alt="npm version"/></a>
+  <a href="https://github.com/Djtony707/TITAN/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Djtony707/TITAN/ci.yml?label=tests" alt="CI Status"/></a>
   <a href="https://github.com/Djtony707/TITAN/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"/></a>
   <a href="#providers"><img src="https://img.shields.io/badge/providers-34-purple" alt="34 Providers"/></a>
   <a href="#built-in-tools"><img src="https://img.shields.io/badge/tools-149-orange" alt="149 Tools"/></a>
   <a href="#channels"><img src="https://img.shields.io/badge/channels-15-blue" alt="15 Channels"/></a>
   <a href="#tests"><img src="https://img.shields.io/badge/tests-3%2C839-brightgreen" alt="3,839 Tests"/></a>
+  <a href="https://github.com/Djtony707/TITAN/graphs/contributors"><img src="https://img.shields.io/github/contributors/Djtony707/TITAN" alt="Contributors"/></a>
 </p>
 
 <p align="center">
@@ -51,6 +63,29 @@
   <a href="#sandbox-code-execution">Sandbox</a> &bull;
   <a href="#cli-reference">CLI</a>
 </p>
+
+---
+
+## Why TITAN?
+
+TITAN is the only open-source agent framework that **trains itself on your GPU**. While other frameworks focus on orchestration or chat, TITAN is a complete autonomous platform — self-improvement, voice, GUI, 15 channels, mesh networking, and 34 providers in one package.
+
+| Feature | TITAN | OpenClaw | NemoClaw | Auto-GPT | CrewAI | LangGraph |
+|---------|:-----:|:--------:|:--------:|:--------:|:------:|:---------:|
+| **Language** | TypeScript | TypeScript | Python | Python | Python | Python |
+| **Self-improving** | LoRA + auto-eval | Foundry/Trace | TBD | Limited | — | — |
+| **Local model fine-tuning** | LoRA on your GPU | — | — | — | — | — |
+| **Built-in GUI** | React SPA, 17 panels | Web + mobile | TBD | Limited | Partial | — |
+| **Voice** | LiveKit WebRTC | ElevenLabs | TBD | Limited | — | — |
+| **Channel adapters** | 15 | 24+ | TBD | 0 | 0 | 0 |
+| **LLM providers** | 34 | Model-agnostic | NIM + others | ~5 | ~10 | ~20 |
+| **Mesh networking** | Multi-machine | — | — | — | — | — |
+| **Sandbox execution** | Docker | — | TBD | Docker | — | — |
+| **MCP server mode** | Expose tools to other agents | Client only | TBD | Client | Client | Client |
+| **Prometheus metrics** | Built-in | — | TBD | — | — | — |
+| **One-line install** | `curl \| bash` | `npx` | — | — | — | — |
+
+> **OpenClaw** is a personal assistant you configure. **TITAN** is a developer framework you build with — and it gets smarter on its own GPU.
 
 ---
 
@@ -930,6 +965,16 @@ For the complete list, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 If TITAN saves you time, consider sponsoring its development:
 
 [![Sponsor on GitHub](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F_Sponsor-ea4aaa?style=for-the-badge&logo=github)](https://github.com/sponsors/Djtony707)
+
+---
+
+## Like TITAN?
+
+If TITAN saved you time, taught you something, or just made you say *"wait, it can do that?"* — give it a star. It helps other developers find this project.
+
+<p align="center">
+  <a href="https://github.com/Djtony707/TITAN/stargazers"><img src="https://img.shields.io/github/stars/Djtony707/TITAN?style=for-the-badge&logo=github&label=Star%20on%20GitHub" alt="Star on GitHub"/></a>
+</p>
 
 ---
 

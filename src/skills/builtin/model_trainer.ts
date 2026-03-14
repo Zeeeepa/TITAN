@@ -12,8 +12,39 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, append
 import { join } from 'path';
 import { TITAN_HOME, TITAN_DB_PATH } from '../../utils/constants.js';
 import { execSync } from 'child_process';
+import { EventEmitter } from 'events';
 
 const COMPONENT = 'ModelTrainer';
+
+// ── Training Progress Events ─────────────────────────────────────────
+export interface TrainingProgressEvent {
+    type: 'info' | 'progress' | 'success' | 'error' | 'complete';
+    phase: 'generate' | 'train' | 'deploy' | 'prepare';
+    message: string;
+    timestamp: string;
+    detail?: {
+        category?: string;
+        current?: number;
+        total?: number;
+        pct?: number;
+        model?: string;
+        loss?: number;
+        examples?: number;
+    };
+}
+
+export const trainingEvents = new EventEmitter();
+trainingEvents.setMaxListeners(50);
+
+function emitProgress(event: Omit<TrainingProgressEvent, 'timestamp'>): void {
+    const full: TrainingProgressEvent = { ...event, timestamp: new Date().toISOString() };
+    trainingEvents.emit('progress', full);
+    // Also persist to a rolling log file for the UI to poll as fallback
+    try {
+        const logPath = join(TITAN_HOME, 'training-progress.jsonl');
+        appendFileSync(logPath, JSON.stringify(full) + '\n', 'utf-8');
+    } catch { /* best-effort */ }
+}
 
 // ── Paths ────────────────────────────────────────────────────────────
 const TRAINING_DIR = join(TITAN_HOME, 'training-data');
@@ -689,12 +720,16 @@ async function trainGenerateCloud(args: Record<string, unknown>): Promise<string
     ensureDirs();
 
     logger.info(COMPONENT, `Cloud training data generation: teacher=${teacherModel}, count=${totalCount}, categories=${categoryFilter.join(',')}`);
+    emitProgress({ type: 'info', phase: 'generate', message: `Starting cloud training data generation`, detail: { model: teacherModel, total: totalCount } });
 
     // Validate teacher model is accessible
+    emitProgress({ type: 'info', phase: 'generate', message: `Testing connection to ${teacherModel}...` });
     const testResp = await callOllamaCloud(teacherModel, 'You are a helpful assistant.', 'Say OK');
     if (!testResp) {
+        emitProgress({ type: 'error', phase: 'generate', message: `Cannot reach teacher model "${teacherModel}"` });
         return `Error: Cannot reach teacher model "${teacherModel}". Make sure it is pulled in Ollama.\nAvailable cloud models: qwen3.5:397b-cloud, nemotron-3-super:cloud, qwen3-coder-next:cloud, glm-5:cloud, kimi-k2.5:cloud, gemini-3-flash-preview`;
     }
+    emitProgress({ type: 'success', phase: 'generate', message: `Connected to ${teacherModel}` });
 
     const activeCategories = categoryFilter.filter(c => c in CLOUD_TRAINING_CATEGORIES);
     if (activeCategories.length === 0) {
@@ -702,8 +737,19 @@ async function trainGenerateCloud(args: Record<string, unknown>): Promise<string
     }
 
     const perCategory = Math.ceil(totalCount / activeCategories.length);
-    const allExamples: Array<{ messages: Array<{ role: string; content: string | null; tool_calls?: unknown[] }> }> = [];
+    let totalGenerated = 0;
+    let totalFailed = 0;
     const stats: Record<string, { generated: number; failed: number }> = {};
+
+    // Write incrementally to disk so data survives tool timeouts
+    const jsonlPath = join(TRAINING_DIR, 'train.jsonl');
+    const valPath = join(TRAINING_DIR, 'val.jsonl');
+
+    // If not appending, clear existing files
+    if (!appendMode) {
+        writeFileSync(jsonlPath, '', 'utf-8');
+        writeFileSync(valPath, '', 'utf-8');
+    }
 
     for (const catName of activeCategories) {
         const cat = CLOUD_TRAINING_CATEGORIES[catName];
@@ -711,6 +757,7 @@ async function trainGenerateCloud(args: Record<string, unknown>): Promise<string
         const prompts = cat.prompts;
 
         logger.info(COMPONENT, `Generating ${perCategory} "${catName}" examples with ${teacherModel}...`);
+        emitProgress({ type: 'info', phase: 'generate', message: `Starting category: ${catName}`, detail: { category: catName, current: 0, total: perCategory } });
 
         for (let i = 0; i < perCategory; i++) {
             // Pick a prompt (cycle through available, then ask teacher to generate new ones)
@@ -738,55 +785,47 @@ You are generating a training example for the TITAN agent. Respond exactly as TI
             const response = await callOllamaCloud(teacherModel, teacherSystemPrompt, userPrompt);
 
             if (response && response.length > 20) {
-                allExamples.push({
+                const example = {
                     messages: [
                         { role: 'system', content: TITAN_SYSTEM_PROMPT },
                         { role: 'user', content: userPrompt },
                         { role: 'assistant', content: response },
                     ],
-                });
+                };
+                // Write immediately to disk (incremental — survives timeouts)
+                appendFileSync(jsonlPath, JSON.stringify(example) + '\n', 'utf-8');
+                // Every 10th example also goes to validation set
+                if (totalGenerated % 10 === 0) {
+                    appendFileSync(valPath, JSON.stringify(example) + '\n', 'utf-8');
+                }
                 stats[catName].generated++;
+                totalGenerated++;
+                emitProgress({
+                    type: 'progress', phase: 'generate',
+                    message: `Generated example ${totalGenerated}/${totalCount}`,
+                    detail: { category: catName, current: totalGenerated, total: totalCount, pct: Math.round((totalGenerated / totalCount) * 100), examples: totalGenerated },
+                });
             } else {
                 stats[catName].failed++;
+                totalFailed++;
+                emitProgress({ type: 'error', phase: 'generate', message: `Failed to generate example (${catName} #${i + 1})`, detail: { category: catName } });
             }
 
-            // Small delay to avoid overwhelming Ollama Pro
+            // Log progress periodically
             if (i > 0 && i % 10 === 0) {
-                logger.info(COMPONENT, `  ${catName}: ${i}/${perCategory} generated...`);
+                logger.info(COMPONENT, `  ${catName}: ${i}/${perCategory} generated (${totalGenerated} total on disk)...`);
             }
         }
     }
 
-    if (allExamples.length === 0) {
+    if (totalGenerated === 0) {
         return 'Error: No training examples generated. Check teacher model connectivity.';
     }
 
-    // Write to JSONL
-    const jsonlPath = join(TRAINING_DIR, 'train.jsonl');
-    const jsonlContent = allExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n';
-
-    if (appendMode && existsSync(jsonlPath)) {
-        appendFileSync(jsonlPath, jsonlContent, 'utf-8');
-        const existingLines = readFileSync(jsonlPath, 'utf-8').split('\n').filter(l => l.trim()).length;
-        logger.info(COMPONENT, `Appended ${allExamples.length} examples (total now: ${existingLines})`);
-    } else {
-        writeFileSync(jsonlPath, jsonlContent, 'utf-8');
-    }
-
-    // Create validation split from new data (10%)
-    const valSize = Math.max(1, Math.floor(allExamples.length * 0.1));
-    const valExamples = allExamples.slice(0, valSize);
-    const valPath = join(TRAINING_DIR, 'val.jsonl');
-    if (appendMode && existsSync(valPath)) {
-        appendFileSync(valPath, valExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n', 'utf-8');
-    } else {
-        writeFileSync(valPath, valExamples.map(ex => JSON.stringify(ex)).join('\n') + '\n', 'utf-8');
-    }
+    // Count total lines in training file
+    const totalLines = readFileSync(jsonlPath, 'utf-8').split('\n').filter(l => l.trim()).length;
 
     // Build report
-    const totalGenerated = Object.values(stats).reduce((s, v) => s + v.generated, 0);
-    const totalFailed = Object.values(stats).reduce((s, v) => s + v.failed, 0);
-
     const lines = [
         `## Cloud-Assisted Training Data Generated`,
         ``,
@@ -795,6 +834,7 @@ You are generating a training example for the TITAN agent. Respond exactly as TI
         `| Teacher model | ${teacherModel} |`,
         `| Examples generated | ${totalGenerated} |`,
         `| Failed | ${totalFailed} |`,
+        `| Total in file | ${totalLines} |`,
         `| Mode | ${appendMode ? 'append' : 'overwrite'} |`,
         `| Output | \`${jsonlPath}\` |`,
         ``,
@@ -809,6 +849,12 @@ You are generating a training example for the TITAN agent. Respond exactly as TI
 
     lines.push('');
     lines.push(`Ready to fine-tune. Use \`train_start\` to begin LoRA training on the local GPU.`);
+
+    emitProgress({
+        type: 'complete', phase: 'generate',
+        message: `Cloud training data generation complete: ${totalGenerated} examples (${totalLines} total in file)`,
+        detail: { examples: totalGenerated, total: totalCount },
+    });
 
     return lines.join('\n');
 }

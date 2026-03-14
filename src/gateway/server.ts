@@ -1648,6 +1648,95 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json((cfg as Record<string, unknown>).selfImprove || {});
   });
 
+  // ── Training Progress SSE Stream ─────────────────────────────────
+  app.get('/api/training/stream', async (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('data: {"type":"connected","message":"Training progress stream connected"}\n\n');
+
+    // Import training events emitter
+    let handler: ((event: unknown) => void) | null = null;
+    try {
+      const { trainingEvents } = await import('../skills/builtin/model_trainer.js');
+      handler = (event: unknown) => {
+        try {
+          res.write(`data: ${JSON.stringify(event)}\n\n`);
+        } catch { /* client disconnected */ }
+      };
+      trainingEvents.on('progress', handler);
+    } catch { /* model_trainer not loaded */ }
+
+    // Send recent progress log as catch-up (last 50 entries)
+    try {
+      const { existsSync, readFileSync } = await import('fs');
+      const { join } = await import('path');
+      const { TITAN_HOME } = await import('../utils/constants.js');
+      const logPath = join(TITAN_HOME, 'training-progress.jsonl');
+      if (existsSync(logPath)) {
+        const lines = readFileSync(logPath, 'utf-8').split('\n').filter((l: string) => l.trim());
+        const recent = lines.slice(-50);
+        for (const line of recent) {
+          try { res.write(`data: ${line}\n\n`); } catch { break; }
+        }
+      }
+    } catch { /* best-effort */ }
+
+    // Keep alive
+    const keepAlive = setInterval(() => {
+      try { res.write(': keepalive\n\n'); } catch { clearInterval(keepAlive); }
+    }, 15_000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      if (handler) {
+        import('../skills/builtin/model_trainer.js')
+          .then(m => m.trainingEvents.off('progress', handler!))
+          .catch(() => {});
+      }
+    });
+  });
+
+  // ── Training Progress Log (poll fallback) ──────────────────────
+  app.get('/api/training/progress', async (req, res) => {
+    try {
+      const { existsSync, readFileSync } = await import('fs');
+      const { join } = await import('path');
+      const { TITAN_HOME } = await import('../utils/constants.js');
+      const logPath = join(TITAN_HOME, 'training-progress.jsonl');
+      if (!existsSync(logPath)) {
+        res.json({ events: [] });
+        return;
+      }
+      const lines = readFileSync(logPath, 'utf-8').split('\n').filter((l: string) => l.trim());
+      const since = req.query.since as string | undefined;
+      let events = lines.map((l: string) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+      if (since) {
+        events = events.filter((e: { timestamp?: string }) => e.timestamp && e.timestamp > since);
+      }
+      // Return last 100
+      res.json({ events: events.slice(-100) });
+    } catch {
+      res.json({ events: [] });
+    }
+  });
+
+  // ── Clear training progress log ────────────────────────────────
+  app.delete('/api/training/progress', async (_req, res) => {
+    try {
+      const { writeFileSync } = await import('fs');
+      const { join } = await import('path');
+      const { TITAN_HOME } = await import('../utils/constants.js');
+      writeFileSync(join(TITAN_HOME, 'training-progress.jsonl'), '', 'utf-8');
+      res.json({ cleared: true });
+    } catch {
+      res.status(500).json({ error: 'Failed to clear' });
+    }
+  });
+
   app.get('/api/training/runs', async (_req, res) => {
     try {
       const { existsSync, readdirSync, readFileSync } = await import('fs');

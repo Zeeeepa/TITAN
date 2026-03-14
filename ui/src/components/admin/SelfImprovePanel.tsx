@@ -16,6 +16,10 @@ import {
   Activity,
   Wrench,
   Bot,
+  Terminal,
+  Radio,
+  Trash2,
+  XCircle,
 } from 'lucide-react';
 import { getConfig, updateConfig } from '@/api/client';
 
@@ -69,6 +73,22 @@ interface AutoresearchPerformance {
   bestScore: number;
   avgImprovement: number;
   baseline: number;
+}
+
+interface TrainingProgressEvent {
+  type: 'info' | 'progress' | 'success' | 'error' | 'complete' | 'connected';
+  phase?: 'generate' | 'train' | 'deploy' | 'prepare';
+  message: string;
+  timestamp?: string;
+  detail?: {
+    category?: string;
+    current?: number;
+    total?: number;
+    pct?: number;
+    model?: string;
+    loss?: number;
+    examples?: number;
+  };
 }
 
 type TrainingType = 'tool_router' | 'main_agent';
@@ -145,7 +165,12 @@ function SelfImprovePanel() {
   const [generatingData, setGeneratingData] = useState(false);
   const [trainingModel, setTrainingModel] = useState(false);
   const [deployingModel, setDeployingModel] = useState(false);
+  const [liveFeed, setLiveFeed] = useState<TrainingProgressEvent[]>([]);
+  const [liveFeedOpen, setLiveFeedOpen] = useState(true);
+  const [sseConnected, setSseConnected] = useState(false);
   const refreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const feedEndRef = useRef<HTMLDivElement | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Local settings state
   const [runsPerDay, setRunsPerDay] = useState(1);
@@ -247,6 +272,50 @@ function SelfImprovePanel() {
       if (refreshInterval.current) clearInterval(refreshInterval.current);
     };
   }, [autoRefresh, loadData]);
+
+  // SSE connection for live training progress
+  useEffect(() => {
+    const es = new EventSource('/api/training/stream');
+    eventSourceRef.current = es;
+
+    es.onopen = () => setSseConnected(true);
+    es.onerror = () => setSseConnected(false);
+
+    es.onmessage = (e) => {
+      try {
+        const event: TrainingProgressEvent = JSON.parse(e.data);
+        if (event.type === 'connected') {
+          setSseConnected(true);
+          return;
+        }
+        setLiveFeed(prev => {
+          const next = [...prev, event];
+          // Keep last 200 events
+          return next.length > 200 ? next.slice(-200) : next;
+        });
+      } catch { /* ignore parse errors */ }
+    };
+
+    return () => {
+      es.close();
+      eventSourceRef.current = null;
+      setSseConnected(false);
+    };
+  }, []);
+
+  // Auto-scroll live feed
+  useEffect(() => {
+    if (feedEndRef.current && liveFeedOpen) {
+      feedEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [liveFeed, liveFeedOpen]);
+
+  const clearLiveFeed = useCallback(async () => {
+    try {
+      await fetch('/api/training/progress', { method: 'DELETE' });
+      setLiveFeed([]);
+    } catch { /* ignore */ }
+  }, []);
 
   const handleSaveSettings = async () => {
     try {
@@ -671,6 +740,133 @@ function SelfImprovePanel() {
             Run Benchmark
           </button>
         </div>
+      </div>
+
+      {/* Live Training Feed */}
+      <div>
+        <button
+          onClick={() => setLiveFeedOpen(!liveFeedOpen)}
+          className="flex w-full items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#52525b] mb-3"
+        >
+          {liveFeedOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          <Terminal className="h-3.5 w-3.5" />
+          Live Training Activity
+          <span className="ml-auto flex items-center gap-1.5">
+            {sseConnected ? (
+              <span className="flex items-center gap-1 text-[10px] text-[#22c55e]">
+                <Radio className="h-3 w-3 animate-pulse" /> Connected
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] text-[#ef4444]">
+                <XCircle className="h-3 w-3" /> Disconnected
+              </span>
+            )}
+            {liveFeed.length > 0 && (
+              <span className="rounded-full bg-[#8b5cf6]/20 px-1.5 py-0.5 text-[10px] text-[#a78bfa]">
+                {liveFeed.length}
+              </span>
+            )}
+          </span>
+        </button>
+
+        {liveFeedOpen && (
+          <div className="rounded-xl border border-[#27272a] bg-[#09090b] overflow-hidden">
+            {/* Progress bar (if generating) */}
+            {liveFeed.length > 0 && (() => {
+              const last = [...liveFeed].reverse().find(e => e.detail?.pct !== undefined);
+              if (!last || last.type === 'complete') return null;
+              const pct = last.detail?.pct || 0;
+              return (
+                <div className="border-b border-[#27272a] px-4 py-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs text-[#a1a1aa]">{last.message}</span>
+                    <span className="text-xs font-medium text-[#8b5cf6]">{pct}%</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-[#27272a] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[#8b5cf6] to-[#6366f1] transition-all duration-500"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  {last.detail?.current !== undefined && last.detail?.total !== undefined && (
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-[10px] text-[#52525b]">{last.detail.current} / {last.detail.total} examples</span>
+                      {last.detail.category && (
+                        <span className="text-[10px] text-[#52525b]">Category: {last.detail.category}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Feed log */}
+            <div className="max-h-64 overflow-y-auto p-3 font-mono text-[11px] leading-5 scrollbar-thin">
+              {liveFeed.length === 0 ? (
+                <div className="flex items-center justify-center py-8 text-[#52525b]">
+                  <Activity className="h-4 w-4 mr-2" />
+                  <span>No training activity yet. Start training to see live progress.</span>
+                </div>
+              ) : (
+                liveFeed.map((event, i) => {
+                  const colorMap: Record<string, string> = {
+                    info: 'text-[#3b82f6]',
+                    progress: 'text-[#8b5cf6]',
+                    success: 'text-[#22c55e]',
+                    error: 'text-[#ef4444]',
+                    complete: 'text-[#f59e0b]',
+                    connected: 'text-[#22c55e]',
+                  };
+                  const iconMap: Record<string, string> = {
+                    info: '●',
+                    progress: '◆',
+                    success: '✓',
+                    error: '✗',
+                    complete: '★',
+                    connected: '◉',
+                  };
+                  const iconColor = colorMap[event.type] || 'text-[#52525b]';
+                  const icon = iconMap[event.type] || '·';
+                  const time = event.timestamp
+                    ? new Date(event.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : '';
+
+                  return (
+                    <div key={i} className="flex items-start gap-2 hover:bg-[#18181b]/50 rounded px-1">
+                      <span className="text-[#3f3f46] shrink-0 select-none">{time}</span>
+                      <span className={`shrink-0 ${iconColor}`}>{icon}</span>
+                      <span className={`${event.type === 'error' ? 'text-[#ef4444]' : 'text-[#a1a1aa]'}`}>
+                        {event.message}
+                        {event.detail?.category && event.type === 'progress' && (
+                          <span className="text-[#52525b]"> [{event.detail.category}]</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={feedEndRef} />
+            </div>
+
+            {/* Feed footer */}
+            {liveFeed.length > 0 && (
+              <div className="border-t border-[#27272a] px-3 py-2 flex items-center justify-between">
+                <span className="text-[10px] text-[#52525b]">
+                  {liveFeed.filter(e => e.type === 'success' || e.type === 'progress').length} successes
+                  {' · '}
+                  {liveFeed.filter(e => e.type === 'error').length} errors
+                </span>
+                <button
+                  onClick={clearLiveFeed}
+                  className="flex items-center gap-1 text-[10px] text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions — Run Now */}

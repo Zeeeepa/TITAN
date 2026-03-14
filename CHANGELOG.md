@@ -4,6 +4,35 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.22] — 2026-03-14
+
+### Fixed
+- **Voice session continuity** — Voice conversations now track `sessionId` across utterances for multi-turn memory
+- **Voice recognition stale closure** — `recognition.onend` now uses refs instead of stale state closures, fixing recognition silently stopping after first TTS response
+- **Audio memory leaks** — All `Audio` elements properly cleaned up (`src = ''`, object URLs revoked, refs nullified)
+- **Voice error feedback** — Visible red error indicators for "Connection error", "TTS unavailable", "Request timed out"
+- **Voice timeouts** — 45s timeout on TITAN API, 30s on TTS calls via `AbortController`
+- **Voice interruption** — Speaking while TITAN talks now interrupts audio and processes new input
+- **Emotion tags in transcript** — Orpheus tags (`<laugh>`, `<sigh>`, etc.) stripped from display, kept for TTS
+- **Markdown in voice responses** — Code blocks, bold, italic, headings, bullets stripped client-side before TTS
+- **FluidOrb animation loop** — Draw callback no longer recreates 60x/sec; uses refs for props, single `useEffect`
+- **Canvas resize thrashing** — Canvas dimensions only set when they actually change
+- **TranscriptView keys** — Stable unique IDs instead of array index
+- **SSE client-disconnect leak** — `activeLlmRequests` counter no longer leaks when browser drops SSE connection
+- **Duplicate graph episodes** — Removed duplicate `addEpisode` call that wrote every user message to the knowledge graph twice
+- **Provider field in `/api/config`** — Now correctly derived from model string instead of hardcoded `'openai'`
+- **SettingsPanel VoiceHealth type** — Updated from stale `whisper`/`kokoro` field names to `stt`/`tts`
+- **TTS health probe** — Voice health endpoint now probes actual TTS endpoint (`/v1/audio/speech`) instead of root URL
+- **Voice health check delay** — No longer fires on every page load when voice is disabled (was adding 3s timeout)
+- **Ollama context window** — `num_ctx` increased from 8192 to 16384 for local models (better for devstral on RTX 5090)
+- **TTS text truncation** — Client caps at 300 chars, server at 500 chars to prevent long TTS hangs
+- **Voice mode prompt** — Strengthened to 50 word max, explicit "ABSOLUTELY NO" formatting rules
+- **In-flight fetch abort** — Closing voice overlay now aborts pending API/TTS requests
+- **Mute stops mic stream** — Browser microphone indicator now correctly turns off when muted
+- **Voice config tests** — Updated expected default from `af_heart` to `tara`
+
+---
+
 ## [2026.10.21] — 2026-03-13
 
 ### Added

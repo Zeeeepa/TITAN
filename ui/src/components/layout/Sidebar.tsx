@@ -17,6 +17,7 @@ import {
   Shield,
   GitBranch,
   Plug,
+  FlaskConical,
   UserCircle,
   ArrowUpCircle,
   Loader2,
@@ -50,6 +51,7 @@ const navItems = [
   { label: 'Memory', icon: Network, path: '/memory-graph' },
   { label: 'Personas', icon: UserCircle, path: '/personas' },
   { label: 'Self-Improve', icon: Brain, path: '/self-improve' },
+  { label: 'Autoresearch', icon: FlaskConical, path: '/autoresearch' },
 ] as const;
 
 interface VersionInfo {

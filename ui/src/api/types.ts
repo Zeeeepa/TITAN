@@ -201,3 +201,60 @@ export interface ModelInfo {
   provider: string;
   available: boolean;
 }
+
+// ---- Autoresearch ----
+export interface AutoresearchRun {
+  timestamp: string;
+  val_score: number;
+  hyperparams: {
+    lr: number;
+    rank: number;
+    alpha: number;
+    dropout: number;
+    epochs: number;
+    batch_size: number;
+    grad_accum: number;
+    max_seq_len: number;
+  };
+  training_time_s: number;
+  num_examples: number;
+  adapter_path: string;
+}
+
+export interface AutoresearchPerformance {
+  totalRuns: number;
+  bestScore: number;
+  avgImprovement: number;
+  baseline: number;
+  lastRun?: AutoresearchRun;
+}
+
+/** Alias matching the results.json shape */
+export interface AutoresearchResult {
+  timestamp: string;
+  val_score: number;
+  hyperparams: Record<string, number>;
+  training_time_s: number;
+  num_examples: number;
+  adapter_path: string;
+  type?: 'tool_router' | 'agent';
+}
+
+export interface AutoresearchSummary {
+  totalRuns: number;
+  bestScore: number;
+  avgImprovement: number;
+  lastRunTime: string | null;
+  isRunning: boolean;
+}
+
+export type TrainingType = 'tool_router' | 'main_agent';
+
+export interface TrainingConfig {
+  baseModel: string;
+  loraRank: number;
+  learningRate: number;
+  epochs: number;
+  timeBudgetMin: number;
+  maxSeqLength: number;
+}

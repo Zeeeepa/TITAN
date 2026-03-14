@@ -62,6 +62,22 @@ def prepare_training_data():
     ]
 
     pairs.extend(synthetic)
+
+    # Load any external data files (e.g., from generate_data.py)
+    for jsonl_file in sorted(DATA_DIR.glob("*.jsonl")):
+        if jsonl_file.name in ("train.jsonl", "val.jsonl"):
+            continue  # skip output files
+        try:
+            with open(jsonl_file) as f:
+                for line in f:
+                    try:
+                        pairs.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            print(f"Loaded {jsonl_file.name}")
+        except Exception:
+            continue
+
     random.shuffle(pairs)
 
     split = max(1, int(len(pairs) * 0.9))

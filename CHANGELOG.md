@@ -4,6 +4,30 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.21] — 2026-03-13
+
+### Added
+- **Dual Training Pipelines** — Two model training modes selectable from Mission Control's Self-Improve panel:
+  - **Tool Router** (`titan-qwen`) — Single-turn instruction/output pairs for fast tool selection
+  - **Main Agent** (`titan-agent`) — Multi-turn ChatML conversations with OpenAI function calling format (530+ examples covering tool calls, direct answers, error recovery, multi-step chains, identity, code generation, refusal/boundaries)
+- **Training Type Selector UI** — Side-by-side cards in Self-Improve panel with model name, score, example count, and role description
+- **Customizable Training Hyperparameters** — Collapsible config panel with sliders for base model, LoRA rank (8–128), learning rate (1e-5–1e-3), epochs (1–10), time budget (5–120 min), max sequence length (512–8192)
+- **Training Data Generator** — `generate_agent_data.py` creates 530+ multi-turn training examples using 17 real TITAN tool schemas in OpenAI function calling format
+- **Agent Training Pipeline** — `train_agent.py` with higher LoRA rank (32), lower learning rate (1e-4), 2048 max seq length, and 9 agent-specific eval cases
+- **Self-Improve Action Buttons** — Generate Training Data, Start Training, Deploy Best Model, Run Benchmark — all callable from the UI per training type
+- **Separate Experiment History** — Tool Router and Main Agent results displayed in independent tables with distinct color coding
+- **API Endpoints** — `POST /api/autoresearch/generate-data`, `POST /api/autoresearch/deploy`, type-filtered `GET /api/autoresearch/results?type=agent|tool_router`
+
+### Fixed
+- **Ollama context over-allocation** — Provider was requesting `num_ctx: 65536` for all local models, causing memory spill to CPU and 4-minute response times. Now defaults to `num_ctx: 8192`
+- **Deploy script context size** — `deploy.py` Modelfile now uses `num_ctx 8192` instead of `num_ctx 65536`
+
+### Changed
+- `deploy.py` supports `--type agent|router` flag for deploying either training pipeline's output
+- `TrainingType` and `TrainingConfig` types added to `ui/src/api/types.ts`
+
+---
+
 ## [2026.10.20] — 2026-03-13
 
 ### Added

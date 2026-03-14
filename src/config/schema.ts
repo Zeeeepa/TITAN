@@ -539,6 +539,8 @@ export const TitanConfigSchema = z.object({
         baseModel: z.string().default('qwen3.5:35b'),
         /** Auto-deploy trained model to Ollama */
         autoDeploy: z.boolean().default(false),
+        autoresearchEnabled: z.boolean().default(false),
+        autoresearchSchedule: z.array(z.string()).default(['0 3 * * *']),  // 3am daily
     }).default({}),
     capsolver: CapsolverConfigSchema.default({}),
     x: z.object({

@@ -11,7 +11,7 @@
  */
 import * as cron from 'node-cron';
 import { existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { processMessage } from './agent.js';
 import { loadConfig } from '../config/config.js';
 import { getDailyTotal } from './costOptimizer.js';
@@ -289,6 +289,11 @@ export async function runAutopilotNow(): Promise<AutopilotResult> {
             return await runSelfImproveAutopilot(config, startTime);
         }
 
+        // ── Autoresearch mode: run model fine-tuning experiments ──
+        if (autopilotMode === 'autoresearch') {
+            return await runAutoresearchAutopilot(config, startTime);
+        }
+
         // Get previous run summary for context
         const history = getRunHistory(1);
         const prevSummary = history.length > 0 ? history[history.length - 1].summary : undefined;
@@ -501,6 +506,90 @@ async function runSelfImproveAutopilot(config: TitanConfig, startTime: number): 
 
     logger.info(COMPONENT, `Self-improve autopilot complete: ${classification} (${duration}ms)`);
     return { run, delivered };
+}
+
+// ─── Autoresearch autopilot ──────────────────────────────────────
+
+async function runAutoresearchAutopilot(config: TitanConfig, startTime: number): Promise<AutopilotResult> {
+    const trainingConfig = (config as Record<string, unknown>).training as Record<string, unknown> | undefined;
+    const budgetMinutes = (trainingConfig?.budgetMinutes as number) || 120;
+
+    logger.info(COMPONENT, `Autoresearch autopilot: budget ${budgetMinutes} min (Karpathy pattern)`);
+
+    // Read program.md directives
+    const programMdPath = join(dirname(AUTOPILOT_MD), 'autoresearch', 'program.md');
+    let programMd = '';
+    try {
+        if (existsSync(programMdPath)) {
+            programMd = readFileSync(programMdPath, 'utf-8');
+        }
+    } catch { /* ignore */ }
+
+    try {
+        // Use experiment_loop tool — the Karpathy autoresearch pattern:
+        // Agent reads program.md, modifies train.py, runs it (5 min each), evaluates val_score, keeps or reverts
+        const trainPyPath = join(dirname(AUTOPILOT_MD), 'autoresearch', 'train.py');
+        const venvPython = join(dirname(AUTOPILOT_MD), 'venv', 'bin', 'python3');
+        const evalCmd = `cd ${dirname(AUTOPILOT_MD)}/autoresearch && ${venvPython} train.py`;
+
+        const prompt = [
+            `Run the autoresearch experiment loop using the experiment_loop tool.`,
+            `Parameters:`,
+            `- goal: "Maximize val_score for TITAN fine-tuning on tool selection, reasoning, and JSON output"`,
+            `- targetFile: "${trainPyPath}"`,
+            `- evalCommand: "${evalCmd}"`,
+            `- evalMetric: "val_score"`,
+            `- timeBudgetMinutes: ${budgetMinutes}`,
+            `- maxExperiments: ${Math.floor(budgetMinutes / 6)}`,
+            programMd ? `- programMd: (contents of program.md)` : '',
+            ``,
+            `Each experiment: modify ONE hyperparameter in train.py, run training (5 min), evaluate val_score, keep if improved or revert if not.`,
+            `After all experiments, if best score improved over baseline (78.0), deploy with train_deploy.`,
+        ].filter(Boolean).join('\n');
+
+        const response = await processMessage(prompt, 'autopilot-autoresearch', 'system', {
+            model: config.autopilot.model,
+        });
+
+        const duration = Date.now() - startTime;
+        const classification = classifyResult(response.content);
+        const summary = `Autoresearch training: ${response.content.slice(0, 400)}`;
+
+        const run: AutopilotRun = {
+            timestamp: new Date().toISOString(),
+            duration,
+            tokensUsed: response.tokenUsage.total,
+            cost: 0,
+            classification,
+            summary: summary.slice(0, 500),
+            toolsUsed: response.toolsUsed,
+        };
+        lastRun = run;
+        appendRun(run);
+        pruneHistory(config.autopilot.maxRunHistory);
+
+        let delivered = false;
+        if (classification !== 'ok') {
+            delivered = await deliverResult(config, run);
+        }
+
+        logger.info(COMPONENT, `Autoresearch autopilot complete: ${classification} (${duration}ms)`);
+        return { run, delivered };
+    } catch (error) {
+        const duration = Date.now() - startTime;
+        const run: AutopilotRun = {
+            timestamp: new Date().toISOString(),
+            duration,
+            tokensUsed: 0,
+            cost: 0,
+            classification: 'urgent',
+            summary: `Autoresearch error: ${(error as Error).message}`,
+            toolsUsed: [],
+        };
+        lastRun = run;
+        appendRun(run);
+        return { run, delivered: false };
+    }
 }
 
 // ─── Delivery ───────────────────────────────────────────────────

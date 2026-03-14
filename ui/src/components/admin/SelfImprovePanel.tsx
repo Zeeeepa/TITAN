@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Brain,
   Play,
@@ -11,6 +11,11 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
+  Cpu,
+  Trophy,
+  Activity,
+  Wrench,
+  Bot,
 } from 'lucide-react';
 import { getConfig, updateConfig } from '@/api/client';
 
@@ -48,6 +53,33 @@ interface TrainingRun {
   method: string;
   dataPoints: number;
   finalLoss?: number;
+}
+
+interface AutoresearchResult {
+  timestamp: string;
+  val_score: number;
+  hyperparams: Record<string, number>;
+  training_time_s: number;
+  num_examples: number;
+  adapter_path: string;
+}
+
+interface AutoresearchPerformance {
+  totalRuns: number;
+  bestScore: number;
+  avgImprovement: number;
+  baseline: number;
+}
+
+type TrainingType = 'tool_router' | 'main_agent';
+
+interface TrainingConfig {
+  baseModel: string;
+  loraRank: number;
+  learningRate: number;
+  epochs: number;
+  timeBudgetMin: number;
+  maxSeqLength: number;
 }
 
 const AREA_LABELS: Record<string, string> = {
@@ -91,10 +123,29 @@ function SelfImprovePanel() {
   const [config, setConfig] = useState<SelfImproveConfig | null>(null);
   const [history, setHistory] = useState<ImprovementSession[]>([]);
   const [trainingRuns, setTrainingRuns] = useState<TrainingRun[]>([]);
+  const [arResults, setArResults] = useState<AutoresearchResult[]>([]);
+  const [arPerf, setArPerf] = useState<AutoresearchPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [trainingType, setTrainingType] = useState<TrainingType>('tool_router');
+  const [trainConfigOpen, setTrainConfigOpen] = useState(false);
+  const [trainConfig, setTrainConfig] = useState<TrainingConfig>({
+    baseModel: 'unsloth/Qwen2.5-32B-bnb-4bit',
+    loraRank: 32,
+    learningRate: 0.0001,
+    epochs: 2,
+    timeBudgetMin: 60,
+    maxSeqLength: 2048,
+  });
+  const [agentResults, setAgentResults] = useState<AutoresearchResult[]>([]);
+  const [agentPerf, setAgentPerf] = useState<AutoresearchPerformance | null>(null);
+  const [generatingData, setGeneratingData] = useState(false);
+  const [trainingModel, setTrainingModel] = useState(false);
+  const [deployingModel, setDeployingModel] = useState(false);
+  const refreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Local settings state
   const [runsPerDay, setRunsPerDay] = useState(1);
@@ -146,6 +197,38 @@ function SelfImprovePanel() {
         }
       } catch { /* API may not exist yet */ }
 
+      // Fetch autoresearch results & performance
+      try {
+        const [arRes, arPerfRes] = await Promise.all([
+          fetch('/api/autoresearch/results'),
+          fetch('/api/autoresearch/performance'),
+        ]);
+        if (arRes.ok) {
+          const arData = await arRes.json();
+          setArResults(arData.runs || []);
+        }
+        if (arPerfRes.ok) {
+          const perfData = await arPerfRes.json();
+          setArPerf(perfData);
+        }
+      } catch { /* API may not exist yet */ }
+
+      // Fetch agent autoresearch results & performance
+      try {
+        const [agentRes, agentPerfRes] = await Promise.all([
+          fetch('/api/autoresearch/results?type=agent'),
+          fetch('/api/autoresearch/performance?type=agent'),
+        ]);
+        if (agentRes.ok) {
+          const data = await agentRes.json();
+          setAgentResults(data.runs || []);
+        }
+        if (agentPerfRes.ok) {
+          const data = await agentPerfRes.json();
+          setAgentPerf(data);
+        }
+      } catch { /* API may not exist yet */ }
+
     } catch {
       // ignore
     } finally {
@@ -154,6 +237,16 @@ function SelfImprovePanel() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Auto-refresh every 10s when enabled
+  useEffect(() => {
+    if (autoRefresh) {
+      refreshInterval.current = setInterval(loadData, 10000);
+    }
+    return () => {
+      if (refreshInterval.current) clearInterval(refreshInterval.current);
+    };
+  }, [autoRefresh, loadData]);
 
   const handleSaveSettings = async () => {
     try {
@@ -206,6 +299,57 @@ function SelfImprovePanel() {
     );
   };
 
+  const handleGenerateData = async () => {
+    setGeneratingData(true);
+    try {
+      const res = await fetch('/api/autoresearch/generate-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: trainingType }),
+      });
+      if (res.ok) showToast('success', `Training data generation started for ${trainingType === 'main_agent' ? 'Main Agent' : 'Tool Router'}`);
+      else showToast('error', 'Failed to start data generation');
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setGeneratingData(false);
+    }
+  };
+
+  const handleStartTraining = async () => {
+    setTrainingModel(true);
+    try {
+      const res = await fetch('/api/autoresearch/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: trainingType, config: trainConfig }),
+      });
+      if (res.ok) showToast('success', `Training started for ${trainingType === 'main_agent' ? 'Main Agent' : 'Tool Router'}`);
+      else showToast('error', 'Failed to start training');
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setTrainingModel(false);
+    }
+  };
+
+  const handleDeployModel = async () => {
+    setDeployingModel(true);
+    try {
+      const res = await fetch('/api/autoresearch/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: trainingType }),
+      });
+      if (res.ok) showToast('success', `Model deployed as ${trainingType === 'main_agent' ? 'titan-agent' : 'titan-qwen'}`);
+      else showToast('error', 'Failed to deploy model');
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setDeployingModel(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -238,13 +382,26 @@ function SelfImprovePanel() {
             <p className="text-xs text-[#52525b]">Autonomous optimization of prompts, tool selection, and response quality</p>
           </div>
         </div>
-        <button
-          onClick={loadData}
-          className="flex items-center gap-1.5 rounded-lg border border-[#3f3f46] px-3 py-1.5 text-xs text-[#a1a1aa] transition-colors hover:bg-[#27272a]"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+              autoRefresh
+                ? 'border-[#22c55e]/30 text-[#22c55e] bg-[#22c55e]/5'
+                : 'border-[#3f3f46] text-[#71717a] hover:bg-[#27272a]'
+            }`}
+          >
+            <Activity className={`h-3.5 w-3.5 ${autoRefresh ? 'animate-pulse' : ''}`} />
+            {autoRefresh ? 'Live' : 'Paused'}
+          </button>
+          <button
+            onClick={loadData}
+            className="flex items-center gap-1.5 rounded-lg border border-[#3f3f46] px-3 py-1.5 text-xs text-[#a1a1aa] transition-colors hover:bg-[#27272a]"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Toast */}
@@ -262,20 +419,257 @@ function SelfImprovePanel() {
       {/* Stats Cards */}
       <div className="grid grid-cols-4 gap-3">
         <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
-          <p className="text-xs text-[#52525b]">Total Sessions</p>
-          <p className="text-2xl font-bold text-[#fafafa] mt-1">{totalSessions}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <Clock className="h-3.5 w-3.5 text-[#52525b]" />
+            <p className="text-xs text-[#52525b]">Total Sessions</p>
+          </div>
+          <p className="text-2xl font-bold text-[#fafafa]">{totalSessions + (arPerf?.totalRuns || 0)}</p>
+          {arPerf && arPerf.totalRuns > 0 && (
+            <p className="text-[10px] text-[#52525b] mt-0.5">{totalSessions} self-improve + {arPerf.totalRuns} autoresearch</p>
+          )}
         </div>
         <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
-          <p className="text-xs text-[#52525b]">Avg Improvement</p>
-          <p className="text-2xl font-bold text-[#22c55e] mt-1">+{avgImprovement}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <Trophy className="h-3.5 w-3.5 text-[#f59e0b]" />
+            <p className="text-xs text-[#52525b]">Best Val Score</p>
+          </div>
+          <p className="text-2xl font-bold text-[#f59e0b]">{arPerf?.bestScore || '—'}</p>
+          {arPerf && arPerf.baseline > 0 && (
+            <p className="text-[10px] text-[#22c55e] mt-0.5">+{(arPerf.bestScore - arPerf.baseline).toFixed(1)} from {arPerf.baseline} baseline</p>
+          )}
         </div>
         <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
-          <p className="text-xs text-[#52525b]">Success Rate</p>
-          <p className="text-2xl font-bold text-[#3b82f6] mt-1">{successRate}%</p>
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="h-3.5 w-3.5 text-[#22c55e]" />
+            <p className="text-xs text-[#52525b]">Success Rate</p>
+          </div>
+          <p className="text-2xl font-bold text-[#3b82f6]">{successRate}%</p>
+          <p className="text-[10px] text-[#52525b] mt-0.5">avg improvement: +{avgImprovement}</p>
         </div>
         <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-4">
-          <p className="text-xs text-[#52525b]">Status</p>
-          <p className="text-2xl font-bold text-[#fafafa] mt-1">{config?.enabled !== false ? 'Active' : 'Off'}</p>
+          <div className="flex items-center gap-2 mb-1">
+            <Cpu className="h-3.5 w-3.5 text-[#8b5cf6]" />
+            <p className="text-xs text-[#52525b]">Deployed Model</p>
+          </div>
+          <p className="text-lg font-bold text-[#8b5cf6]">titan-qwen</p>
+          <p className="text-[10px] text-[#52525b] mt-0.5">Q4_K_M • 19GB • {config?.enabled !== false ? '🟢 Active' : '⚫ Off'}</p>
+        </div>
+      </div>
+
+      {/* Model Training */}
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wider text-[#52525b] mb-3">Model Training</p>
+
+        {/* Training Type Selector — two cards side by side */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <button
+            onClick={() => setTrainingType('tool_router')}
+            className={`rounded-xl border p-4 text-left transition-all ${
+              trainingType === 'tool_router'
+                ? 'border-[#8b5cf6] bg-[#8b5cf6]/5 ring-1 ring-[#8b5cf6]/20'
+                : 'border-[#27272a] bg-[#18181b] hover:border-[#3f3f46]'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${trainingType === 'tool_router' ? 'bg-[#8b5cf6]/20' : 'bg-[#27272a]'}`}>
+                <Wrench className={`h-3.5 w-3.5 ${trainingType === 'tool_router' ? 'text-[#a78bfa]' : 'text-[#52525b]'}`} />
+              </div>
+              <span className={`text-sm font-medium ${trainingType === 'tool_router' ? 'text-[#fafafa]' : 'text-[#a1a1aa]'}`}>Tool Router</span>
+            </div>
+            <p className="text-xs text-[#71717a] mb-1">titan-qwen</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#22c55e] font-medium">Score: {arPerf?.bestScore || '—'}</span>
+              <span className="text-[10px] text-[#52525b]">•</span>
+              <span className="text-[10px] text-[#52525b]">{arResults.length > 0 ? `${arResults[arResults.length - 1]?.num_examples || 0} examples` : 'No data'}</span>
+            </div>
+            <p className="text-[10px] text-[#52525b] mt-1">Brain / Tool Selection</p>
+          </button>
+
+          <button
+            onClick={() => setTrainingType('main_agent')}
+            className={`rounded-xl border p-4 text-left transition-all ${
+              trainingType === 'main_agent'
+                ? 'border-[#8b5cf6] bg-[#8b5cf6]/5 ring-1 ring-[#8b5cf6]/20'
+                : 'border-[#27272a] bg-[#18181b] hover:border-[#3f3f46]'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${trainingType === 'main_agent' ? 'bg-[#8b5cf6]/20' : 'bg-[#27272a]'}`}>
+                <Bot className={`h-3.5 w-3.5 ${trainingType === 'main_agent' ? 'text-[#a78bfa]' : 'text-[#52525b]'}`} />
+              </div>
+              <span className={`text-sm font-medium ${trainingType === 'main_agent' ? 'text-[#fafafa]' : 'text-[#a1a1aa]'}`}>Main Agent</span>
+            </div>
+            <p className="text-xs text-[#71717a] mb-1">titan-agent</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#f59e0b] font-medium">Score: {agentPerf?.bestScore || '—'}</span>
+              <span className="text-[10px] text-[#52525b]">•</span>
+              <span className="text-[10px] text-[#52525b]">{agentResults.length > 0 ? `${agentResults[agentResults.length - 1]?.num_examples || 0} examples` : 'No data'}</span>
+            </div>
+            <p className="text-[10px] text-[#52525b] mt-1">Primary LLM / Full Agent</p>
+          </button>
+        </div>
+
+        {/* Training Configuration — collapsible */}
+        <button
+          onClick={() => setTrainConfigOpen(!trainConfigOpen)}
+          className="flex w-full items-center gap-2 text-xs font-medium uppercase tracking-wider text-[#52525b] mb-3"
+        >
+          {trainConfigOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          <Settings className="h-3.5 w-3.5" />
+          Training Configuration
+        </button>
+
+        {trainConfigOpen && (
+          <div className="rounded-xl border border-[#27272a] bg-[#18181b] p-5 space-y-4 mb-4">
+            {/* Base Model */}
+            <div>
+              <label className="mb-1 block text-xs text-[#71717a]">Base Model</label>
+              <select
+                value={trainConfig.baseModel}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, baseModel: e.target.value }))}
+                className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none"
+              >
+                <option value="unsloth/Qwen2.5-32B-bnb-4bit">Qwen 2.5 32B (4-bit)</option>
+                <option value="unsloth/Qwen2.5-14B-bnb-4bit">Qwen 2.5 14B (4-bit)</option>
+                <option value="unsloth/Qwen2.5-7B-bnb-4bit">Qwen 2.5 7B (4-bit)</option>
+              </select>
+            </div>
+
+            {/* LoRA Rank */}
+            <div>
+              <label className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">LoRA Rank</span>
+                <span className="text-sm font-medium text-[#fafafa]">{trainConfig.loraRank}</span>
+              </label>
+              <input
+                type="range"
+                min={4}
+                max={64}
+                step={4}
+                value={trainConfig.loraRank}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, loraRank: Number(e.target.value) }))}
+                className="w-full accent-[#8b5cf6]"
+              />
+              <div className="flex justify-between text-[10px] text-[#52525b] mt-1">
+                <span>4</span><span>32</span><span>64</span>
+              </div>
+            </div>
+
+            {/* Learning Rate */}
+            <div>
+              <label className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Learning Rate</span>
+                <span className="text-sm font-medium text-[#fafafa] font-mono">{trainConfig.learningRate.toExponential(0)}</span>
+              </label>
+              <input
+                type="range"
+                min={-5}
+                max={-3}
+                step={0.5}
+                value={Math.log10(trainConfig.learningRate)}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, learningRate: Math.pow(10, Number(e.target.value)) }))}
+                className="w-full accent-[#8b5cf6]"
+              />
+              <div className="flex justify-between text-[10px] text-[#52525b] mt-1">
+                <span>1e-5</span><span>1e-4</span><span>1e-3</span>
+              </div>
+            </div>
+
+            {/* Epochs */}
+            <div>
+              <label className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Epochs</span>
+                <span className="text-sm font-medium text-[#fafafa]">{trainConfig.epochs}</span>
+              </label>
+              <input
+                type="range"
+                min={1}
+                max={10}
+                value={trainConfig.epochs}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, epochs: Number(e.target.value) }))}
+                className="w-full accent-[#8b5cf6]"
+              />
+              <div className="flex justify-between text-[10px] text-[#52525b] mt-1">
+                <span>1</span><span>5</span><span>10</span>
+              </div>
+            </div>
+
+            {/* Time Budget */}
+            <div>
+              <label className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Time Budget</span>
+                <span className="text-sm font-medium text-[#fafafa]">{trainConfig.timeBudgetMin} min</span>
+              </label>
+              <input
+                type="range"
+                min={5}
+                max={120}
+                step={5}
+                value={trainConfig.timeBudgetMin}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, timeBudgetMin: Number(e.target.value) }))}
+                className="w-full accent-[#8b5cf6]"
+              />
+              <div className="flex justify-between text-[10px] text-[#52525b] mt-1">
+                <span>5 min</span><span>60 min</span><span>120 min</span>
+              </div>
+            </div>
+
+            {/* Max Seq Length */}
+            <div>
+              <label className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Max Sequence Length</span>
+                <span className="text-sm font-medium text-[#fafafa]">{trainConfig.maxSeqLength}</span>
+              </label>
+              <input
+                type="range"
+                min={512}
+                max={4096}
+                step={256}
+                value={trainConfig.maxSeqLength}
+                onChange={(e) => setTrainConfig(prev => ({ ...prev, maxSeqLength: Number(e.target.value) }))}
+                className="w-full accent-[#8b5cf6]"
+              />
+              <div className="flex justify-between text-[10px] text-[#52525b] mt-1">
+                <span>512</span><span>2048</span><span>4096</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleGenerateData}
+            disabled={generatingData}
+            className="flex items-center justify-center gap-2 rounded-xl border border-[#27272a] bg-[#18181b] px-4 py-3 text-xs font-medium text-[#fafafa] transition-colors hover:border-[#8b5cf6]/50 hover:bg-[#1f1f23] disabled:opacity-50"
+          >
+            {generatingData ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 text-[#f59e0b]" />}
+            Generate Training Data
+          </button>
+          <button
+            onClick={handleStartTraining}
+            disabled={trainingModel}
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#8b5cf6] px-4 py-3 text-xs font-medium text-white transition-colors hover:bg-[#8b5cf6]/80 disabled:opacity-50"
+          >
+            {trainingModel ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Start Training
+          </button>
+          <button
+            onClick={handleDeployModel}
+            disabled={deployingModel}
+            className="flex items-center justify-center gap-2 rounded-xl border border-[#27272a] bg-[#18181b] px-4 py-3 text-xs font-medium text-[#fafafa] transition-colors hover:border-[#22c55e]/50 hover:bg-[#1f1f23] disabled:opacity-50"
+          >
+            {deployingModel ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5 text-[#22c55e]" />}
+            Deploy Best Model
+          </button>
+          <button
+            onClick={() => handleStartRun(trainingType === 'main_agent' ? 'agent-benchmark' : 'tool-benchmark')}
+            disabled={running !== null}
+            className="flex items-center justify-center gap-2 rounded-xl border border-[#27272a] bg-[#18181b] px-4 py-3 text-xs font-medium text-[#fafafa] transition-colors hover:border-[#3b82f6]/50 hover:bg-[#1f1f23] disabled:opacity-50"
+          >
+            <TrendingUp className="h-3.5 w-3.5 text-[#3b82f6]" />
+            Run Benchmark
+          </button>
         </div>
       </div>
 
@@ -514,6 +908,156 @@ function SelfImprovePanel() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Autoresearch Experiments (Tool Router) */}
+      {arResults.length > 0 && trainingType === 'tool_router' && (
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-[#52525b] mb-3">Autoresearch Experiments — Tool Router</p>
+          <div className="rounded-xl border border-[#27272a] bg-[#18181b] overflow-hidden">
+            {/* Mini performance chart */}
+            <div className="p-4 border-b border-[#27272a]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Val Score Over Time</span>
+                <span className="text-xs text-[#22c55e] font-medium">
+                  Best: {arPerf?.bestScore || Math.max(...arResults.map(r => r.val_score))}
+                </span>
+              </div>
+              <div className="h-16 flex items-end gap-1">
+                {arResults.map((r, i) => {
+                  const maxScore = Math.max(...arResults.map(r => r.val_score), 100);
+                  const minScore = Math.min(...arResults.map(r => r.val_score), 0);
+                  const range = maxScore - minScore || 1;
+                  const height = ((r.val_score - minScore) / range) * 100;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-t transition-all hover:opacity-80"
+                      style={{
+                        height: `${Math.max(height, 4)}%`,
+                        backgroundColor: r.val_score >= (arPerf?.baseline || 78) ? '#22c55e' : '#ef4444',
+                      }}
+                      title={`Run ${i + 1}: ${r.val_score} (${new Date(r.timestamp).toLocaleDateString()})`}
+                    />
+                  );
+                })}
+              </div>
+              {/* Baseline line */}
+              <div className="relative mt-1">
+                <div className="border-t border-dashed border-[#52525b]/50 absolute w-full" />
+                <span className="text-[9px] text-[#52525b] relative -top-2">baseline: {arPerf?.baseline || 78.0}</span>
+              </div>
+            </div>
+
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#27272a]">
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">#</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Date</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Score</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">LR</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Rank</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Epochs</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Examples</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {arResults.slice().reverse().slice(0, 20).map((r, i) => (
+                  <tr key={i} className="border-b border-[#27272a] last:border-0">
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{arResults.length - i}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#a1a1aa]">
+                      {new Date(r.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className={`px-4 py-2.5 text-xs font-bold ${r.val_score >= (arPerf?.baseline || 78) ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                      {r.val_score}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a] font-mono">{r.hyperparams.lr}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.hyperparams.rank}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.hyperparams.epochs}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.num_examples}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{Math.round(r.training_time_s / 60)}m {Math.round(r.training_time_s % 60)}s</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Autoresearch Experiments (Main Agent) */}
+      {agentResults.length > 0 && trainingType === 'main_agent' && (
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-[#52525b] mb-3">Autoresearch Experiments — Main Agent</p>
+          <div className="rounded-xl border border-[#27272a] bg-[#18181b] overflow-hidden">
+            {/* Mini performance chart */}
+            <div className="p-4 border-b border-[#27272a]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-[#71717a]">Val Score Over Time</span>
+                <span className="text-xs text-[#f59e0b] font-medium">
+                  Best: {agentPerf?.bestScore || Math.max(...agentResults.map(r => r.val_score))}
+                </span>
+              </div>
+              <div className="h-16 flex items-end gap-1">
+                {agentResults.map((r, i) => {
+                  const maxScore = Math.max(...agentResults.map(r => r.val_score), 100);
+                  const minScore = Math.min(...agentResults.map(r => r.val_score), 0);
+                  const range = maxScore - minScore || 1;
+                  const height = ((r.val_score - minScore) / range) * 100;
+                  return (
+                    <div
+                      key={i}
+                      className="flex-1 rounded-t transition-all hover:opacity-80"
+                      style={{
+                        height: `${Math.max(height, 4)}%`,
+                        backgroundColor: r.val_score >= (agentPerf?.baseline || 70) ? '#f59e0b' : '#ef4444',
+                      }}
+                      title={`Run ${i + 1}: ${r.val_score} (${new Date(r.timestamp).toLocaleDateString()})`}
+                    />
+                  );
+                })}
+              </div>
+              {/* Baseline line */}
+              <div className="relative mt-1">
+                <div className="border-t border-dashed border-[#52525b]/50 absolute w-full" />
+                <span className="text-[9px] text-[#52525b] relative -top-2">baseline: {agentPerf?.baseline || 70.0}</span>
+              </div>
+            </div>
+
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#27272a]">
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">#</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Date</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Score</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">LR</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Rank</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Epochs</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Examples</th>
+                  <th className="px-4 py-2.5 text-xs font-medium text-[#52525b]">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {agentResults.slice().reverse().slice(0, 20).map((r, i) => (
+                  <tr key={i} className="border-b border-[#27272a] last:border-0">
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{agentResults.length - i}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#a1a1aa]">
+                      {new Date(r.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className={`px-4 py-2.5 text-xs font-bold ${r.val_score >= (agentPerf?.baseline || 70) ? 'text-[#f59e0b]' : 'text-[#ef4444]'}`}>
+                      {r.val_score}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a] font-mono">{r.hyperparams.lr}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.hyperparams.rank}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.hyperparams.epochs}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{r.num_examples}</td>
+                    <td className="px-4 py-2.5 text-xs text-[#71717a]">{Math.round(r.training_time_s / 60)}m {Math.round(r.training_time_s % 60)}s</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -23,6 +23,7 @@ const MemoryGraphPanel = lazy(() => import('@/components/admin/MemoryGraphPanel'
 const PersonasPanel = lazy(() => import('@/components/admin/PersonasPanel'));
 const IntegrationsPanel = lazy(() => import('@/components/admin/IntegrationsPanel'));
 const SelfImprovePanel = lazy(() => import('@/components/admin/SelfImprovePanel'));
+const AutoresearchPanel = lazy(() => import('@/components/admin/AutoresearchPanel'));
 const VoiceOverlay = lazy(() =>
   import('@/components/voice/VoiceOverlay').then((m) => ({ default: m.VoiceOverlay })),
 );
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/personas" element={<AdminPage><PersonasPanel /></AdminPage>} />
             <Route path="/integrations" element={<AdminPage><IntegrationsPanel /></AdminPage>} />
             <Route path="/self-improve" element={<AdminPage><SelfImprovePanel /></AdminPage>} />
+            <Route path="/autoresearch" element={<AdminPage><AutoresearchPanel /></AdminPage>} />
           </Routes>
         </Suspense>
       </Layout>

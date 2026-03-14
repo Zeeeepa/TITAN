@@ -41,7 +41,7 @@ import { ZulipChannel } from '../channels/zulip.js';
 import { initAgents, routeMessage, listAgents, spawnAgent, stopAgent, getAgentCapacity, getAgent } from '../agent/multiAgent.js';
 import type { ChannelAdapter, InboundMessage } from '../channels/base.js';
 import logger, { initFileLogger } from '../utils/logger.js';
-import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR } from '../utils/constants.js';
+import { TITAN_VERSION, TITAN_NAME, TITAN_LOGS_DIR, TITAN_HOME } from '../utils/constants.js';
 import { getUpdateInfo } from '../utils/updater.js';
 import { getMissionControlHTML } from './dashboard.js';
 import { serializePrometheus, getMetricsSummary, titanRequestsTotal, titanRequestDuration, titanErrorsTotal, titanActiveSessions, titanToolCallsTotal, titanTokensTotal, titanModelRequestsTotal } from './metrics.js';
@@ -1638,6 +1638,113 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       res.json({ runs });
     } catch {
       res.json({ runs: [] });
+    }
+  });
+
+  // ── Autoresearch API ──────────────────────────────────────────
+  app.get('/api/autoresearch/results', (req, res) => {
+    try {
+      const type = req.query.type as string || 'tool_router';
+      const resultsFile = type === 'agent' ? 'agent_results.json' : 'results.json';
+      const resultsPath = join(TITAN_HOME, 'autoresearch', 'output', resultsFile);
+      if (!fs.existsSync(resultsPath)) {
+        res.json({ runs: [] });
+        return;
+      }
+      const data = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+      res.json({ runs: Array.isArray(data) ? data : [] });
+    } catch {
+      res.json({ runs: [] });
+    }
+  });
+
+  app.get('/api/autoresearch/performance', (req, res) => {
+    try {
+      const type = req.query.type as string || 'tool_router';
+      const resultsFile = type === 'agent' ? 'agent_results.json' : 'results.json';
+      const resultsPath = join(TITAN_HOME, 'autoresearch', 'output', resultsFile);
+      if (!fs.existsSync(resultsPath)) {
+        res.json({ totalRuns: 0, bestScore: 0, avgImprovement: 0, baseline: 78.0 });
+        return;
+      }
+      const runs = JSON.parse(fs.readFileSync(resultsPath, 'utf-8'));
+      if (!Array.isArray(runs) || runs.length === 0) {
+        res.json({ totalRuns: 0, bestScore: 0, avgImprovement: 0, baseline: 78.0 });
+        return;
+      }
+      const baseline = 78.0;
+      const bestScore = Math.max(...runs.map((r: any) => r.val_score || 0));
+      const avgImprovement = runs.reduce((sum: number, r: any) => sum + ((r.val_score || 0) - baseline), 0) / runs.length;
+      res.json({
+        totalRuns: runs.length,
+        bestScore: Math.round(bestScore * 100) / 100,
+        avgImprovement: Math.round(avgImprovement * 100) / 100,
+        baseline,
+        lastRun: runs[runs.length - 1],
+      });
+    } catch {
+      res.json({ totalRuns: 0, bestScore: 0, avgImprovement: 0, baseline: 78.0 });
+    }
+  });
+
+  app.get('/api/autoresearch/status', (_req, res) => {
+    res.json({ status: 'idle' });
+  });
+
+  app.get('/api/autoresearch/benchmark', (_req, res) => {
+    try {
+      const benchPath = join(TITAN_HOME, 'autoresearch', 'output', 'benchmark_results.json');
+      if (!fs.existsSync(benchPath)) {
+        res.json({ benchmark: null });
+        return;
+      }
+      res.json({ benchmark: JSON.parse(fs.readFileSync(benchPath, 'utf-8')) });
+    } catch {
+      res.json({ benchmark: null });
+    }
+  });
+
+  app.post('/api/autoresearch/trigger', async (req, res) => {
+    try {
+      const type = req.body?.type || 'tool_router';
+      const config = req.body?.config || {};
+      const prompt = type === 'agent'
+        ? `Run an agent model training experiment using train_start with baseModel="${config.baseModel || 'qwen2.5:32b'}" method="lora" epochs=${config.epochs || 2} budgetMinutes=${config.timeBudgetMin || 60}. This is for the Main Agent model, use the agent training pipeline (train_agent.py on Titan PC).`
+        : 'Run an autoresearch training experiment. Use the train_start tool with default settings.';
+      const response = await processMessage(
+        prompt,
+        `autoresearch-trigger-${type}`,
+        'system',
+        {}
+      );
+      res.json({ success: true, content: response.content?.slice(0, 500) });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/autoresearch/generate-data', async (req, res) => {
+    try {
+      const type = req.body?.type || 'tool_router';
+      const prompt = type === 'agent'
+        ? 'Generate training data for the Main Agent model. Run the generate_agent_data.py script on Titan PC via SSH: ssh dj@192.168.1.11 "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_agent_data.py --no-llm"'
+        : 'Generate training data for the tool router model. Run the generate_data.py script on Titan PC via SSH: ssh dj@192.168.1.11 "~/.titan/venv/bin/python3 ~/.titan/autoresearch/generate_data.py"';
+      const response = await processMessage(prompt, `autoresearch-gendata-${type}`, 'system', {});
+      res.json({ success: true, content: response.content?.slice(0, 500) });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  app.post('/api/autoresearch/deploy', async (req, res) => {
+    try {
+      const type = req.body?.type || 'tool_router';
+      const modelName = type === 'agent' ? 'titan-agent' : 'titan-qwen';
+      const prompt = `Deploy the best trained ${type === 'agent' ? 'agent' : 'tool router'} model to Ollama as "${modelName}". Run the deploy script on Titan PC via SSH.`;
+      const response = await processMessage(prompt, `autoresearch-deploy-${type}`, 'system', {});
+      res.json({ success: true, content: response.content?.slice(0, 500) });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
     }
   });
 

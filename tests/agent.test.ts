@@ -629,8 +629,8 @@ describe('Agent processMessage', () => {
 
         await processMessage('Tell me something');
 
-        // addEpisode should be called: user message (line 224), user context (line 361), agent response (line 722)
-        expect(mockAddEpisode).toHaveBeenCalledTimes(3);
+        // addEpisode should be called: user message context + agent response
+        expect(mockAddEpisode).toHaveBeenCalledTimes(2);
         expect(mockAddEpisode).toHaveBeenCalledWith(
             expect.stringContaining('[TITAN'),
             'agent',

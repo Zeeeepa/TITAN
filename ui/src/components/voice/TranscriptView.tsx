@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-interface TranscriptMessage {
+export interface TranscriptMessage {
+  id: string;
   role: 'user' | 'assistant';
   text: string;
 }
@@ -35,9 +36,9 @@ export function TranscriptView({ messages = [], isListening = false }: Transcrip
         </p>
       )}
       <div className="flex flex-col gap-2">
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <div
-            key={i}
+            key={msg.id}
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div

@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { X, Mic, MicOff, PhoneOff, RotateCcw } from 'lucide-react';
-import { useLiveKit } from '@/hooks/useLiveKit';
-import { AudioVisualizer } from './AudioVisualizer';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Mic, MicOff, PhoneOff } from 'lucide-react';
 import { FluidOrb } from './FluidOrb';
 import { TranscriptView } from './TranscriptView';
 import { VoicePicker } from './VoicePicker';
@@ -11,111 +9,355 @@ interface VoiceOverlayProps {
 }
 
 interface TranscriptMessage {
+  id: string;
   role: 'user' | 'assistant';
   text: string;
 }
 
+let msgCounter = 0;
+const nextMsgId = () => `voice-msg-${Date.now()}-${++msgCounter}`;
+
+/** Strip Orpheus emotion tags for display (keep for TTS) */
+const stripEmotionTags = (text: string) =>
+  text.replace(/<(?:laugh|chuckle|sigh|cough|sniffle|groan|yawn|gasp)>/gi, '').replace(/\s{2,}/g, ' ').trim();
+
+/** Strip markdown formatting for voice responses */
+const stripMarkdown = (text: string) =>
+  text
+    .replace(/```[\s\S]*?```/g, '')    // code blocks
+    .replace(/\*\*(.*?)\*\*/g, '$1')   // bold
+    .replace(/\*(.*?)\*/g, '$1')       // italic
+    .replace(/^#+\s+/gm, '')           // headings
+    .replace(/^[-*]\s+/gm, '')         // bullet points
+    .replace(/\n{2,}/g, ' ')           // collapse newlines
+    .trim();
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// Browser Speech Recognition types
+interface SpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  [index: number]: SpeechRecognitionAlternative;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+/**
+ * Direct voice mode — uses browser Web Speech API for STT and Orpheus TTS for speech.
+ * No LiveKit required.
+ */
 export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
-  const { state, tokenData, error, connect, disconnect } = useLiveKit();
-  const [liveKitAvailable, setLiveKitAvailable] = useState<boolean | null>(null);
-  const [LKComponents, setLKComponents] = useState<any>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [visible, setVisible] = useState(false);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [phase, setPhase] = useState<'picking' | 'connecting' | 'active'>('picking');
+  const [phase, setPhase] = useState<'picking' | 'active'>('picking');
   const [selectedVoice, setSelectedVoice] = useState<string>('');
-  const [activeSpeaker, setActiveSpeaker] = useState<'idle' | 'user' | 'assistant' | 'thinking'>('idle');
-  const [retryCount, setRetryCount] = useState(0);
-  const MAX_RETRIES = 3;
+  const selectedVoiceRef = useRef<string>('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [interimText, setInterimText] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const networkType = useMemo(() => {
-    const host = window.location.hostname;
-    if (host.startsWith('100.')) return 'Tailscale';
-    if (host === 'localhost' || host === '127.0.0.1') return 'Local';
-    return 'LAN';
-  }, []);
+  const recognitionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentTranscriptRef = useRef('');
+  const levelAnimRef = useRef<number>(0);
+  const sessionIdRef = useRef<string | undefined>(undefined);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Auto-retry on connection failure
-  useEffect(() => {
-    if (state === 'error' && phase === 'connecting' && retryCount < MAX_RETRIES) {
-      const timer = setTimeout(() => {
-        setRetryCount(prev => prev + 1);
-        connect();
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [state, phase, retryCount, connect]);
+  // Refs to avoid stale closures in recognition callbacks
+  const isMutedRef = useRef(false);
+  const phaseRef = useRef<'picking' | 'active'>('picking');
 
-  // Load saved voice preference
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('titan-voice');
-      if (saved) setSelectedVoice(saved);
-    } catch { /* ignore */ }
-  }, []);
+  // Keep refs in sync with state
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  // Handle agent state changes from LiveKit
-  const handleAgentStateChange = useCallback((agentState: string) => {
-    switch (agentState) {
-      case 'listening':
-        setActiveSpeaker('user');
-        break;
-      case 'thinking':
-        setActiveSpeaker('thinking');
-        break;
-      case 'speaking':
-        setActiveSpeaker('assistant');
-        break;
-      default:
-        setActiveSpeaker('idle');
+  // Load saved voice preference
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('titan-voice');
+      if (saved) {
+        setSelectedVoice(saved);
+        selectedVoiceRef.current = saved;
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Mic level monitoring
+  const startMicMonitor = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const ctx = new AudioContext();
+      audioContextRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      function tick() {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length / 255;
+        setAudioLevel(avg);
+        levelAnimRef.current = requestAnimationFrame(tick);
+      }
+      levelAnimRef.current = requestAnimationFrame(tick);
+    } catch (e) {
+      console.error('Mic access denied:', e);
     }
   }, []);
 
-  // Handle audio level updates from LiveKit
-  const handleAudioLevelChange = useCallback((level: number) => {
-    setAudioLevel(level);
+  const stopMicMonitor = useCallback(() => {
+    cancelAnimationFrame(levelAnimRef.current);
+    micStreamRef.current?.getTracks().forEach(t => t.stop());
+    audioContextRef.current?.close();
+    micStreamRef.current = null;
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    setAudioLevel(0);
   }, []);
 
-  // Reset state when not active or muted
-  useEffect(() => {
-    if (phase !== 'active') {
-      setAudioLevel(0);
-      setActiveSpeaker('idle');
-    } else if (isMuted) {
-      setAudioLevel(0.15);
-      setActiveSpeaker('idle');
+  // Speech recognition setup — uses refs to avoid stale closure bug
+  const startRecognition = useCallback(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error('Speech recognition not supported');
+      return;
     }
-  }, [phase, isMuted]);
 
-  // Try loading LiveKit components
-  useEffect(() => {
-    import('@livekit/components-react')
-      .then((mod) => {
-        setLKComponents(mod);
-        setLiveKitAvailable(true);
-      })
-      .catch(() => {
-        setLiveKitAvailable(false);
+    // Stop any existing recognition before creating new one
+    try { recognitionRef.current?.stop(); } catch { /* ok */ }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      let final = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          final += result[0].transcript;
+        } else {
+          interim += result[0].transcript;
+        }
+      }
+
+      if (interim) {
+        setInterimText(interim);
+      }
+
+      if (final) {
+        currentTranscriptRef.current += final;
+        setInterimText('');
+
+        // Reset silence timer — wait for user to stop speaking
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          const text = currentTranscriptRef.current.trim();
+          if (text) {
+            currentTranscriptRef.current = '';
+            handleUserMessage(text);
+          }
+        }, 1200); // 1.2s silence = end of utterance
+      }
+    };
+
+    recognition.onend = () => {
+      // Use refs (not state) to avoid stale closure — these always have current values
+      if (!isMutedRef.current && phaseRef.current === 'active') {
+        try { recognition.start(); } catch { /* already started */ }
+      }
+      setIsListening(false);
+    };
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onerror = (e: any) => {
+      console.error('Speech recognition error:', e.error);
+      if (e.error === 'not-allowed') {
+        setIsListening(false);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch { /* already started */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stop any currently playing audio (enables interruption)
+  const stopCurrentAudio = useCallback(() => {
+    const audio = currentAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.src = '';
+      currentAudioRef.current = null;
+    }
+    setIsSpeaking(false);
+    setAudioLevel(0);
+  }, []);
+
+  // Send user message to TITAN and speak the response via Orpheus TTS
+  const handleUserMessage = useCallback(async (text: string) => {
+    // If TITAN is speaking, interrupt it
+    stopCurrentAudio();
+
+    // Abort any in-flight requests
+    abortRef.current?.abort();
+
+    setMessages(prev => [...prev, { id: nextMsgId(), role: 'user', text }]);
+    setIsThinking(true);
+    setIsListening(false);
+    setErrorMsg(null);
+
+    // Pause recognition while processing
+    try { recognitionRef.current?.stop(); } catch { /* ok */ }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      // Send to TITAN with session continuity and timeout
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+      const res = await fetch('/api/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: text,
+          channel: 'voice',
+          sessionId: sessionIdRef.current,
+        }),
+        signal: controller.signal,
       });
-  }, []);
+      clearTimeout(timeoutId);
 
-  // When state transitions to connected, move to active phase
-  useEffect(() => {
-    if (state === 'connected' && phase === 'connecting') {
-      setPhase('active');
+      if (!res.ok) throw new Error(`TITAN request failed (${res.status})`);
+      const data = await res.json();
+
+      // Track session for continuity
+      if (data.sessionId) {
+        sessionIdRef.current = data.sessionId;
+      }
+
+      // Process response text
+      const rawText = data.content || 'Sorry, I couldn\'t process that.';
+      const cleanText = stripMarkdown(rawText);
+      // Strip emotion tags for display, keep for TTS
+      const displayText = stripEmotionTags(cleanText);
+
+      setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
+      setIsThinking(false);
+
+      // Generate and play TTS audio via Orpheus (use cleanText with emotion tags intact)
+      setIsSpeaking(true);
+      const voice = selectedVoiceRef.current || 'tara';
+
+      // Truncate text for TTS to avoid long hangs (max ~300 chars)
+      const ttsText = cleanText.length > 300 ? cleanText.slice(0, 297) + '...' : cleanText;
+
+      const ttsTimeoutId = setTimeout(() => controller.abort(), 30000);
+
+      const ttsRes = await fetch('/api/voice/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ voice, text: ttsText }),
+        signal: controller.signal,
+      });
+      clearTimeout(ttsTimeoutId);
+
+      if (!ttsRes.ok) {
+        setErrorMsg('TTS unavailable');
+        setTimeout(() => setErrorMsg(null), 3000);
+        setIsSpeaking(false);
+        try { recognitionRef.current?.start(); } catch { /* ok */ }
+        return;
+      }
+
+      const blob = await ttsRes.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudioRef.current = audio;
+
+      // Simulate audio levels from playback
+      let levelFrame: number;
+      const simulateLevel = () => {
+        setAudioLevel(0.3 + Math.random() * 0.4);
+        levelFrame = requestAnimationFrame(simulateLevel);
+      };
+
+      audio.onplay = () => { simulateLevel(); };
+
+      const cleanup = () => {
+        cancelAnimationFrame(levelFrame);
+        URL.revokeObjectURL(url);
+        audio.src = '';
+        currentAudioRef.current = null;
+        setIsSpeaking(false);
+        setAudioLevel(0);
+        try { recognitionRef.current?.start(); } catch { /* ok */ }
+      };
+
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
+
+      await audio.play();
+    } catch (e: any) {
+      // Ignore aborts from component close
+      if (e?.name === 'AbortError' && !abortRef.current) return;
+
+      const isTimeout = e?.name === 'AbortError';
+      const msg = isTimeout ? 'Request timed out' : 'Connection error';
+      setErrorMsg(msg);
+      setTimeout(() => setErrorMsg(null), 4000);
+      console.error('Voice processing error:', e);
+      setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: isTimeout ? 'Sorry, that took too long. Try again.' : 'Sorry, something went wrong.' }]);
+      setIsThinking(false);
+      setIsSpeaking(false);
+      try { recognitionRef.current?.start(); } catch { /* ok */ }
     }
-  }, [state, phase]);
+  }, [stopCurrentAudio]);
 
+  // Voice selection handler
   const handleVoiceSelect = useCallback(async (voiceId: string) => {
     setSelectedVoice(voiceId);
+    selectedVoiceRef.current = voiceId;
     localStorage.setItem('titan-voice', voiceId);
 
     // Update voice config on server
@@ -127,10 +369,12 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       });
     } catch { /* non-critical */ }
 
-    setPhase('connecting');
-    connect();
-  }, [connect]);
+    setPhase('active');
+    startMicMonitor();
+    startRecognition();
+  }, [startMicMonitor, startRecognition]);
 
+  // Preview voice
   const handlePreview = useCallback(async (voiceId: string) => {
     try {
       const res = await fetch('/api/voice/preview', {
@@ -142,20 +386,61 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+        audio.src = '';
+      };
+      audio.onended = cleanup;
+      audio.onerror = cleanup;
       audio.play();
-      audio.onended = () => URL.revokeObjectURL(url);
     } catch { /* preview not available */ }
   }, []);
 
+  // Close handler — abort in-flight requests, stop audio, stop mic
   const handleClose = useCallback(() => {
     setVisible(false);
-    disconnect();
+    // Abort any in-flight fetches
+    abortRef.current?.abort();
+    abortRef.current = null;
+    try { recognitionRef.current?.stop(); } catch { /* ok */ }
+    stopCurrentAudio();
+    stopMicMonitor();
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     setTimeout(onClose, 200);
-  }, [disconnect, onClose]);
+  }, [onClose, stopMicMonitor, stopCurrentAudio]);
 
+  // Toggle mute — also stops/starts mic stream so browser indicator reflects state
   const toggleMute = useCallback(() => {
-    setIsMuted((prev) => !prev);
-  }, []);
+    setIsMuted(prev => {
+      const newMuted = !prev;
+      isMutedRef.current = newMuted;
+      if (newMuted) {
+        try { recognitionRef.current?.stop(); } catch { /* ok */ }
+        stopMicMonitor();
+        setIsListening(false);
+      } else {
+        startMicMonitor();
+        try { recognitionRef.current?.start(); } catch { /* ok */ }
+      }
+      return newMuted;
+    });
+  }, [startMicMonitor, stopMicMonitor]);
+
+  // Determine speaker state for the orb
+  const activeSpeaker = isSpeaking ? 'assistant' : isThinking ? 'thinking' : isListening ? 'user' : 'idle';
+
+  // Status text
+  const statusText = isMuted
+    ? 'Muted'
+    : isSpeaking
+      ? 'TITAN is speaking...'
+      : isThinking
+        ? 'Thinking...'
+        : isListening
+          ? (interimText ? `"${interimText}"` : 'Listening...')
+          : 'Connected';
+
+  const statusColor = isSpeaking ? '#a78bfa' : isThinking ? '#f59e0b' : isListening ? '#22d3ee' : '#71717a';
 
   return (
     <div
@@ -186,109 +471,42 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         </div>
       )}
 
-      {/* Phase: Connecting */}
-      {phase === 'connecting' && (
-        <>
-          <div className="mb-8 text-center">
-            <div className="text-lg font-medium mb-1 text-[#fafafa]">
-              {state === 'connecting' && (retryCount > 0 ? `Reconnecting (${retryCount}/${MAX_RETRIES})...` : 'Connecting...')}
-              {state === 'error' && retryCount >= MAX_RETRIES && 'Connection Failed'}
-              {state === 'error' && retryCount < MAX_RETRIES && `Retrying (${retryCount + 1}/${MAX_RETRIES})...`}
-              {state === 'disconnected' && 'Disconnected'}
-            </div>
-            {state === 'error' && error && (
-              <div className="text-sm text-red-500 mt-1">{error}</div>
-            )}
-            <div className="text-xs mt-1" style={{ color: '#52525b' }}>
-              via {networkType}
-            </div>
-          </div>
-
-          {/* Try Again button when max retries exhausted */}
-          {state === 'error' && retryCount >= MAX_RETRIES && (
-            <button
-              onClick={() => {
-                setRetryCount(0);
-                connect();
-              }}
-              className="mb-6 flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#3f3f46]"
-              style={{ backgroundColor: '#27272a', color: '#fafafa' }}
-            >
-              <RotateCcw className="h-4 w-4" />
-              Try Again
-            </button>
-          )}
-
-          {/* LiveKit not installed message */}
-          {liveKitAvailable === false && (
-            <div className="mb-8 rounded-lg px-6 py-4 text-center bg-[#27272a]">
-              <p className="mb-2 text-sm font-medium text-[#fafafa]">
-                Voice packages not installed
-              </p>
-              <code className="rounded px-2 py-1 text-xs bg-[#18181b] text-[#a855f7]">
-                npm install @livekit/components-react livekit-client
-              </code>
-            </div>
-          )}
-
-          <AudioVisualizer
-            type="wave"
-            active={false}
-            color="#6366f1"
-            audioLevel={0}
-          />
-        </>
-      )}
-
-      {/* Phase: Active call */}
+      {/* Phase: Active voice chat */}
       {phase === 'active' && (
         <>
           {/* Status */}
           <div className="mb-6 text-center">
-            <div className="text-base font-medium mb-0.5 transition-colors duration-500" style={{
-              color: activeSpeaker === 'user' ? '#22d3ee' :
-                     activeSpeaker === 'assistant' ? '#a78bfa' :
-                     activeSpeaker === 'thinking' ? '#f59e0b' :
-                     '#71717a',
-            }}>
-              {isMuted ? 'Muted' :
-               activeSpeaker === 'assistant' ? 'TITAN is speaking...' :
-               activeSpeaker === 'thinking' ? 'Thinking...' :
-               activeSpeaker === 'user' ? 'Listening...' :
-               'Connected'}
+            <div
+              className="text-base font-medium mb-0.5 transition-colors duration-500 max-w-md truncate px-4"
+              style={{ color: statusColor }}
+            >
+              {statusText}
             </div>
+            {errorMsg && (
+              <div
+                className="text-xs font-medium mt-1 animate-pulse"
+                style={{ color: '#ef4444' }}
+              >
+                {errorMsg}
+              </div>
+            )}
             <div className="text-xs mt-1" style={{ color: '#52525b' }}>
-              via {networkType}
+              Orpheus TTS · Browser STT
             </div>
           </div>
 
-          {/* Fluid orb with TITAN logo */}
+          {/* Fluid orb */}
           <FluidOrb
-            audioLevel={audioLevel}
+            audioLevel={isMuted ? 0 : audioLevel}
             speaker={isMuted ? 'idle' : activeSpeaker}
             size={260}
           />
-
-          {/* LiveKit Room */}
-          {liveKitAvailable && LKComponents && tokenData && state === 'connected' && (
-            <LiveKitSession
-              LK={LKComponents}
-              serverUrl={tokenData.serverUrl}
-              token={tokenData.participantToken}
-              isMuted={isMuted}
-              onTranscript={(msg) => {
-                setMessages((prev) => [...prev, msg]);
-              }}
-              onAgentStateChange={handleAgentStateChange}
-              onAudioLevelChange={handleAudioLevelChange}
-            />
-          )}
 
           {/* Transcript */}
           <div className="mt-8 w-full max-w-lg px-4">
             <TranscriptView
               messages={messages}
-              isListening={!isMuted}
+              isListening={isListening && !isMuted}
             />
           </div>
 
@@ -319,195 +537,4 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       )}
     </div>
   );
-}
-
-/**
- * Renders the actual LiveKit room connection.
- * Isolated so the dynamic import types stay contained.
- */
-function LiveKitSession({
-  LK,
-  serverUrl,
-  token,
-  isMuted,
-  onTranscript,
-  onAgentStateChange,
-  onAudioLevelChange,
-}: {
-  LK: any;
-  serverUrl: string;
-  token: string;
-  isMuted: boolean;
-  onTranscript: (msg: TranscriptMessage) => void;
-  onAgentStateChange: (state: string) => void;
-  onAudioLevelChange: (level: number) => void;
-}) {
-  const { LiveKitRoom, RoomAudioRenderer } = LK;
-
-  return (
-    <LiveKitRoom
-      serverUrl={serverUrl}
-      token={token}
-      audio={!isMuted}
-      connect={true}
-      style={{ display: 'contents' }}
-    >
-      <RoomAudioRenderer />
-      <VoiceAssistantBridge
-        LK={LK}
-        onTranscript={onTranscript}
-        onAgentStateChange={onAgentStateChange}
-        onAudioLevelChange={onAudioLevelChange}
-      />
-    </LiveKitRoom>
-  );
-}
-
-/**
- * Uses the LiveKit useVoiceAssistant hook if available to capture transcripts.
- * Must be rendered inside LiveKitRoom.
- */
-function VoiceAssistantBridge({
-  LK,
-  onTranscript,
-  onAgentStateChange,
-  onAudioLevelChange,
-}: {
-  LK: any;
-  onTranscript: (msg: TranscriptMessage) => void;
-  onAgentStateChange: (state: string) => void;
-  onAudioLevelChange: (level: number) => void;
-}) {
-  const useVoiceAssistant = LK.useVoiceAssistant;
-  if (!useVoiceAssistant) return null;
-
-  return (
-    <VoiceAssistantInner
-      LK={LK}
-      useVoiceAssistant={useVoiceAssistant}
-      onTranscript={onTranscript}
-      onAgentStateChange={onAgentStateChange}
-      onAudioLevelChange={onAudioLevelChange}
-    />
-  );
-}
-
-function VoiceAssistantInner({
-  LK,
-  useVoiceAssistant,
-  onTranscript,
-  onAgentStateChange,
-  onAudioLevelChange,
-}: {
-  LK: any;
-  useVoiceAssistant: any;
-  onTranscript: (msg: TranscriptMessage) => void;
-  onAgentStateChange: (state: string) => void;
-  onAudioLevelChange: (level: number) => void;
-}) {
-  const voiceAssistant = useVoiceAssistant();
-  const agentState: string = voiceAssistant?.state ?? 'disconnected';
-  const audioTrack = voiceAssistant?.audioTrack;
-  const agentTranscriptions: any[] = voiceAssistant?.agentTranscriptions ?? [];
-  const [hasRealVolume, setHasRealVolume] = useState(false);
-
-  // Emit agent state changes
-  const prevState = useRef(agentState);
-  useEffect(() => {
-    if (agentState !== prevState.current) {
-      prevState.current = agentState;
-      onAgentStateChange(agentState);
-    }
-  }, [agentState, onAgentStateChange]);
-
-  // Fire on mount so VoiceOverlay gets the initial state
-  useEffect(() => {
-    onAgentStateChange(agentState);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Fallback audio levels when no real track volume — synthesize from state
-  useEffect(() => {
-    if (hasRealVolume) return;
-    let frame: number;
-    function tick() {
-      let level: number;
-      switch (agentState) {
-        case 'speaking':
-          level = 0.5 + (Math.random() - 0.5) * 0.2;
-          break;
-        case 'listening':
-          level = 0.3 + (Math.random() - 0.5) * 0.1;
-          break;
-        default:
-          level = 0.1;
-      }
-      onAudioLevelChange(level);
-      frame = requestAnimationFrame(tick);
-    }
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [agentState, hasRealVolume, onAudioLevelChange]);
-
-  // Emit transcripts from agentTranscriptions
-  const processedCount = useRef(0);
-  useEffect(() => {
-    if (agentTranscriptions.length > processedCount.current) {
-      const newSegments = agentTranscriptions.slice(processedCount.current);
-      for (const seg of newSegments) {
-        if (seg?.text) {
-          onTranscript({
-            role: 'assistant',
-            text: seg.text,
-          });
-        }
-      }
-      processedCount.current = agentTranscriptions.length;
-    }
-  }, [agentTranscriptions, onTranscript]);
-
-  return (
-    <>
-      {LK.useTrackVolume && audioTrack && (
-        <TrackVolumeMonitor
-          useTrackVolume={LK.useTrackVolume}
-          audioTrack={audioTrack}
-          onAudioLevelChange={onAudioLevelChange}
-          onActive={setHasRealVolume}
-        />
-      )}
-    </>
-  );
-}
-
-/**
- * Isolated component for useTrackVolume hook.
- * By mounting/unmounting this component instead of conditionally calling the hook,
- * we avoid violating React's rules of hooks.
- */
-function TrackVolumeMonitor({
-  useTrackVolume,
-  audioTrack,
-  onAudioLevelChange,
-  onActive,
-}: {
-  useTrackVolume: any;
-  audioTrack: any;
-  onAudioLevelChange: (level: number) => void;
-  onActive: (active: boolean) => void;
-}) {
-  const volume = useTrackVolume(audioTrack) as number;
-
-  useEffect(() => {
-    onActive(true);
-    return () => onActive(false);
-  }, [onActive]);
-
-  useEffect(() => {
-    if (volume !== undefined) {
-      onAudioLevelChange(Math.min(1, volume));
-    }
-  }, [volume, onAudioLevelChange]);
-
-  return null;
 }

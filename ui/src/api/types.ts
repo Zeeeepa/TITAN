@@ -58,6 +58,9 @@ export interface VoiceConfig {
   livekitApiSecret: string;
   agentUrl: string;
   ttsVoice: string;
+  ttsEngine?: 'orpheus' | 'kokoro';
+  ttsUrl?: string;
+  sttUrl?: string;
 }
 
 // ---- Health ----
@@ -69,10 +72,11 @@ export interface HealthStatus {
 
 export interface VoiceHealth {
   livekit: boolean;
-  whisper: boolean;
-  kokoro: boolean;
+  stt: boolean;
+  tts: boolean;
   agent: boolean;
   overall: boolean;
+  ttsEngine?: string;
 }
 
 // ---- Stats ----

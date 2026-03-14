@@ -11,6 +11,9 @@ function VoiceSettingsPanel() {
     livekitApiSecret: '',
     agentUrl: '',
     ttsVoice: '',
+    ttsEngine: 'orpheus',
+    ttsUrl: 'http://localhost:5005',
+    sttUrl: 'http://localhost:8300',
   });
   const [health, setHealth] = useState<VoiceHealth | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,13 +106,13 @@ function VoiceSettingsPanel() {
             {(
               [
                 ['LiveKit', health.livekit],
-                ['Whisper', health.whisper],
-                ['Kokoro', health.kokoro],
+                ['STT', health.stt],
+                [`TTS (${health.ttsEngine || 'orpheus'})`, health.tts],
                 ['Agent', health.agent],
               ] as const
             ).map(([name, ok]) => (
               <span key={name} className="flex items-center gap-2 text-sm text-[#fafafa]">
-                {healthDot(ok)}
+                {healthDot(ok as boolean)}
                 {name}
               </span>
             ))}
@@ -130,22 +133,92 @@ function VoiceSettingsPanel() {
         </label>
       </div>
 
+      {/* TTS Engine selector */}
+      <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6 space-y-4">
+        <h3 className="text-sm font-medium text-[#a1a1aa]">TTS Engine</h3>
+        <div className="flex gap-3">
+          {(['orpheus', 'kokoro'] as const).map((engine) => (
+            <button
+              key={engine}
+              onClick={() => {
+                update('ttsEngine', engine);
+                update('ttsUrl', engine === 'orpheus' ? 'http://localhost:5005' : 'http://localhost:8880');
+                update('ttsVoice', engine === 'orpheus' ? 'tara' : 'af_heart');
+              }}
+              className={`flex-1 rounded-lg border px-4 py-3 text-left transition-all ${
+                voice.ttsEngine === engine
+                  ? 'border-[#6366f1] bg-[#6366f1]/10'
+                  : 'border-[#3f3f46] hover:border-[#52525b]'
+              }`}
+            >
+              <div className="text-sm font-medium text-[#fafafa] capitalize">{engine}</div>
+              <div className="text-xs text-[#71717a] mt-0.5">
+                {engine === 'orpheus' ? 'Emotional, GPU-accelerated, local' : 'Fast, lightweight, legacy'}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* TTS Voice selector */}
+      <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6 space-y-4">
+        <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
+        <div className="grid grid-cols-4 gap-2">
+          {(voice.ttsEngine === 'orpheus'
+            ? ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac']
+            : ['af_heart', 'af_bella', 'af_nova', 'af_sky', 'am_adam', 'am_michael']
+          ).map((v) => (
+            <button
+              key={v}
+              onClick={() => update('ttsVoice', v)}
+              className={`rounded-lg border px-3 py-2 text-sm transition-all capitalize ${
+                voice.ttsVoice === v
+                  ? 'border-[#6366f1] bg-[#6366f1]/10 text-[#fafafa]'
+                  : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#52525b] hover:text-[#fafafa]'
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Connection fields */}
       <div className="space-y-4 rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <h3 className="text-sm font-medium text-[#a1a1aa]">Connection</h3>
+
+        <div>
+          <label className="mb-1 block text-xs text-[#71717a]">TTS URL</label>
+          <input
+            value={voice.ttsUrl || ''}
+            onChange={(e) => update('ttsUrl', e.target.value)}
+            placeholder={voice.ttsEngine === 'orpheus' ? 'http://localhost:5005' : 'http://localhost:8880'}
+            className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs text-[#71717a]">STT URL</label>
+          <input
+            value={voice.sttUrl || ''}
+            onChange={(e) => update('sttUrl', e.target.value)}
+            placeholder="http://localhost:8300"
+            className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
+          />
+        </div>
 
         <div>
           <label className="mb-1 block text-xs text-[#71717a]">LiveKit URL</label>
           <input
             value={voice.livekitUrl}
             onChange={(e) => update('livekitUrl', e.target.value)}
-            placeholder="wss://your-livekit-server.com"
+            placeholder="ws://localhost:7880"
             className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-[#71717a]">API Key</label>
+          <label className="mb-1 block text-xs text-[#71717a]">LiveKit API Key</label>
           <input
             value={voice.livekitApiKey}
             onChange={(e) => update('livekitApiKey', e.target.value)}
@@ -156,7 +229,7 @@ function VoiceSettingsPanel() {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-[#71717a]">API Secret</label>
+          <label className="mb-1 block text-xs text-[#71717a]">LiveKit API Secret</label>
           <input
             value={voice.livekitApiSecret}
             onChange={(e) => update('livekitApiSecret', e.target.value)}
@@ -171,17 +244,7 @@ function VoiceSettingsPanel() {
           <input
             value={voice.agentUrl}
             onChange={(e) => update('agentUrl', e.target.value)}
-            placeholder="http://localhost:48420"
-            className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs text-[#71717a]">TTS Voice</label>
-          <input
-            value={voice.ttsVoice}
-            onChange={(e) => update('ttsVoice', e.target.value)}
-            placeholder="e.g. alloy, nova, shimmer"
+            placeholder="http://localhost:8081"
             className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
           />
         </div>

@@ -26,10 +26,11 @@ const TTS_VOICES = [
 
 interface VoiceHealth {
   livekit: boolean;
-  whisper: boolean;
-  kokoro: boolean;
+  stt: boolean;
+  tts: boolean;
   agent: boolean;
   overall: boolean;
+  ttsEngine?: string;
 }
 
 interface VoiceStatus {
@@ -369,8 +370,8 @@ function SettingsPanel() {
                 {[
                   { label: 'LiveKit Server', ok: voiceHealth.livekit },
                   { label: 'Voice Agent', ok: voiceHealth.agent },
-                  { label: 'Whisper STT', ok: voiceHealth.whisper },
-                  { label: 'Kokoro TTS', ok: voiceHealth.kokoro },
+                  { label: 'STT', ok: voiceHealth.stt },
+                  { label: `TTS (${voiceHealth.ttsEngine || 'orpheus'})`, ok: voiceHealth.tts },
                 ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center gap-2">
                     <StatusDot ok={ok} />

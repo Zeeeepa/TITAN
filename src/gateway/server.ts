@@ -801,12 +801,16 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         res.setHeader('X-Accel-Buffering', 'no');
         res.flushHeaders();
 
+        // Track client disconnect to avoid writing to dead connections
+        let clientDisconnected = false;
+        req.on('close', () => { clientDisconnected = true; });
+
         const response = await routeMessage(content, channel, userId, {
           onToken: (token) => {
-            res.write(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
+            if (!clientDisconnected) res.write(`event: token\ndata: ${JSON.stringify({ text: token })}\n\n`);
           },
           onToolCall: (name, args) => {
-            res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
+            if (!clientDisconnected) res.write(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
           },
         }, agentId);
         titanRequestsTotal.increment({ channel, status: 'ok' });
@@ -818,8 +822,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           if (response.tokenUsage.completion) titanTokensTotal.increment({ type: 'completion' }, response.tokenUsage.completion);
         }
         if (response.model) titanModelRequestsTotal.increment({ model: response.model, provider: 'default' });
-        res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
-        res.end();
+        if (!clientDisconnected) {
+          res.write(`event: done\ndata: ${JSON.stringify({ content: response.content, sessionId: response.sessionId, durationMs: response.durationMs, model: response.model, toolsUsed: response.toolsUsed })}\n\n`);
+          res.end();
+        }
       } else {
         const response = await routeMessage(content, channel, userId, undefined, agentId);
         titanRequestsTotal.increment({ channel, status: 'ok' });
@@ -836,10 +842,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     } catch (error) {
       titanRequestsTotal.increment({ channel, status: 'error' });
       titanErrorsTotal.increment({ type: 'request' });
-      if (wantsSSE) {
+      if (wantsSSE && !clientDisconnected) {
         res.write(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
         res.end();
-      } else {
+      } else if (!wantsSSE) {
         res.status(500).json({ error: (error as Error).message });
       }
     } finally {
@@ -938,7 +944,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     // Return config with sensitive fields masked
     res.json({
       model: cfg.agent.model,
-      provider: cfg.agent.provider || 'openai',
+      provider: cfg.agent.model?.split('/')[0] || 'openai',
       voice: {
         enabled: Boolean(cfg.voice?.enabled),
         livekitUrl: cfg.voice?.livekitUrl || '',
@@ -1847,17 +1853,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/voice/health', async (_req, res) => {
     const cfg = loadConfig();
     if (!cfg.voice?.enabled) {
-      res.json({ livekit: false, whisper: false, kokoro: false, agent: false, overall: false });
+      res.json({ livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'orpheus' });
       return;
     }
-    const results = { livekit: false, whisper: false, kokoro: false, agent: false, overall: false };
+    const results = { livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: cfg.voice.ttsEngine || 'orpheus' };
     const sttUrl = cfg.voice.sttUrl || 'http://localhost:8300';
-    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:8880';
+    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:5005';
+    const ttsHealthUrl = cfg.voice.ttsEngine === 'kokoro' ? `${ttsUrl}/v1/audio/voices` : `${ttsUrl}/v1/audio/speech`;
     const checks = [
       { key: 'livekit' as const, url: cfg.voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://') },
       { key: 'agent' as const, url: cfg.voice.agentUrl },
-      { key: 'whisper' as const, url: `${sttUrl}/health` },
-      { key: 'kokoro' as const, url: `${ttsUrl}/v1/audio/voices` },
+      { key: 'stt' as const, url: `${sttUrl}/health` },
     ];
     await Promise.allSettled(checks.map(async ({ key, url }) => {
       try {
@@ -1865,29 +1871,45 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         results[key] = resp.ok || resp.status < 500;
       } catch { results[key] = false; }
     }));
-    results.overall = results.livekit && results.whisper && results.kokoro;
+    // TTS check — probe the actual TTS endpoint (not root URL which may 404)
+    try {
+      const resp = await fetch(ttsHealthUrl, {
+        method: cfg.voice.ttsEngine === 'kokoro' ? 'GET' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: cfg.voice.ttsEngine === 'kokoro' ? undefined : JSON.stringify({ input: 'test', voice: 'tara', response_format: 'wav' }),
+        signal: AbortSignal.timeout(5000),
+      });
+      // Any non-5xx means the server is alive (even 400 from bad input is fine)
+      results.tts = resp.status < 500;
+    } catch { results.tts = false; }
+    // Overall: TTS is required, LiveKit/STT optional for text-to-speech mode
+    results.overall = results.tts;
     res.json(results);
   });
 
   // Voice preview — synthesize a short sample and return audio
   app.post('/api/voice/preview', async (req, res) => {
     const cfg = loadConfig();
-    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'af_heart';
-    const text = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
-    const kokoroUrl = 'http://localhost:8880/v1/audio/speech';
+    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'tara';
+    const rawText = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
+    // Truncate to prevent extremely long TTS requests from hanging
+    const text = rawText.length > 500 ? rawText.slice(0, 497) + '...' : rawText;
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
+    const ttsEndpoint = `${ttsUrl}/v1/audio/speech`;
+    logger.info('Gateway', `TTS request: voice=${voiceId}, text=${text.slice(0, 80)}...`);
 
     try {
-      const ttsRes = await fetch(kokoroUrl, {
+      const ttsRes = await fetch(ttsEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer not-needed' },
-        body: JSON.stringify({ model: 'kokoro', voice: voiceId, input: text, response_format: 'mp3' }),
-        signal: AbortSignal.timeout(10000),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: text, voice: voiceId, response_format: 'wav' }),
+        signal: AbortSignal.timeout(60000), // Orpheus can take longer on CPU
       });
       if (!ttsRes.ok) {
         res.status(502).json({ error: 'TTS service unavailable' });
         return;
       }
-      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Type', 'audio/wav');
       const buffer = Buffer.from(await ttsRes.arrayBuffer());
       res.send(buffer);
     } catch {
@@ -1897,10 +1919,19 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
   // Voice available voices
   app.get('/api/voice/voices', async (_req, res) => {
+    const cfg = loadConfig();
+    const engine = cfg.voice?.ttsEngine || 'orpheus';
+    if (engine === 'orpheus') {
+      // Orpheus voices are fixed — return the known set
+      res.json({ voices: ['tara', 'leah', 'jess', 'leo', 'dan', 'mia', 'zac', 'zoe'] });
+      return;
+    }
+    // Kokoro — query the service
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:8880';
     try {
-      const kokoroRes = await fetch('http://localhost:8880/v1/audio/voices', { signal: AbortSignal.timeout(3000) });
-      if (!kokoroRes.ok) { res.json({ voices: [] }); return; }
-      const data = await kokoroRes.json() as { voices?: string[] };
+      const ttsRes = await fetch(`${ttsUrl}/v1/audio/voices`, { signal: AbortSignal.timeout(3000) });
+      if (!ttsRes.ok) { res.json({ voices: [] }); return; }
+      const data = await ttsRes.json() as { voices?: string[] };
       res.json(data);
     } catch {
       res.json({ voices: [] });

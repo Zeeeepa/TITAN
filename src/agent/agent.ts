@@ -362,11 +362,6 @@ export async function processMessage(
 
     logger.info(COMPONENT, `Processing message in session ${session.id} (${channel}/${userId})`);
 
-    // ── Record user message to knowledge graph (fire-and-forget) ───
-    if (message.length > 10) {
-        addEpisode(`[User → ${channel}/${userId}] ${message.slice(0, 500)}`, 'user').catch(() => {});
-    }
-
     // ── Detect user corrections and learn from them ───
     if (isCorrection(message)) {
         const prevAssistant = getContextMessages(session).filter(m => m.role === 'assistant').pop();
@@ -518,6 +513,29 @@ export async function processMessage(
     let systemPrompt = await buildSystemPrompt(config, message);
     if (overrides?.systemPrompt) systemPrompt = overrides.systemPrompt + '\n\n' + systemPrompt;
     if (preRoutedContext) systemPrompt += preRoutedContext;
+
+    // Voice mode: force concise, conversational responses suitable for TTS
+    if (channel === 'voice') {
+        systemPrompt += `\n\n## VOICE MODE — CRITICAL (HIGHEST PRIORITY)
+You are speaking out loud via text-to-speech (Orpheus TTS). Your response will be read aloud as audio.
+
+STRICT RULES — NEVER BREAK THESE:
+- Maximum 2-3 short sentences. NEVER exceed 50 words total.
+- Be conversational and natural — like talking to a friend
+- ABSOLUTELY NO: bullet points, numbered lists, markdown, code blocks, emojis, headers, bold, italics
+- ABSOLUTELY NO: long explanations, context dumps, capability descriptions, action plans
+- Do NOT mention your tools, personas, knowledge graph, or internal systems unless directly asked
+- For greetings, just greet back warmly in one sentence
+- Answer the question directly. If you don't know, say so briefly.
+- Write as plain spoken English only. No formatting of any kind.
+
+## Orpheus TTS Emotion Tags
+Express emotions naturally using these inline tags:
+<laugh>, <chuckle>, <sigh>, <cough>, <sniffle>, <groan>, <yawn>, <gasp>
+Example: "That's hilarious! <laugh> I can't believe that happened."
+Example: "<sigh> That's a tough one, but I'll figure it out."
+Use sparingly and naturally. They make you sound more human.`;
+    }
     const historyMessages = getContextMessages(session);
     const tools = getToolDefinitions();
 

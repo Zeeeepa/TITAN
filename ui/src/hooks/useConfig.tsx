@@ -27,7 +27,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     try {
       const cfg = await getConfig();
       setConfig(cfg);
-      if (cfg.voice) {
+      if (cfg.voice?.enabled) {
         try {
           const vh = await getVoiceHealth();
           setVoiceHealth(vh);
@@ -46,7 +46,8 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     refresh();
   }, []);
 
-  const voiceAvailable = Boolean(config?.voice?.enabled && voiceHealth?.overall);
+  // Voice is available if enabled and TTS is up (LiveKit/STT optional for text-to-speech)
+  const voiceAvailable = Boolean(config?.voice?.enabled && (voiceHealth?.overall || voiceHealth?.tts));
 
   return (
     <ConfigContext.Provider value={{ config, voiceHealth, voiceAvailable, loading, refresh }}>

@@ -153,7 +153,7 @@ export class OllamaProvider extends LLMProvider {
             stream: false,
             options: {
                 num_predict: options.maxTokens || 16384,
-                ...(isCloudModel ? {} : { num_ctx: 8192 }),
+                ...(isCloudModel ? {} : { num_ctx: 16384 }),
                 temperature: options.temperature ?? 0.7,
             },
         };
@@ -294,7 +294,7 @@ export class OllamaProvider extends LLMProvider {
                 return msg;
             }),
             stream: true,
-            options: { num_predict: options.maxTokens || 16384, ...(isCloudModel ? {} : { num_ctx: 8192 }), temperature: options.temperature ?? 0.7 },
+            options: { num_predict: options.maxTokens || 16384, ...(isCloudModel ? {} : { num_ctx: 16384 }), temperature: options.temperature ?? 0.7 },
         };
 
         // Explicit thinking mode — disable for cloud models with tools

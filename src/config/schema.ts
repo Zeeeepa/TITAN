@@ -242,8 +242,14 @@ export const VoiceConfigSchema = z.object({
     livekitApiSecret: z.string().default('secret'),
     /** URL of the voice agent (for health checks) */
     agentUrl: z.string().default('http://localhost:8081'),
-    /** Default TTS voice name (Kokoro) */
-    ttsVoice: z.string().default('af_heart'),
+    /** Default TTS voice name */
+    ttsVoice: z.string().default('tara'),
+    /** TTS engine: 'orpheus' (emotional, local GPU) or 'kokoro' (legacy) */
+    ttsEngine: z.enum(['orpheus', 'kokoro']).default('orpheus'),
+    /** TTS server URL (Orpheus: http://localhost:5005, Kokoro: http://localhost:8880) */
+    ttsUrl: z.string().default('http://localhost:5005'),
+    /** STT server URL (e.g. faster-whisper) */
+    sttUrl: z.string().default('http://localhost:8300'),
 });
 
 export const ContextEnginePluginConfigSchema = z.object({

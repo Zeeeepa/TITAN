@@ -548,6 +548,18 @@ export const TitanConfigSchema = z.object({
         autoresearchEnabled: z.boolean().default(false),
         autoresearchSchedule: z.array(z.string()).default(['0 3 * * *']),  // 3am daily
     }).default({}),
+    daemon: z.object({
+        /** Enable persistent agent daemon (always-on awareness loop) */
+        enabled: z.boolean().default(false),
+        /** Watcher configurations — pluggable checker functions on intervals */
+        watchers: z.array(z.object({
+            name: z.string(),
+            enabled: z.boolean().default(true),
+            intervalMs: z.number().default(300_000), // 5 min
+        })).default([]),
+        /** Maximum autonomous actions per hour (rate limiting) */
+        maxActionsPerHour: z.number().default(10),
+    }).default({}),
     capsolver: CapsolverConfigSchema.default({}),
     x: z.object({
         /** Enable X/Twitter integration */

@@ -61,6 +61,8 @@ import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
 import { invalidateCacheForModel } from '../agent/responseCache.js';
 import { initAutopilot, stopAutopilot, runAutopilotNow, getAutopilotStatus, getRunHistory } from '../agent/autopilot.js';
+import { initDaemon, stopDaemon, getDaemonStatus, pauseDaemonManual, resumeDaemon, titanEvents } from '../agent/daemon.js';
+import { auditLog, queryAuditLog, getAuditStats } from '../agent/auditLog.js';
 import { listGoals, createGoal, getGoal, deleteGoal, completeSubtask, addSubtask } from '../agent/goals.js';
 import { startTunnel, stopTunnel, getTunnelStatus } from '../utils/tunnel.js';
 import { getConsentUrl, exchangeCode, isGoogleConnected, getGoogleEmail, disconnectGoogle } from '../auth/google.js';
@@ -1588,6 +1590,73 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ completed: true });
   });
 
+  // ── Daemon API ────────────────────────────────────────────
+
+  app.get('/api/daemon/status', (_req, res) => {
+    res.json(getDaemonStatus());
+  });
+
+  app.post('/api/daemon/stop', (_req, res) => {
+    pauseDaemonManual();
+    res.json({ paused: true });
+  });
+
+  app.post('/api/daemon/resume', (_req, res) => {
+    resumeDaemon();
+    res.json({ resumed: true });
+  });
+
+  app.get('/api/daemon/stream', (req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const onEvent = (event: string, data: unknown) => {
+      try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
+    };
+
+    const events = ['daemon:started', 'daemon:stopped', 'daemon:paused', 'daemon:resumed',
+                     'daemon:heartbeat', 'goal:subtask:ready', 'health:ollama:down',
+                     'health:ollama:degraded', 'cron:stuck'];
+
+    for (const evt of events) {
+      titanEvents.on(evt, (data: unknown) => onEvent(evt, data));
+    }
+
+    const keepalive = setInterval(() => {
+      try { res.write(': keepalive\n\n'); } catch { /* client gone */ }
+    }, 15_000);
+
+    req.on('close', () => {
+      clearInterval(keepalive);
+      for (const evt of events) {
+        titanEvents.removeAllListeners(evt);
+      }
+    });
+  });
+
+  // ── Audit API ────────────────────────────────────────────
+
+  app.get('/api/audit', (req, res) => {
+    const query = {
+      since: req.query.since as string | undefined,
+      until: req.query.until as string | undefined,
+      action: req.query.action as string | undefined,
+      source: req.query.source as string | undefined,
+      tool: req.query.tool as string | undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 100,
+    };
+    res.json({ entries: queryAuditLog(query) });
+  });
+
+  app.get('/api/audit/stats', (req, res) => {
+    const hours = req.query.hours ? parseInt(req.query.hours as string, 10) : 24;
+    res.json(getAuditStats(hours));
+  });
+
   // ── Cron API ──────────────────────────────────────────────
 
   app.get('/api/cron', (_req, res) => {
@@ -2864,6 +2933,9 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   // ── Autopilot — scheduled autonomous agent runs ─────────────
   initAutopilot(config);
 
+  // ── Daemon — persistent agent awareness loop ────────────────
+  initDaemon();
+
   // ── Morning Briefing — send once per day in 6am–12pm window ──
   checkAndSendBriefing(async (msg) => {
     broadcast({
@@ -3052,6 +3124,7 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
   const gracefulShutdown = async (signal: string) => {
     logger.info(COMPONENT, `Received ${signal} — shutting down gracefully...`);
     stopAutopilot();
+    stopDaemon();
     stopTunnel();
     await stopGateway();
     logger.info(COMPONENT, 'Gateway stopped. Goodbye.');

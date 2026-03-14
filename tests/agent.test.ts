@@ -154,6 +154,9 @@ vi.mock('../src/memory/graph.js', () => ({
 vi.mock('../src/agent/reflection.js', () => ({
     shouldReflect: vi.fn().mockReturnValue(false),
     reflect: vi.fn(),
+    resetProgress: vi.fn(),
+    recordProgress: vi.fn().mockReturnValue({ toolSucceeded: true, newInformation: true, closerToGoal: true, score: 1.0 }),
+    isProgressStalled: vi.fn().mockReturnValue(false),
 }));
 
 vi.mock('../src/agent/orchestrator.js', () => ({

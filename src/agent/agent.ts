@@ -24,7 +24,7 @@ import { initGraph, addEpisode, getGraphContext } from '../memory/graph.js';
 import { isAvailable as isBrainAvailable, selectTools as brainSelectTools, ensureLoaded as ensureBrainLoaded } from './brain.js';
 import { DEFAULT_CORE_TOOLS } from './toolSearch.js';
 import { buildSelfAwarenessContext } from './selfAwareness.js';
-import { shouldReflect, reflect } from './reflection.js';
+import { shouldReflect, reflect, resetProgress, recordProgress, isProgressStalled } from './reflection.js';
 import { analyzeForDelegation, executeDelegationPlan } from './orchestrator.js';
 import { spawnSubAgent, SUB_AGENT_TEMPLATES } from './subAgent.js';
 import { registerTool } from './toolRunner.js';
@@ -640,6 +640,12 @@ Use sparingly and naturally. They make you sound more human.`;
     setAutonomousMode(isAutonomous);
     heartbeat(session.id);
 
+    // ── Progress tracking for mid-execution re-planning ──
+    resetProgress();
+    let pivotCount = 0;
+    const MAX_PIVOTS = 1; // Max 1 strategic pivot per request
+    let failedApproaches: string[] = [];
+
     // ── Orchestration: check if task benefits from sub-agent delegation ──
     const autoDelegate = (subAgentConfig as Record<string, unknown> | undefined)?.autoDelegate !== false;
     if (isAutonomous && autoDelegate && message.split(/\s+/).length >= 10) {
@@ -683,13 +689,52 @@ Use sparingly and naturally. They make you sound more human.`;
             // Reflection: let the LLM decide whether to continue
             try {
                 const lastToolResult = messages.filter(m => m.role === 'tool').slice(-1)[0]?.content || '';
-                const reflectionResult = await reflect(round, toolsUsed, message, lastToolResult);
+                const failedContext = failedApproaches.length > 0 ? failedApproaches.join('; ') : undefined;
+                const reflectionResult = await reflect(round, toolsUsed, message, lastToolResult, failedContext);
+
                 if (reflectionResult.decision === 'stop') {
                     logger.info(COMPONENT, `Reflection says stop at round ${round + 1}: ${reflectionResult.reasoning}`);
                     messages.push({
                         role: 'user',
                         content: `You've reflected on your progress and decided you have enough information. Respond to the user now with your findings. Reasoning: ${reflectionResult.reasoning}`,
                     });
+                } else if (reflectionResult.decision === 'pivot' && pivotCount < MAX_PIVOTS) {
+                    // Strategic pivot: abandon current approach, re-plan from scratch
+                    pivotCount++;
+                    const toolsSummary = [...new Set(toolsUsed)].join(', ');
+                    const approachSummary = `Attempted tools: ${toolsSummary}. Result: ${reflectionResult.reasoning}`;
+                    failedApproaches.push(approachSummary);
+
+                    logger.info(COMPONENT, `🔄 PIVOT at round ${round + 1}: ${reflectionResult.reasoning}`);
+
+                    // Clear accumulated tool results but keep system prompt + original message
+                    const systemMsg = messages.find(m => m.role === 'system');
+                    const userMsg = messages.find(m => m.role === 'user' && !m.content.startsWith('['));
+                    messages.length = 0;
+                    if (systemMsg) messages.push(systemMsg);
+                    if (userMsg) messages.push(userMsg);
+
+                    // Inject pivot context
+                    messages.push({
+                        role: 'user',
+                        content: [
+                            `⚠️ STRATEGIC PIVOT: Your previous approach failed.`,
+                            `What was tried: ${approachSummary}`,
+                            `Why it failed: ${reflectionResult.reasoning}`,
+                            ``,
+                            `Try a COMPLETELY DIFFERENT strategy. Do NOT repeat the same tools or approach.`,
+                        ].join('\n'),
+                    });
+
+                    // Give half the remaining budget for the new approach
+                    const remaining = effectiveMaxRounds - round;
+                    const newBudget = Math.max(5, Math.floor(remaining / 2));
+                    // We don't actually modify effectiveMaxRounds, we just log the intent
+                    logger.info(COMPONENT, `Pivot budget: ${newBudget} rounds remaining of ${remaining}`);
+
+                    // Reset progress tracking for the new approach
+                    resetProgress();
+                    toolsUsed.length = 0;
                 } else if (reflectionResult.decision === 'adjust') {
                     messages.push({
                         role: 'user',
@@ -924,6 +969,14 @@ Use sparingly and naturally. They make you sound more human.`;
 
         // Break outer agent loop if loop detection triggered
         if (loopBroken) break;
+
+        // ── Progress scoring for re-planning ───────────────────────
+        if (reflectionEnabled && toolResults.length > 0) {
+            const anySucceeded = toolResults.some(r => !r.content.toLowerCase().includes('error:'));
+            const hasNewInfo = toolResults.some(r => r.content.length > 50 && !r.content.toLowerCase().includes('not found'));
+            // closerToGoal is approximated by tool success + new info
+            recordProgress(anySucceeded, hasNewInfo, anySucceeded && hasNewInfo);
+        }
 
         // ── Tool Search: expand activeTools with discovered tools ───
         if (toolSearchEnabled && toolResults.some(r => r.name === 'tool_search')) {

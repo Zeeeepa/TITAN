@@ -188,7 +188,7 @@ export const ToolSearchConfigSchema = z.object({
     /** Core tools always sent to the LLM without needing search */
     coreTools: z.array(z.string()).default([
         'shell', 'read_file', 'write_file', 'edit_file', 'list_dir',
-        'web_search', 'memory', 'tool_search',
+        'web_search', 'memory', 'tool_search', 'ha_setup',
     ]),
 });
 

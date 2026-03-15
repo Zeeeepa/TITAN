@@ -903,6 +903,33 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       }
     } catch { /* fall through to routeMessage */ }
 
+    // ── Auto-detect credentials in user messages ──────────────────────
+    // If the user pastes a Home Assistant URL + JWT token, save them automatically
+    // before the LLM even sees the message (prevents hallucination / tool-skip).
+    try {
+      const haKeywords = /home\s*assistant|homeassistant|\bha\b\s*(token|url|key|setup|connect)/i;
+      const jwtPattern = /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
+      const urlPattern = /https?:\/\/[^\s,'"]+/i;
+      if (haKeywords.test(content) && (jwtPattern.test(content) || urlPattern.test(content))) {
+        const jwtMatch = content.match(jwtPattern);
+        const urlMatch = content.match(urlPattern);
+        const cfg = loadConfig();
+        let saved = false;
+        if (jwtMatch && (!cfg.homeAssistant?.token || cfg.homeAssistant.token !== jwtMatch[0])) {
+          cfg.homeAssistant.token = jwtMatch[0];
+          saved = true;
+        }
+        if (urlMatch && urlMatch[0].match(/:\d{4}/) && (!cfg.homeAssistant?.url || cfg.homeAssistant.url !== urlMatch[0].replace(/\/+$/, ''))) {
+          cfg.homeAssistant.url = urlMatch[0].replace(/\/+$/, '');
+          saved = true;
+        }
+        if (saved) {
+          updateConfig({ homeAssistant: cfg.homeAssistant });
+          logger.info('Gateway', 'Auto-saved Home Assistant credentials from user message');
+        }
+      }
+    } catch { /* non-critical — let the LLM handle it */ }
+
     // Concurrent LLM request limit (auto-tuned to 2 on CPU-only systems)
     const maxConcurrent = maxConcurrentOverride ?? (loadConfig().security.maxConcurrentTasks || 5);
     if (activeLlmRequests >= maxConcurrent) {

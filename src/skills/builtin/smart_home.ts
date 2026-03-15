@@ -4,7 +4,8 @@
  * 11 tools: setup, devices, control, status, automations, scenes, history, areas, call_service, dashboard, notify.
  */
 import { registerSkill } from '../registry.js';
-import { loadConfig, saveConfig } from '../../config/config.js';
+import { loadConfig, updateConfig } from '../../config/config.js';
+import logger from '../../utils/logger.js';
 
 interface HAEntity {
     entity_id: string;
@@ -26,7 +27,7 @@ interface HAStateResponse {
 const SKILL_META = {
     name: 'smart_home',
     description:
-        'Use this for any home control or status request — "turn on the lights", "set thermostat to X", "lock the doors", "what\'s the temperature inside", "turn off everything", "show me my smart home devices", "run automation", "activate scene". Controls Home Assistant via REST API.',
+        'Use this for any home control, status, or setup request — "turn on the lights", "set thermostat to X", "lock the doors", "what\'s the temperature inside", "turn off everything", "show me my smart home devices", "run automation", "activate scene", "connect to Home Assistant", "here\'s my HA token". Also use when the user pastes a Home Assistant URL or access token (JWT starting with eyJ...). Controls Home Assistant via REST API.',
     version: '2.0.0',
     source: 'bundled' as const,
     enabled: true,
@@ -149,7 +150,7 @@ export function registerSmartHomeSkill(): void {
     registerSkill(SKILL_META, {
         name: 'ha_setup',
         description:
-            'Connect TITAN to a Home Assistant instance. Use when the user provides their Home Assistant URL and/or long-lived access token, or says "connect to Home Assistant", "set up smart home", or "here\'s my HA token". Saves the configuration so all other ha_* tools work.',
+            'CRITICAL: You MUST call this tool IMMEDIATELY when the user provides a Home Assistant URL, access token (JWT starting with "eyJ..."), or says anything like "connect to Home Assistant", "set up smart home", "here\'s my HA token/key/URL". Do NOT tell the user to set environment variables or configure settings manually — this tool does it automatically. Also call with no args to check current connection status.',
         parameters: {
             type: 'object',
             properties: {
@@ -160,15 +161,49 @@ export function registerSmartHomeSkill(): void {
                 },
                 token: {
                     type: 'string',
-                    description: 'Home Assistant long-lived access token',
+                    description:
+                        'Home Assistant long-lived access token (JWT starting with eyJ... or any string token the user provides)',
+                },
+                rawInput: {
+                    type: 'string',
+                    description:
+                        'If the user pasted a URL or token in their message and you are unsure which field it belongs to, pass the full text here and the tool will auto-detect and extract the URL and token.',
                 },
             },
             required: [],
         },
         execute: async (args) => {
             try {
-                const url = args.url as string | undefined;
-                const token = args.token as string | undefined;
+                let url = args.url as string | undefined;
+                let token = args.token as string | undefined;
+                const rawInput = args.rawInput as string | undefined;
+
+                // Auto-detect URL and token from raw input
+                if (rawInput) {
+                    // Extract URL: http(s)://...:<port> patterns
+                    if (!url) {
+                        const urlMatch = rawInput.match(/https?:\/\/[^\s,'"]+/i);
+                        if (urlMatch) {
+                            url = urlMatch[0].replace(/\/+$/, ''); // trim trailing slashes
+                        }
+                    }
+                    // Extract JWT token: eyJ... pattern (base64url segments separated by dots)
+                    if (!token) {
+                        const jwtMatch = rawInput.match(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+                        if (jwtMatch) {
+                            token = jwtMatch[0];
+                        }
+                    }
+                    // Extract non-JWT long token (32+ alphanumeric chars that isn't a URL)
+                    if (!token) {
+                        const longTokenMatch = rawInput.match(/\b[A-Za-z0-9_-]{32,}\b/);
+                        if (longTokenMatch && !longTokenMatch[0].match(/^https?/)) {
+                            token = longTokenMatch[0];
+                        }
+                    }
+                }
+
+                logger.info('SmartHome', `ha_setup called with url=${url ? 'yes' : 'no'}, token=${token ? 'yes(' + token.length + ' chars)' : 'no'}, rawInput=${rawInput ? 'yes(' + rawInput.length + ' chars)' : 'no'}`);
 
                 if (!url && !token) {
                     // Show current status
@@ -186,12 +221,12 @@ export function registerSmartHomeSkill(): void {
                     return '❌ Home Assistant not configured.\n\nTo set up, provide:\n  1. Your HA URL (e.g., http://homeassistant.local:8123)\n  2. A long-lived access token (create in HA → Profile → Security → Long-Lived Access Tokens)';
                 }
 
-                const config = loadConfig();
-
-                if (url) config.homeAssistant.url = url;
-                if (token) config.homeAssistant.token = token;
-
-                saveConfig(config);
+                // Save using updateConfig (atomic read-merge-validate-write)
+                const haUpdate: Record<string, string> = {};
+                if (url) haUpdate.url = url;
+                if (token) haUpdate.token = token;
+                updateConfig({ homeAssistant: haUpdate } as never);
+                logger.info('SmartHome', `Home Assistant config saved: url=${url ? url : '(unchanged)'}, token=${token ? '****' + token.slice(-8) : '(unchanged)'}`);
 
                 // Test the connection
                 const testUrl = url || getHAUrl();

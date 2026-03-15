@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Mic, MicOff, PhoneOff } from 'lucide-react';
+import { X, Mic, MicOff, PhoneOff, ChevronDown } from 'lucide-react';
 import { FluidOrb } from './FluidOrb';
 import { TranscriptView } from './TranscriptView';
-import { VoicePicker } from './VoicePicker';
+import { VoicePicker, getVoiceInfo } from './VoicePicker';
 
 interface VoiceOverlayProps {
   onClose: () => void;
@@ -56,7 +56,7 @@ interface SpeechRecognitionAlternative {
 }
 
 /**
- * Direct voice mode — uses browser Web Speech API for STT and TADA TTS for speech.
+ * Direct voice mode — uses browser Web Speech API for STT and Orpheus TTS for speech.
  * No LiveKit required.
  */
 export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
@@ -73,6 +73,9 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   const [audioLevel, setAudioLevel] = useState(0);
   const [interimText, setInterimText] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showVoiceMenu, setShowVoiceMenu] = useState(false);
+
+  const ORPHEUS_VOICES = ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'];
 
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -100,6 +103,15 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
+
+  // Close voice menu on outside click
+  useEffect(() => {
+    if (!showVoiceMenu) return;
+    const handler = () => setShowVoiceMenu(false);
+    // Delay so the toggle click doesn't immediately close
+    const id = setTimeout(() => document.addEventListener('click', handler), 0);
+    return () => { clearTimeout(id); document.removeEventListener('click', handler); };
+  }, [showVoiceMenu]);
 
   // Mic level monitoring
   const startMicMonitor = useCallback(async () => {
@@ -218,7 +230,20 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     recognition.onerror = (e: any) => {
       console.error('Speech recognition error:', e.error);
       if (e.error === 'not-allowed') {
+        setErrorMsg('Mic access denied — check browser permissions');
         setIsListening(false);
+      } else if (e.error === 'network') {
+        setErrorMsg('Speech recognition network error');
+        setTimeout(() => {
+          if (!isMutedRef.current && phaseRef.current === 'active') {
+            try { recognition.start(); } catch { /* ok */ }
+          }
+        }, 2000);
+      } else if (e.error === 'audio-capture') {
+        setErrorMsg('Mic not available — is another app using it?');
+        setIsListening(false);
+      } else if (e.error !== 'no-speech') {
+        console.error('STT error:', e.error);
       }
     };
 
@@ -302,24 +327,25 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
       setIsThinking(false);
 
-      // Generate and play TTS audio via TADA server, fallback to browser Speech Synthesis
+      // Speak the response — try Orpheus server TTS first (fast GPU), browser TTS fallback
       setIsSpeaking(true);
-      const voice = selectedVoiceRef.current || 'default';
+      const voice = selectedVoiceRef.current || 'tara';
 
       // Truncate text for TTS to avoid long hangs (max ~300 chars)
       const ttsText = cleanText.length > 300 ? cleanText.slice(0, 297) + '...' : cleanText;
 
-      // Try server TTS first, fallback to browser speech synthesis
+      // Try server TTS (Orpheus) — separate AbortController so it doesn't kill other requests
       let useBrowserTTS = false;
       let url = '';
 
       try {
-        const ttsTimeoutId = setTimeout(() => controller.abort(), 15000);
+        const ttsController = new AbortController();
+        const ttsTimeoutId = setTimeout(() => ttsController.abort(), 15000); // 15s max
         const ttsRes = await fetch('/api/voice/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ voice, text: ttsText }),
-          signal: controller.signal,
+          signal: ttsController.signal,
         });
         clearTimeout(ttsTimeoutId);
 
@@ -333,29 +359,12 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         useBrowserTTS = true;
       }
 
-      // Fallback: browser Speech Synthesis API
+      // Fallback: browser Speech Synthesis API (instant, no server needed)
       if (useBrowserTTS && 'speechSynthesis' in window) {
-        // Stop STT during speech
         try { recognitionRef.current?.stop(); } catch { /* ok */ }
-
         const utterance = new SpeechSynthesisUtterance(ttsText);
         utterance.rate = 1.05;
         utterance.pitch = 1.0;
-        utterance.onend = () => {
-          setIsSpeaking(false);
-          setAudioLevel(0);
-          // Grace period before restarting STT
-          setTimeout(() => {
-            if (!isMutedRef.current && phaseRef.current === 'active') {
-              try { recognitionRef.current?.start(); } catch { /* ok */ }
-            }
-          }, 500);
-        };
-        utterance.onerror = () => {
-          setIsSpeaking(false);
-          try { recognitionRef.current?.start(); } catch { /* ok */ }
-        };
-        // Simulate audio level for orb animation
         const synthInterval = setInterval(() => {
           setAudioLevel(0.3 + Math.random() * 0.3);
         }, 100);
@@ -369,19 +378,23 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
             }
           }, 500);
         };
+        utterance.onerror = () => {
+          clearInterval(synthInterval);
+          setIsSpeaking(false);
+          setAudioLevel(0);
+          try { recognitionRef.current?.start(); } catch { /* ok */ }
+        };
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
         return;
       }
 
       if (useBrowserTTS) {
-        // No TTS available at all
-        setErrorMsg('TTS unavailable');
-        setTimeout(() => setErrorMsg(null), 3000);
         setIsSpeaking(false);
         try { recognitionRef.current?.start(); } catch { /* ok */ }
         return;
       }
+
       const audio = new Audio(url);
       currentAudioRef.current = audio;
 
@@ -485,6 +498,20 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     startMicMonitor();
     startRecognition();
   }, [startMicMonitor, startRecognition]);
+
+  // Switch voice during active chat (no need to go back to picker)
+  const switchVoice = useCallback((voiceId: string) => {
+    setSelectedVoice(voiceId);
+    selectedVoiceRef.current = voiceId;
+    localStorage.setItem('titan-voice', voiceId);
+    setShowVoiceMenu(false);
+    // Update server config
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice: { ttsVoice: voiceId } }),
+    }).catch(() => {/* non-critical */});
+  }, []);
 
   // Preview voice
   const handlePreview = useCallback(async (voiceId: string) => {
@@ -602,8 +629,52 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
                 {errorMsg}
               </div>
             )}
-            <div className="text-xs mt-1" style={{ color: '#52525b' }}>
-              TADA TTS · Browser STT
+            {/* Voice selector */}
+            <div className="relative mt-2">
+              <button
+                onClick={() => setShowVoiceMenu(prev => !prev)}
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:bg-[#27272a]"
+                style={{ color: getVoiceInfo(selectedVoice || 'tara').glow }}
+              >
+                <span
+                  className="inline-block w-2 h-2 rounded-full"
+                  style={{ backgroundColor: getVoiceInfo(selectedVoice || 'tara').glow }}
+                />
+                {getVoiceInfo(selectedVoice || 'tara').name}
+                <ChevronDown className="h-3 w-3" />
+              </button>
+
+              {showVoiceMenu && (
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 mt-1 rounded-xl border border-[#27272a] bg-[#18181b]/95 backdrop-blur-sm p-1.5 shadow-xl z-30"
+                  style={{ minWidth: 180 }}
+                >
+                  {ORPHEUS_VOICES.map(v => {
+                    const info = getVoiceInfo(v);
+                    const isActive = v === (selectedVoice || 'tara');
+                    return (
+                      <button
+                        key={v}
+                        onClick={() => switchVoice(v)}
+                        className="flex items-center gap-2.5 w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-[#27272a]"
+                        style={{ color: isActive ? info.glow : '#a1a1aa' }}
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{
+                            backgroundColor: info.glow,
+                            boxShadow: isActive ? `0 0 8px ${info.glow}60` : 'none',
+                          }}
+                        />
+                        <span className="font-medium">{info.name}</span>
+                        {isActive && (
+                          <span className="ml-auto text-xs opacity-60">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

@@ -2241,12 +2241,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/voice/health', async (_req, res) => {
     const cfg = loadConfig();
     if (!cfg.voice?.enabled) {
-      res.json({ livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'tada' });
+      res.json({ livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: cfg.voice?.ttsEngine || 'orpheus' });
       return;
     }
-    const results = { livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'tada' as string };
-    const sttUrl = cfg.voice.sttUrl || 'http://localhost:8300';
-    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:48421';
+    const engine = cfg.voice.ttsEngine || 'orpheus';
+    const results = { livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: engine };
+    const sttUrl = cfg.voice.sttUrl || 'http://localhost:48421';
+    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:5005';
     const checks = [
       { key: 'livekit' as const, url: cfg.voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://') },
       { key: 'agent' as const, url: cfg.voice.agentUrl },
@@ -2258,22 +2259,31 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         results[key] = resp.ok || resp.status < 500;
       } catch { results[key] = false; }
     }));
-    // TTS health check — TADA voice server /health endpoint
+    // TTS health check — try /health first, then /v1/audio/speech probe (Orpheus)
     try {
-      const resp = await fetch(`${ttsUrl}/health`, { signal: AbortSignal.timeout(5000) });
-      results.tts = resp.status < 500;
+      let resp = await fetch(`${ttsUrl}/health`, { signal: AbortSignal.timeout(3000) }).catch(() => null);
+      if (!resp || resp.status >= 500) {
+        // Orpheus doesn't have /health — try a lightweight probe
+        resp = await fetch(`${ttsUrl}/v1/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: '.', voice: 'tara', response_format: 'pcm' }),
+          signal: AbortSignal.timeout(5000),
+        });
+      }
+      results.tts = resp ? resp.status < 500 : false;
     } catch { results.tts = false; }
     results.overall = results.tts;
     res.json(results);
   });
 
-  // Voice preview — synthesize a short sample via TADA voice server
+  // Voice preview — synthesize a short sample via TTS server (Orpheus)
   app.post('/api/voice/preview', async (req, res) => {
     const cfg = loadConfig();
-    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'default';
+    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'tara';
     const rawText = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
     const text = rawText.length > 500 ? rawText.slice(0, 497) + '...' : rawText;
-    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:48421';
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
     const ttsEndpoint = `${ttsUrl}/v1/audio/speech`;
     logger.info('Gateway', `TTS request: voice=${voiceId}, text=${text.slice(0, 80)}...`);
 
@@ -2296,17 +2306,18 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
-  // Voice available voices — query TADA voice server
+  // Voice available voices — query TTS server or return Orpheus defaults
   app.get('/api/voice/voices', async (_req, res) => {
     const cfg = loadConfig();
-    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:48421';
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
     try {
       const ttsRes = await fetch(`${ttsUrl}/v1/audio/voices`, { signal: AbortSignal.timeout(3000) });
-      if (!ttsRes.ok) { res.json({ voices: ['default'] }); return; }
+      if (!ttsRes.ok) { res.json({ voices: ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'] }); return; }
       const data = await ttsRes.json() as { voices?: string[] };
       res.json(data);
     } catch {
-      res.json({ voices: ['default'] });
+      // Orpheus default voice set
+      res.json({ voices: ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'] });
     }
   });
 

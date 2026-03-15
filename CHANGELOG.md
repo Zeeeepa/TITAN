@@ -4,25 +4,35 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.32] — 2026-03-15
+
+### Changed
+- **Orpheus TTS restored** — Reverted from TADA (too slow on CPU) back to Orpheus TTS with GPU acceleration and emotional speech. Default voice `tara`, 8 voices: tara, leah, jess, mia, zoe, leo, dan, zac. Port 5005.
+- **Voice selector in VoiceOverlay** — Dropdown during active voice chat to switch between all 8 Orpheus voices mid-conversation. Color-coded dots, saves to localStorage and server config.
+- **VoicePicker overhaul** — Proper Orpheus voice presets with unique gradients, descriptions, and gender hints. Exported `getVoiceInfo()` utility.
+- **Separate TTS AbortController** — TTS fetch no longer shares AbortController with main request, preventing cascade aborts.
+- **Browser TTS fallback** — If Orpheus server is unreachable (15s timeout), falls back to browser Speech Synthesis API instantly.
+
+### Fixed
+- **Speech recognition error handling** — Descriptive error messages for mic denied, network errors, audio capture failures.
+- **Gateway TTS health check** — Tries `/health` first, falls back to `/v1/audio/speech` probe for Orpheus compatibility.
+- **All TADA references removed** — Settings panel, voice settings panel, config schema, gateway, types, and VoiceOverlay updated to Orpheus.
+
+---
+
 ## [2026.10.31] — 2026-03-15
 
 ### Fixed
-- **Config migration for ttsEngine** — Old configs with `ttsEngine: 'orpheus'` or `'kokoro'` no longer crash Zod parse; gracefully coerced to `'tada'`. Prevents `onboarded` reset on upgrade.
+- **Config migration for ttsEngine** — Old configs with `ttsEngine: 'orpheus'` or `'kokoro'` no longer crash Zod parse; gracefully coerced. Prevents `onboarded` reset on upgrade.
 
 ---
 
 ## [2026.10.30] — 2026-03-15
 
 ### Added
-- **TADA TTS integration** — Hume AI TADA (Text-Acoustic Dual Alignment) as the sole TTS engine. 0.09 RTF, zero hallucinations, voice cloning via reference WAV files in `~/.titan/voices/`. `titan-voice-server/tts.py`, `titan-voice-server/server.py`
 - **Home Assistant skill (11 tools)** — Full smart home control: `ha_setup`, `ha_devices`, `ha_control`, `ha_status`, `ha_automations`, `ha_scenes`, `ha_history`, `ha_areas`, `ha_call_service`, `ha_dashboard`, `ha_notify`. Config persistence via chat. `src/skills/builtin/smart_home.ts`
 - **Voice server REST API** — OpenAI-compatible `/v1/audio/speech` + `/v1/audio/voices` + `/health` endpoints. `titan-voice-server/server.py`
 - **Home Assistant config in schema** — `homeAssistant.url` and `homeAssistant.token` fields in Zod config. `src/config/schema.ts`
-
-### Changed
-- **TADA-only voice** — Removed Orpheus and Kokoro TTS engines. Config `ttsEngine` is now `'tada'` only with default voice `'default'` and URL `localhost:48421`. `src/config/schema.ts`, `src/gateway/server.ts`, `ui/src/components/admin/VoiceSettingsPanel.tsx`
-- **VoiceSettingsPanel** — Simplified to TADA-only with dynamic voice list from API, voice cloning instructions. No engine selector needed.
-- **Gateway voice endpoints** — Simplified health check, preview, and voices endpoints for TADA-only architecture.
 
 ### Fixed
 - **Voice echo cancellation** — Browser AEC/noise suppression constraints, STT paused during TTS playback, 500ms grace period, confidence filtering (< 0.5 = echo). `ui/src/components/voice/VoiceOverlay.tsx`

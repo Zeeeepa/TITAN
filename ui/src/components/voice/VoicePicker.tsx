@@ -13,33 +13,46 @@ export interface VoiceOption {
   gender: 'female' | 'male';
 }
 
-/** Deterministic color palette for dynamic voices */
+/** Orpheus voice presets with unique colors and descriptions */
+const ORPHEUS_VOICES: Record<string, Omit<VoiceOption, 'id'>> = {
+  tara:  { name: 'Tara',  description: 'Warm & expressive',      gradient: 'radial-gradient(circle at 35% 35%, #c084fc, #a855f7, #7c3aed)', glow: '#a855f7', gender: 'female' },
+  leah:  { name: 'Leah',  description: 'Calm & articulate',      gradient: 'radial-gradient(circle at 35% 35%, #f472b6, #ec4899, #be185d)', glow: '#ec4899', gender: 'female' },
+  jess:  { name: 'Jess',  description: 'Bright & energetic',     gradient: 'radial-gradient(circle at 35% 35%, #67e8f9, #22d3ee, #0891b2)', glow: '#22d3ee', gender: 'female' },
+  mia:   { name: 'Mia',   description: 'Soft & friendly',        gradient: 'radial-gradient(circle at 35% 35%, #86efac, #22c55e, #15803d)', glow: '#22c55e', gender: 'female' },
+  zoe:   { name: 'Zoe',   description: 'Confident & clear',      gradient: 'radial-gradient(circle at 35% 35%, #fda4af, #fb7185, #e11d48)', glow: '#fb7185', gender: 'female' },
+  leo:   { name: 'Leo',   description: 'Deep & authoritative',   gradient: 'radial-gradient(circle at 35% 35%, #93c5fd, #3b82f6, #1d4ed8)', glow: '#3b82f6', gender: 'male' },
+  dan:   { name: 'Dan',   description: 'Relaxed & natural',      gradient: 'radial-gradient(circle at 35% 35%, #fbbf24, #f59e0b, #b45309)', glow: '#f59e0b', gender: 'male' },
+  zac:   { name: 'Zac',   description: 'Bold & dynamic',         gradient: 'radial-gradient(circle at 35% 35%, #a5b4fc, #818cf8, #4f46e5)', glow: '#818cf8', gender: 'male' },
+};
+
+/** Fallback color palette for unknown voices */
 const VOICE_COLORS = [
-  { gradient: 'radial-gradient(circle at 35% 35%, #c084fc, #a855f7, #7c3aed)', glow: '#a855f7' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #f472b6, #ec4899, #be185d)', glow: '#ec4899' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #67e8f9, #22d3ee, #0891b2)', glow: '#22d3ee' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #86efac, #22c55e, #15803d)', glow: '#22c55e' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #fbbf24, #f59e0b, #b45309)', glow: '#f59e0b' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #93c5fd, #3b82f6, #1d4ed8)', glow: '#3b82f6' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #fda4af, #fb7185, #e11d48)', glow: '#fb7185' },
-  { gradient: 'radial-gradient(circle at 35% 35%, #a5b4fc, #818cf8, #4f46e5)', glow: '#818cf8' },
   { gradient: 'radial-gradient(circle at 35% 35%, #fdba74, #f97316, #c2410c)', glow: '#f97316' },
   { gradient: 'radial-gradient(circle at 35% 35%, #5eead4, #14b8a6, #0f766e)', glow: '#14b8a6' },
 ];
 
 function buildVoiceOptions(voiceIds: string[]): VoiceOption[] {
   return voiceIds.map((id, i) => {
+    const preset = ORPHEUS_VOICES[id];
+    if (preset) return { id, ...preset };
     const color = VOICE_COLORS[i % VOICE_COLORS.length];
     const name = id.charAt(0).toUpperCase() + id.slice(1);
     return {
       id,
       name,
-      description: id === 'default' ? 'TADA default voice' : 'Custom voice clone',
+      description: 'Custom voice',
       gradient: color.gradient,
       glow: color.glow,
       gender: 'female' as const,
     };
   });
+}
+
+/** Export voice data for use by other components */
+export function getVoiceInfo(voiceId: string): { name: string; glow: string } {
+  const preset = ORPHEUS_VOICES[voiceId];
+  if (preset) return { name: preset.name, glow: preset.glow };
+  return { name: voiceId.charAt(0).toUpperCase() + voiceId.slice(1), glow: '#818cf8' };
 }
 
 interface VoicePickerProps {
@@ -50,7 +63,7 @@ interface VoicePickerProps {
 
 export function VoicePicker({ currentVoice, onSelect, onPreview }: VoicePickerProps) {
   const [voices, setVoices] = useState<VoiceOption[]>(() =>
-    buildVoiceOptions(['default'])
+    buildVoiceOptions(['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'])
   );
   const [activeIdx, setActiveIdx] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -267,4 +280,4 @@ export function VoicePicker({ currentVoice, onSelect, onPreview }: VoicePickerPr
 }
 
 /** Export VOICES for backward compatibility */
-export const VOICES = buildVoiceOptions(['default']);
+export const VOICES = buildVoiceOptions(['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac']);

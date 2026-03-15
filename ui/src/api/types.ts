@@ -58,7 +58,7 @@ export interface VoiceConfig {
   livekitApiSecret: string;
   agentUrl: string;
   ttsVoice: string;
-  ttsEngine?: 'tada';
+  ttsEngine?: string;
   ttsUrl?: string;
   sttUrl?: string;
 }

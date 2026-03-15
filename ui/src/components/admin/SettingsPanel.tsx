@@ -159,8 +159,8 @@ function SettingsPanel() {
   // Voice form state
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [livekitUrl, setLivekitUrl] = useState('');
-  const [ttsVoice, setTtsVoice] = useState('default');
-  const [tadaVoices, setTadaVoices] = useState<string[]>(['default']);
+  const [ttsVoice, setTtsVoice] = useState('tara');
+  const [orpheusVoices, setOrpheusVoices] = useState<string[]>(['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac']);
 
   // Voice auto-discovery state
   const [voiceHealth, setVoiceHealth] = useState<VoiceHealth | null>(null);
@@ -179,7 +179,7 @@ function SettingsPanel() {
         const voice = cfg?.voice ?? {};
         setVoiceEnabled(voice.enabled ?? false);
         setLivekitUrl(voice.livekitUrl ?? '');
-        setTtsVoice(voice.ttsVoice ?? 'default');
+        setTtsVoice(voice.ttsVoice ?? 'tara');
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load config';
         setLoadError(msg);
@@ -191,14 +191,14 @@ function SettingsPanel() {
     load();
   }, []);
 
-  // Fetch TADA voices from voice server
+  // Fetch available voices from voice server
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch('/api/voice/voices');
         if (res.ok) {
           const data = await res.json();
-          if (data.voices?.length) setTadaVoices(data.voices);
+          if (data.voices?.length) setOrpheusVoices(data.voices);
         }
       } catch { /* voice server offline */ }
     })();
@@ -255,9 +255,9 @@ function SettingsPanel() {
           enabled: voiceEnabled,
           livekitUrl,
           ttsVoice,
-          ttsEngine: 'tada',
-          ttsUrl: config?.voice?.ttsUrl ?? 'http://localhost:48421',
-          sttUrl: config?.voice?.sttUrl ?? 'http://localhost:8300',
+          ttsEngine: 'orpheus',
+          ttsUrl: config?.voice?.ttsUrl ?? 'http://localhost:5005',
+          sttUrl: config?.voice?.sttUrl ?? 'http://localhost:48421',
           livekitApiKey: config?.voice?.livekitApiKey ?? '',
           livekitApiSecret: config?.voice?.livekitApiSecret ?? '',
           agentUrl: config?.voice?.agentUrl ?? '',
@@ -340,13 +340,13 @@ function SettingsPanel() {
         />
       </div>
 
-      {/* Voice Section — TADA only */}
+      {/* Voice Section — Orpheus TTS */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mic className="h-4 w-4 text-[#818cf8]" />
             <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
-            <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-[9px] font-medium text-[#a78bfa]">TADA</span>
+            <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-[9px] font-medium text-[#a78bfa]">Orpheus</span>
           </div>
           <button
             onClick={checkVoiceServices}
@@ -368,7 +368,7 @@ function SettingsPanel() {
                   { label: 'LiveKit Server', ok: voiceHealth.livekit },
                   { label: 'Voice Agent', ok: voiceHealth.agent },
                   { label: 'STT', ok: voiceHealth.stt },
-                  { label: 'TTS (TADA)', ok: voiceHealth.tts },
+                  { label: 'TTS (Orpheus)', ok: voiceHealth.tts },
                 ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center gap-2">
                     <StatusDot ok={ok} />
@@ -400,7 +400,7 @@ function SettingsPanel() {
             <span className="text-sm text-[#fafafa]">Enable Voice Chat</span>
           </label>
           <p className="text-xs text-[#52525b] -mt-2">
-            Powered by Hume AI TADA — 0.09 RTF, zero hallucinations, voice cloning
+            Orpheus TTS — GPU-accelerated, emotional speech with 8 voices
           </p>
 
           {/* LiveKit URL */}
@@ -419,11 +419,11 @@ function SettingsPanel() {
             />
           </div>
 
-          {/* TTS Voice — TADA voice buttons */}
+          {/* TTS Voice — Orpheus voice buttons */}
           <div>
             <label className="mb-2 block text-xs text-[#71717a]">Voice</label>
             <div className="grid grid-cols-4 gap-2">
-              {tadaVoices.map((v) => (
+              {orpheusVoices.map((v) => (
                 <button
                   key={v}
                   type="button"
@@ -439,7 +439,7 @@ function SettingsPanel() {
               ))}
             </div>
             <p className="mt-2 text-xs text-[#52525b]">
-              Add custom voices by placing WAV files in ~/.titan/voices/ (e.g., tony.wav → voice &quot;tony&quot;)
+              Orpheus voices support emotion tags: &lt;laugh&gt;, &lt;sigh&gt;, &lt;chuckle&gt; and more
             </p>
           </div>
 
@@ -450,7 +450,7 @@ function SettingsPanel() {
               <span className="text-xs text-[#71717a]">Selected:</span>
               <span className="text-xs font-mono text-[#a1a1aa]">{ttsVoice}</span>
               <span className="ml-auto rounded bg-[#6366f1]/15 px-1.5 py-0.5 text-[9px] font-medium text-[#a78bfa]">
-                TADA
+                Orpheus
               </span>
             </div>
           )}

@@ -247,13 +247,13 @@ export const VoiceConfigSchema = z.object({
     /** URL of the voice agent (for health checks) */
     agentUrl: z.string().default('http://localhost:8081'),
     /** Default TTS voice name */
-    ttsVoice: z.string().default('default'),
-    /** TTS engine: 'tada' (Hume AI TADA — fastest, zero hallucinations, voice cloning) */
-    ttsEngine: z.string().default('tada').transform(() => 'tada' as const),
-    /** TTS server URL (TADA voice server) */
-    ttsUrl: z.string().default('http://localhost:48421'),
+    ttsVoice: z.string().default('tara'),
+    /** TTS engine: orpheus | tada | kokoro */
+    ttsEngine: z.string().default('orpheus'),
+    /** TTS server URL (Orpheus: 5005) */
+    ttsUrl: z.string().default('http://localhost:5005'),
     /** STT server URL (e.g. faster-whisper) */
-    sttUrl: z.string().default('http://localhost:8300'),
+    sttUrl: z.string().default('http://localhost:48421'),
 });
 
 export const ContextEnginePluginConfigSchema = z.object({

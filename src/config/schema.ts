@@ -249,7 +249,7 @@ export const VoiceConfigSchema = z.object({
     /** Default TTS voice name */
     ttsVoice: z.string().default('default'),
     /** TTS engine: 'tada' (Hume AI TADA — fastest, zero hallucinations, voice cloning) */
-    ttsEngine: z.enum(['tada']).default('tada'),
+    ttsEngine: z.string().default('tada').transform(() => 'tada' as const),
     /** TTS server URL (TADA voice server) */
     ttsUrl: z.string().default('http://localhost:48421'),
     /** STT server URL (e.g. faster-whisper) */

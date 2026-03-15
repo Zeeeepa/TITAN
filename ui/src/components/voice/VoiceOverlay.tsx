@@ -56,14 +56,15 @@ interface SpeechRecognitionAlternative {
 }
 
 /**
- * Direct voice mode — uses browser Web Speech API for STT and Orpheus TTS for speech.
+ * Direct voice mode — uses browser Web Speech API for STT and TADA TTS for speech.
  * No LiveKit required.
  */
 export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   const [visible, setVisible] = useState(false);
-  const [phase, setPhase] = useState<'picking' | 'active'>('picking');
-  const [selectedVoice, setSelectedVoice] = useState<string>('');
-  const selectedVoiceRef = useRef<string>('');
+  const savedVoice = localStorage.getItem('titan-voice') || '';
+  const [phase, setPhase] = useState<'picking' | 'active'>(savedVoice ? 'active' : 'picking');
+  const [selectedVoice, setSelectedVoice] = useState<string>(savedVoice);
+  const selectedVoiceRef = useRef<string>(savedVoice);
   const [isMuted, setIsMuted] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -98,17 +99,6 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   // Animate in
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
-  }, []);
-
-  // Load saved voice preference
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('titan-voice');
-      if (saved) {
-        setSelectedVoice(saved);
-        selectedVoiceRef.current = saved;
-      }
-    } catch { /* ignore */ }
   }, []);
 
   // Mic level monitoring
@@ -246,11 +236,21 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       audio.src = '';
       currentAudioRef.current = null;
     }
+    // Also cancel browser speech synthesis
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     setIsSpeaking(false);
     setAudioLevel(0);
   }, []);
 
-  // Send user message to TITAN and speak the response via Orpheus TTS
+  // Auto-start mic when resuming a saved voice (skipping picker)
+  useEffect(() => {
+    if (savedVoice && phase === 'active') {
+      startMicMonitor();
+      startRecognition();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Send user message to TITAN and speak the response via TTS
   const handleUserMessage = useCallback(async (text: string) => {
     // If TITAN is speaking, interrupt it
     stopCurrentAudio();
@@ -302,33 +302,86 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
       setIsThinking(false);
 
-      // Generate and play TTS audio via Orpheus (use cleanText with emotion tags intact)
+      // Generate and play TTS audio via TADA server, fallback to browser Speech Synthesis
       setIsSpeaking(true);
-      const voice = selectedVoiceRef.current || 'tara';
+      const voice = selectedVoiceRef.current || 'default';
 
       // Truncate text for TTS to avoid long hangs (max ~300 chars)
       const ttsText = cleanText.length > 300 ? cleanText.slice(0, 297) + '...' : cleanText;
 
-      const ttsTimeoutId = setTimeout(() => controller.abort(), 30000);
+      // Try server TTS first, fallback to browser speech synthesis
+      let useBrowserTTS = false;
+      let url = '';
 
-      const ttsRes = await fetch('/api/voice/preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voice, text: ttsText }),
-        signal: controller.signal,
-      });
-      clearTimeout(ttsTimeoutId);
+      try {
+        const ttsTimeoutId = setTimeout(() => controller.abort(), 15000);
+        const ttsRes = await fetch('/api/voice/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voice, text: ttsText }),
+          signal: controller.signal,
+        });
+        clearTimeout(ttsTimeoutId);
 
-      if (!ttsRes.ok) {
+        if (!ttsRes.ok) {
+          useBrowserTTS = true;
+        } else {
+          const blob = await ttsRes.blob();
+          url = URL.createObjectURL(blob);
+        }
+      } catch {
+        useBrowserTTS = true;
+      }
+
+      // Fallback: browser Speech Synthesis API
+      if (useBrowserTTS && 'speechSynthesis' in window) {
+        // Stop STT during speech
+        try { recognitionRef.current?.stop(); } catch { /* ok */ }
+
+        const utterance = new SpeechSynthesisUtterance(ttsText);
+        utterance.rate = 1.05;
+        utterance.pitch = 1.0;
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          setAudioLevel(0);
+          // Grace period before restarting STT
+          setTimeout(() => {
+            if (!isMutedRef.current && phaseRef.current === 'active') {
+              try { recognitionRef.current?.start(); } catch { /* ok */ }
+            }
+          }, 500);
+        };
+        utterance.onerror = () => {
+          setIsSpeaking(false);
+          try { recognitionRef.current?.start(); } catch { /* ok */ }
+        };
+        // Simulate audio level for orb animation
+        const synthInterval = setInterval(() => {
+          setAudioLevel(0.3 + Math.random() * 0.3);
+        }, 100);
+        utterance.onend = () => {
+          clearInterval(synthInterval);
+          setIsSpeaking(false);
+          setAudioLevel(0);
+          setTimeout(() => {
+            if (!isMutedRef.current && phaseRef.current === 'active') {
+              try { recognitionRef.current?.start(); } catch { /* ok */ }
+            }
+          }, 500);
+        };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+        return;
+      }
+
+      if (useBrowserTTS) {
+        // No TTS available at all
         setErrorMsg('TTS unavailable');
         setTimeout(() => setErrorMsg(null), 3000);
         setIsSpeaking(false);
         try { recognitionRef.current?.start(); } catch { /* ok */ }
         return;
       }
-
-      const blob = await ttsRes.blob();
-      const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudioRef.current = audio;
 
@@ -550,7 +603,7 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
               </div>
             )}
             <div className="text-xs mt-1" style={{ color: '#52525b' }}>
-              Orpheus TTS · Browser STT
+              TADA TTS · Browser STT
             </div>
           </div>
 

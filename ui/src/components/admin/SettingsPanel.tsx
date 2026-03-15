@@ -8,22 +8,6 @@ type RawConfig = Record<string, any>;
 
 const LOCAL_PROVIDERS = ['ollama', 'lmstudio', 'localai'];
 
-// Known TTS voices organized by provider
-const TTS_VOICES = [
-  { id: 'af_heart', name: 'Heart', provider: 'Kokoro', desc: 'Warm, natural female' },
-  { id: 'af_bella', name: 'Bella', provider: 'Kokoro', desc: 'Gentle, soothing female' },
-  { id: 'af_sarah', name: 'Sarah', provider: 'Kokoro', desc: 'Professional female' },
-  { id: 'am_adam', name: 'Adam', provider: 'Kokoro', desc: 'Deep, confident male' },
-  { id: 'am_michael', name: 'Michael', provider: 'Kokoro', desc: 'Friendly, clear male' },
-  { id: 'alloy', name: 'Alloy', provider: 'OpenAI', desc: 'Balanced, versatile' },
-  { id: 'echo', name: 'Echo', provider: 'OpenAI', desc: 'Warm, conversational male' },
-  { id: 'fable', name: 'Fable', provider: 'OpenAI', desc: 'Expressive, storytelling' },
-  { id: 'onyx', name: 'Onyx', provider: 'OpenAI', desc: 'Deep, authoritative male' },
-  { id: 'nova', name: 'Nova', provider: 'OpenAI', desc: 'Friendly, upbeat female' },
-  { id: 'shimmer', name: 'Shimmer', provider: 'OpenAI', desc: 'Clear, bright female' },
-  { id: 'tara', name: 'Tara', provider: 'Orpheus', desc: 'Natural streaming voice' },
-];
-
 interface VoiceHealth {
   livekit: boolean;
   stt: boolean;
@@ -175,7 +159,8 @@ function SettingsPanel() {
   // Voice form state
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [livekitUrl, setLivekitUrl] = useState('');
-  const [ttsVoice, setTtsVoice] = useState('');
+  const [ttsVoice, setTtsVoice] = useState('default');
+  const [tadaVoices, setTadaVoices] = useState<string[]>(['default']);
 
   // Voice auto-discovery state
   const [voiceHealth, setVoiceHealth] = useState<VoiceHealth | null>(null);
@@ -194,7 +179,7 @@ function SettingsPanel() {
         const voice = cfg?.voice ?? {};
         setVoiceEnabled(voice.enabled ?? false);
         setLivekitUrl(voice.livekitUrl ?? '');
-        setTtsVoice(voice.ttsVoice ?? '');
+        setTtsVoice(voice.ttsVoice ?? 'default');
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load config';
         setLoadError(msg);
@@ -204,6 +189,19 @@ function SettingsPanel() {
       }
     };
     load();
+  }, []);
+
+  // Fetch TADA voices from voice server
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/voice/voices');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.voices?.length) setTadaVoices(data.voices);
+        }
+      } catch { /* voice server offline */ }
+    })();
   }, []);
 
   // Auto-discover voice services on mount and when voice is enabled
@@ -220,10 +218,6 @@ function SettingsPanel() {
         // Auto-populate LiveKit URL if discovered and field is empty
         if (statusRes.value.livekitUrl && !livekitUrl) {
           setLivekitUrl(statusRes.value.livekitUrl);
-        }
-        // Auto-populate TTS voice if discovered and field is empty
-        if (statusRes.value.ttsVoice && !ttsVoice) {
-          setTtsVoice(statusRes.value.ttsVoice);
         }
       }
     } catch { /* Voice endpoints may not exist */ }
@@ -261,6 +255,9 @@ function SettingsPanel() {
           enabled: voiceEnabled,
           livekitUrl,
           ttsVoice,
+          ttsEngine: 'tada',
+          ttsUrl: config?.voice?.ttsUrl ?? 'http://localhost:48421',
+          sttUrl: config?.voice?.sttUrl ?? 'http://localhost:8300',
           livekitApiKey: config?.voice?.livekitApiKey ?? '',
           livekitApiSecret: config?.voice?.livekitApiSecret ?? '',
           agentUrl: config?.voice?.agentUrl ?? '',
@@ -309,7 +306,6 @@ function SettingsPanel() {
   }
 
   const currentModel = config ? getModel(config) : '';
-  const voiceProviders = [...new Set(TTS_VOICES.map((v) => v.provider))];
 
   return (
     <div className="space-y-6">
@@ -344,12 +340,13 @@ function SettingsPanel() {
         />
       </div>
 
-      {/* Voice Section */}
+      {/* Voice Section — TADA only */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mic className="h-4 w-4 text-[#818cf8]" />
             <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
+            <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-[9px] font-medium text-[#a78bfa]">TADA</span>
           </div>
           <button
             onClick={checkVoiceServices}
@@ -371,7 +368,7 @@ function SettingsPanel() {
                   { label: 'LiveKit Server', ok: voiceHealth.livekit },
                   { label: 'Voice Agent', ok: voiceHealth.agent },
                   { label: 'STT', ok: voiceHealth.stt },
-                  { label: `TTS (${voiceHealth.ttsEngine || 'orpheus'})`, ok: voiceHealth.tts },
+                  { label: 'TTS (TADA)', ok: voiceHealth.tts },
                 ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center gap-2">
                     <StatusDot ok={ok} />
@@ -402,6 +399,9 @@ function SettingsPanel() {
             />
             <span className="text-sm text-[#fafafa]">Enable Voice Chat</span>
           </label>
+          <p className="text-xs text-[#52525b] -mt-2">
+            Powered by Hume AI TADA — 0.09 RTF, zero hallucinations, voice cloning
+          </p>
 
           {/* LiveKit URL */}
           <div>
@@ -419,30 +419,28 @@ function SettingsPanel() {
             />
           </div>
 
-          {/* TTS Voice — dropdown instead of text input */}
+          {/* TTS Voice — TADA voice buttons */}
           <div>
-            <label className="mb-1 block text-xs text-[#71717a]">TTS Voice</label>
-            <select
-              value={ttsVoice}
-              onChange={(e) => setTtsVoice(e.target.value)}
-              className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2.5 text-sm text-[#fafafa] outline-none transition-colors focus:border-[#6366f1]"
-            >
-              <option value="">Select a voice...</option>
-              {voiceProviders.map((provider) => (
-                <optgroup key={provider} label={provider}>
-                  {TTS_VOICES.filter((v) => v.provider === provider).map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} — {v.desc}
-                    </option>
-                  ))}
-                </optgroup>
+            <label className="mb-2 block text-xs text-[#71717a]">Voice</label>
+            <div className="grid grid-cols-4 gap-2">
+              {tadaVoices.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setTtsVoice(v)}
+                  className={`rounded-lg border px-3 py-2 text-sm transition-all capitalize ${
+                    ttsVoice === v
+                      ? 'border-[#6366f1] bg-[#6366f1]/10 text-[#fafafa]'
+                      : 'border-[#3f3f46] text-[#a1a1aa] hover:border-[#52525b] hover:text-[#fafafa]'
+                  }`}
+                >
+                  {v}
+                </button>
               ))}
-            </select>
-            {ttsVoice && !TTS_VOICES.find((v) => v.id === ttsVoice) && (
-              <p className="mt-1 text-[10px] text-[#71717a]">
-                Custom voice: <span className="font-mono text-[#a1a1aa]">{ttsVoice}</span>
-              </p>
-            )}
+            </div>
+            <p className="mt-2 text-xs text-[#52525b]">
+              Add custom voices by placing WAV files in ~/.titan/voices/ (e.g., tony.wav → voice &quot;tony&quot;)
+            </p>
           </div>
 
           {/* Active voice preview */}
@@ -451,15 +449,9 @@ function SettingsPanel() {
               <Mic className="h-3.5 w-3.5 text-[#818cf8]" />
               <span className="text-xs text-[#71717a]">Selected:</span>
               <span className="text-xs font-mono text-[#a1a1aa]">{ttsVoice}</span>
-              {(() => {
-                const voice = TTS_VOICES.find((v) => v.id === ttsVoice);
-                if (!voice) return null;
-                return (
-                  <span className="ml-auto rounded bg-[#27272a] px-1.5 py-0.5 text-[9px] text-[#71717a]">
-                    {voice.provider}
-                  </span>
-                );
-              })()}
+              <span className="ml-auto rounded bg-[#6366f1]/15 px-1.5 py-0.5 text-[9px] font-medium text-[#a78bfa]">
+                TADA
+              </span>
             </div>
           )}
         </div>

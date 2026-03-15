@@ -4,6 +4,16 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.33] — 2026-03-15
+
+### Changed
+- **Home Assistant auto-save** — Gateway auto-detects HA URL + JWT token in user messages and saves to config before LLM processes (prevents model hallucination/tool-skip)
+- **ha_setup tool hardened** — Stronger description, rawInput param for free-form text parsing, atomic config saves, logging
+- **ha_setup in coreTools** — Always visible to LLM, no tool_search needed
+- **Voice test fix** — ttsVoice default assertion updated from 'default' to 'tara'
+
+---
+
 ## [2026.10.32] — 2026-03-15
 
 ### Changed

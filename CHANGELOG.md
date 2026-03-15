@@ -4,6 +4,13 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.31] — 2026-03-15
+
+### Fixed
+- **Config migration for ttsEngine** — Old configs with `ttsEngine: 'orpheus'` or `'kokoro'` no longer crash Zod parse; gracefully coerced to `'tada'`. Prevents `onboarded` reset on upgrade.
+
+---
+
 ## [2026.10.30] — 2026-03-15
 
 ### Added

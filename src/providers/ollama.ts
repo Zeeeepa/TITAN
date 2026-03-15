@@ -15,27 +15,70 @@ import { v4 as uuid } from 'uuid';
 
 const COMPONENT = 'Ollama';
 
-/** Max system prompt length for cloud models with tool calling.
- *  Cloud models routed via Ollama have generous context — keep it high enough
- *  to preserve the full tool enforcement rules which are critical for reliability.
+/**
+ * Per-model context window map for Ollama cloud models.
+ * Auto-configures num_ctx to each model's actual maximum to prevent truncation.
+ * Sources: Ollama Cloud model cards, March 2026.
  */
-const CLOUD_MAX_SYSTEM_PROMPT = 3500;
+const CLOUD_MODEL_CTX: Record<string, number> = {
+    // GLM-5 — 128K context
+    'glm-5:cloud': 131072,
+    // Kimi K2.5 — 128K context
+    'kimi-k2.5:cloud': 131072,
+    // Qwen3 Coder Next — 262K context (massive)
+    'qwen3-coder-next:cloud': 262144,
+    // Qwen3.5 397B Cloud — 32K context
+    'qwen3.5:397b-cloud': 32768,
+    // DeepSeek V3.1/V3.2 — 128K context
+    'deepseek-v3.1:671b-cloud': 131072,
+    'deepseek-v3.2:671b-cloud': 131072,
+    // Devstral 2 — 128K context
+    'devstral-2:cloud': 131072,
+    // Devstral Small 2 (local) — 32K
+    'devstral-small-2': 32768,
+    'devstral-small-2:latest': 32768,
+    // Nemotron 3 Super — 128K
+    'nemotron-3-super:cloud': 131072,
+    // Gemini 3 Flash — 1M context
+    'gemini-3-flash-preview:latest': 1048576,
+    // GPT OSS — 128K
+    'gpt-oss:120b-cloud': 131072,
+    // Qwen3.5 35B local — 32K
+    'qwen3.5:35b': 32768,
+};
+
+/** Get the optimal num_ctx for a given model name */
+function getModelCtx(modelName: string): number {
+    const bare = modelName.includes('/') ? modelName.split('/').slice(1).join('/') : modelName;
+    return CLOUD_MODEL_CTX[bare] ?? (bare.endsWith(':cloud') || bare.endsWith('-cloud') ? 131072 : 16384);
+}
+
+/** Max system prompt length for cloud models with tool calling.
+ *  Cloud models have 128K+ context — keep this high enough to always include
+ *  the full descriptions of any tools actively being used in the current task.
+ */
+const CLOUD_MAX_SYSTEM_PROMPT = 8000;
 
 /** Compress a system prompt for cloud models with tool calling.
- *  Preserves the Tool Execution rules (most critical) + identity.
- *  Strips verbose learning/memory/graph context which isn't needed for sub-tasks.
+ *  Preserves (in priority order):
+ *    1. Tool Execution rules (ReAct loop, MUST/NEVER — highest priority)
+ *    2. Active tool descriptions (tools currently in use — must not be stripped)
+ *    3. Identity
+ *    4. Brief capabilities + behavior reminder
+ *
+ *  @param content      The full system prompt to compress
+ *  @param activeTools  Descriptions of tools actively in use — always preserved
  */
-function compressSystemPrompt(content: string): string {
+function compressSystemPrompt(content: string, activeTools?: Array<{ name: string; description: string }>): string {
     if (content.length <= CLOUD_MAX_SYSTEM_PROMPT) return content;
 
     const sections: string[] = [];
 
-    // 1. Always keep the Tool Execution section (highest priority — the new top section)
+    // 1. Tool Execution rules — always first, always preserved
     const toolExecMatch = content.match(/## Tool Execution — HIGHEST PRIORITY[\s\S]*?(?=\n## CRITICAL)/);
     if (toolExecMatch) {
         sections.push(toolExecMatch[0].trim());
     } else {
-        // Fallback: inject the core rules directly if section not found
         sections.push(`## Tool Execution — HIGHEST PRIORITY
 You are an AI agent. Your PRIMARY function is to execute tasks using tools.
 
@@ -48,15 +91,22 @@ Right: asked to write a file → call write_file immediately.
 Wrong: asked to write a file → output the content as text in your reply.`);
     }
 
-    // 2. Keep identity (shortened)
+    // 2. Active tool descriptions — inject full descriptions of tools currently in use.
+    //    This prevents the model from forgetting available actions mid-task (e.g. after CONFIRM).
+    if (activeTools && activeTools.length > 0) {
+        const toolBlock = activeTools
+            .map(t => `**${t.name}**: ${t.description}`)
+            .join('\n\n');
+        sections.push(`## Active Tools — Use These For The Current Task\n${toolBlock}`);
+    }
+
+    // 3. Identity (shortened)
     const identityMatch = content.match(/## CRITICAL: Your Identity[\s\S]*?(?=\n## )/);
     if (identityMatch) sections.push(identityMatch[0].trim());
 
-    // 3. Brief capabilities reminder
-    sections.push('## Tools Available\nShell, file read/write/edit, web search/fetch, browser, memory, weather, code execution, and more. Use tool_search to find any tool not immediately visible.');
-
-    // 4. Brief behavior
-    sections.push('## Behavior\n- Lead with action — use tools immediately, explain briefly after\n- If web_search results lack detail, follow up with web_fetch on the best URL\n- Confirm before destructive operations');
+    // 4. Brief capabilities + behavior
+    sections.push('## Tools Available\nShell, file read/write/edit, web search/fetch, browser, memory, weather, code execution, gmail, gdrive, gcal_personal, gtasks, gcontacts. Use tool_search to discover any tool not listed here.');
+    sections.push('## Behavior\n- Lead with action — call tools immediately, explain briefly after\n- Never re-plan mid-task after CONFIRM — execute directly\n- Confirm before destructive operations');
 
     const compressed = sections.join('\n\n');
     logger.info(COMPONENT, `Compressed system prompt for cloud model: ${content.length} → ${compressed.length} chars`);
@@ -150,9 +200,14 @@ export class OllamaProvider extends LLMProvider {
             model,
             messages: options.messages.map((m) => {
                 const msg: Record<string, unknown> = { role: m.role };
-                // Compress system prompts for cloud models with tools to improve tool-calling compliance
+                // Compress system prompts for cloud models with tools to improve tool-calling compliance.
+                // Pass descriptions of complex tools (>200 chars) so compression always preserves them —
+                // prevents the model from forgetting available actions mid-task (e.g. after CONFIRM).
                 if (m.role === 'system' && isCloudModel && hasTools) {
-                    msg.content = compressSystemPrompt(m.content);
+                    const activeToolDescs = (options.tools ?? [])
+                        .filter(t => (t.function.description?.length ?? 0) > 200)
+                        .map(t => ({ name: t.function.name, description: t.function.description ?? '' }));
+                    msg.content = compressSystemPrompt(m.content, activeToolDescs.length > 0 ? activeToolDescs : undefined);
                 } else {
                     msg.content = m.content;
                 }
@@ -175,8 +230,10 @@ export class OllamaProvider extends LLMProvider {
             }),
             stream: false,
             options: {
-                num_predict: options.maxTokens || 16384,
-                ...(isCloudModel ? {} : { num_ctx: 16384 }),
+                // Auto-configure context window per model's known maximum.
+                // getModelCtx() returns the correct num_ctx for each cloud/local model.
+                num_predict: options.maxTokens || (isCloudModel ? 32768 : 16384),
+                num_ctx: getModelCtx(model),
                 temperature: options.temperature ?? 0.7,
             },
         };
@@ -206,11 +263,13 @@ export class OllamaProvider extends LLMProvider {
             }
         }
 
-        // Cloud models: trim conversation history preserving tool call/response pairs
+        // Cloud models: trim conversation history preserving tool call/response pairs.
+        // With 131K context window, cloud models can handle much longer histories.
+        // Only trim if truly excessive (>80 messages) to avoid cutting off mid-task.
         if (isCloudModel && hasTools) {
             const msgs = body.messages as Array<Record<string, unknown>>;
-            if (msgs.length > 10) {
-                const trimmed = trimPreservingToolPairs(msgs, 10);
+            if (msgs.length > 80) {
+                const trimmed = trimPreservingToolPairs(msgs, 80);
                 logger.info(COMPONENT, `Cloud model context trim: ${msgs.length} → ${trimmed.length} messages`);
                 body.messages = trimmed;
             }
@@ -307,9 +366,12 @@ export class OllamaProvider extends LLMProvider {
             model,
             messages: options.messages.map((m) => {
                 const msg: Record<string, unknown> = { role: m.role };
-                // Compress system prompts for cloud models with tools
+                // Compress system prompts for cloud models with tools — preserve active tool descriptions
                 if (m.role === 'system' && isCloudModel && hasTools) {
-                    msg.content = compressSystemPrompt(m.content);
+                    const activeToolDescs = (options.tools ?? [])
+                        .filter(t => (t.function.description?.length ?? 0) > 200)
+                        .map(t => ({ name: t.function.name, description: t.function.description ?? '' }));
+                    msg.content = compressSystemPrompt(m.content, activeToolDescs.length > 0 ? activeToolDescs : undefined);
                 } else {
                     msg.content = m.content;
                 }
@@ -326,7 +388,7 @@ export class OllamaProvider extends LLMProvider {
                 return msg;
             }),
             stream: true,
-            options: { num_predict: options.maxTokens || 16384, ...(isCloudModel ? {} : { num_ctx: 16384 }), temperature: options.temperature ?? 0.7 },
+            options: { num_predict: options.maxTokens || (isCloudModel ? 32768 : 16384), num_ctx: getModelCtx(model), temperature: options.temperature ?? 0.7 },
         };
 
         // Explicit thinking mode — disable for cloud models with tools
@@ -352,8 +414,8 @@ export class OllamaProvider extends LLMProvider {
         // Cloud model optimizations: trim history preserving tool pairs + merge system into user message
         if (isCloudModel && hasTools) {
             const msgs = body.messages as Array<Record<string, unknown>>;
-            if (msgs.length > 10) {
-                const trimmed = trimPreservingToolPairs(msgs, 10);
+            if (msgs.length > 80) {
+                const trimmed = trimPreservingToolPairs(msgs, 80);
                 logger.info(COMPONENT, `[Stream] Cloud model context trim: ${msgs.length} → ${trimmed.length} messages`);
                 body.messages = trimmed;
             }

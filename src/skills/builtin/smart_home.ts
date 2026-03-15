@@ -161,21 +161,20 @@ export function registerSmartHomeSkill(): void {
     registerSkill(
         {
             name: 'smart_home',
-            description: 'Control and monitor Home Assistant devices',
+            description: 'Use this for any home control or status request — "turn on the lights", "set thermostat to X", "lock the doors", "what\'s the temperature inside", "turn off everything", "show me my smart home devices". Controls Home Assistant via REST API.',
             version: '1.0.0',
             source: 'bundled',
             enabled: true,
         },
         {
             name: 'ha_devices',
-            description:
-                'List all Home Assistant devices and entities. Optionally filter by domain (light, switch, sensor, climate, media_player, etc.)',
+            description: 'List all smart home devices and their current states. Use when asked "what smart home devices do you see?", "show me my lights", "list my switches", "what\'s connected to Home Assistant", or before controlling a device to find its entity ID. Optionally filter by type: light, switch, sensor, climate, media_player, etc.',
             parameters: {
                 type: 'object',
                 properties: {
                     domain: {
                         type: 'string',
-                        description: 'Optional domain filter (e.g., "light", "switch", "sensor")',
+                        description: 'Device type to list (e.g., "light", "switch", "sensor", "climate") — omit for all devices',
                     },
                 },
                 required: [],
@@ -202,29 +201,29 @@ export function registerSmartHomeSkill(): void {
     registerSkill(
         {
             name: 'smart_home',
-            description: 'Control and monitor Home Assistant devices',
+            description: 'Use this for any home control or status request — "turn on the lights", "set thermostat to X", "lock the doors", "what\'s the temperature inside", "turn off everything", "show me my smart home devices". Controls Home Assistant via REST API.',
             version: '1.0.0',
             source: 'bundled',
             enabled: true,
         },
         {
             name: 'ha_control',
-            description: 'Control a Home Assistant device by sending a command (turn_on, turn_off, toggle, set_brightness, etc.)',
+            description: 'Control a smart home device — turn it on, off, toggle it, or set a value. Use when asked to "turn on the lights", "turn off the kitchen switch", "set brightness to 80%", "set thermostat to 72", "lock the front door", "toggle the fan", or any command to change a device\'s state.',
             parameters: {
                 type: 'object',
                 properties: {
                     entityId: {
                         type: 'string',
-                        description: 'Entity ID to control (e.g., "light.living_room", "switch.kitchen")',
+                        description: 'The Home Assistant entity ID (e.g., "light.living_room", "switch.kitchen", "climate.thermostat")',
                     },
                     action: {
                         type: 'string',
                         enum: ['turn_on', 'turn_off', 'toggle', 'set'],
-                        description: 'Action to perform',
+                        description: 'What to do: turn_on, turn_off, toggle, or set (for adjustments like brightness)',
                     },
                     data: {
                         type: 'object',
-                        description: 'Additional data like brightness (0-255), temperature (kelvin), color_temp, etc.',
+                        description: 'Optional parameters like brightness (0-255), temperature (kelvin), color_temp, hvac_mode, etc.',
                     },
                 },
                 required: ['entityId', 'action'],
@@ -265,20 +264,20 @@ export function registerSmartHomeSkill(): void {
     registerSkill(
         {
             name: 'smart_home',
-            description: 'Control and monitor Home Assistant devices',
+            description: 'Use this for any home control or status request — "turn on the lights", "set thermostat to X", "lock the doors", "what\'s the temperature inside", "turn off everything", "show me my smart home devices". Controls Home Assistant via REST API.',
             version: '1.0.0',
             source: 'bundled',
             enabled: true,
         },
         {
             name: 'ha_status',
-            description: 'Get the current state and attributes of a specific Home Assistant device',
+            description: 'Check the current state of a specific smart home device. Use when asked "what\'s the temperature inside?", "are the lights on?", "is the front door locked?", "what\'s the thermostat set to?", or any question about a device\'s current status.',
             parameters: {
                 type: 'object',
                 properties: {
                     entityId: {
                         type: 'string',
-                        description: 'Entity ID to check (e.g., "light.living_room", "sensor.temperature")',
+                        description: 'The entity ID to check (e.g., "light.living_room", "sensor.temperature", "lock.front_door")',
                     },
                 },
                 required: ['entityId'],

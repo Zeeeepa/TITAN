@@ -167,11 +167,29 @@ export async function getSessions(): Promise<Session[]> {
 }
 
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
-  return request(`/api/sessions/${sessionId}/messages`);
+  const raw = await request<Array<Record<string, unknown>>>(`/api/sessions/${sessionId}/messages`);
+  return raw.map((m) => ({
+    role: (m.role as ChatMessage['role']) ?? 'assistant',
+    content: (m.content as string) ?? '',
+    timestamp: (m.createdAt as string) ?? (m.timestamp as string) ?? undefined,
+    model: (m.model as string) ?? undefined,
+  }));
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await request(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+}
+
+export async function renameSession(sessionId: string, name: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function abortSession(sessionId: string): Promise<void> {
+  await request(`/api/sessions/${sessionId}/abort`, { method: 'POST' });
 }
 
 // ---- Config ----

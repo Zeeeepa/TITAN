@@ -333,6 +333,35 @@ export async function initBuiltinSkills(): Promise<void> {
         const { initDevSkills } = await import('./dev/loader.js');
         await initDevSkills();
     }
+
+    // Load personal skills (private, gitignored — only when TITAN_PERSONAL=1)
+    // Primary location: dist/skills/personal/loader.js (co-located with dist/skills/registry.js
+    //   so `../registry` resolves to the SAME module instance — tools register into the correct registry)
+    // Fallback: ~/.titan/personal/loader.js (legacy / TITAN_PERSONAL_DIR override)
+    if (process.env.TITAN_PERSONAL === '1') {
+        try {
+            const { pathToFileURL, fileURLToPath } = await import('node:url');
+            const { join: _join, dirname: _dirname } = await import('node:path');
+            // Compute dist/skills/ dir from this file's location (works on any machine)
+            const thisDir = _dirname(fileURLToPath(import.meta.url));
+            const distPersonalDir = _join(thisDir, 'personal');
+            // TITAN_PERSONAL_DIR env var overrides; otherwise try dist-local first, then ~/.titan/personal/
+            const personalDir = process.env.TITAN_PERSONAL_DIR
+                || (existsSync(_join(distPersonalDir, 'loader.js')) ? distPersonalDir : _join(TITAN_HOME, 'personal'));
+            const loaderPath = _join(personalDir, 'loader.js');
+            if (existsSync(loaderPath)) {
+                // Inject the main app's registerSkill into a global so the personal bundle
+                // (which has its own bundled copy) uses the correct shared toolRegistry instance.
+                (globalThis as Record<string, unknown>).__titanRegisterSkill = registerSkill;
+                const { initPersonalSkills } = await import(pathToFileURL(loaderPath).href) as { initPersonalSkills: () => Promise<void> };
+                await initPersonalSkills();
+            } else {
+                logger.warn(COMPONENT, `TITAN_PERSONAL=1 but ${loaderPath} not found — run: npm run build:personal`);
+            }
+        } catch (err) {
+            logger.warn(COMPONENT, `Personal skills failed to load: ${(err as Error).message}`);
+        }
+    }
 }
 
 /**

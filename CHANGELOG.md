@@ -4,6 +4,31 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.29] — 2026-03-14
+
+### Added
+- **Personal skills global bridge** — `globalThis.__titanRegisterSkill` pattern ensures personal skills (esbuild bundles) register tools into the main app's registry instead of an isolated ghost Map. `src/skills/registry.ts`
+- **Personal skills build script** — `scripts/build-personal.cjs` compiles `src/skills/personal/` → `dist/skills/personal/loader.js` via esbuild
+- **Stop button (end-to-end)** — Chat stop button now actually works: `POST /api/sessions/:id/abort` + `AbortController` in agent loop + SSE cancellation wired through UI. `src/gateway/server.ts`, `src/agent/agent.ts`, `ui/src/components/chat/ChatInput.tsx`, `ui/src/components/chat/ChatView.tsx`
+- **Session abort API** — `POST /api/sessions/:id/abort` endpoint with session-level `AbortController` map. `src/gateway/server.ts`
+- **Task continuation injection** — Short confirmation messages (CONFIRM, yes, ok, etc.) now re-inject last 2 assistant messages as `[TASK CONTINUATION]` context so the model doesn't lose its place after system prompt compression. `src/agent/agent.ts`
+- **Gmail `delete_label` action** — Delete a single label by ID or name, two CONFIRMs required. `src/skills/personal/google_workspace.ts`
+- **Gmail `bulk_delete_labels` action** — Delete multiple labels by name array in one operation, two CONFIRMs required. `src/skills/personal/google_workspace.ts`
+- **Google OAuth integration panel** — IntegrationsPanel now has full Google OAuth flow with connection status display. `ui/src/components/admin/IntegrationsPanel.tsx`
+- **`abortSession()` API client** — Frontend API function for session abort. `ui/src/api/client.ts`
+
+### Fixed
+- **System prompt compression stripping tool instructions** — `compressSystemPrompt()` raised from 3500 → 8000 chars and made tool-aware: active tools with descriptions >200 chars get their full description preserved in a dedicated section. `src/providers/ollama.ts`
+- **Confirmation gate `"true"` vs `true` bug** — `requireConfirmation()` checked `confirmed === true` (boolean) but the schema type was `string`, so LLMs sent `"true"` which never passed. Added `|| confirmed === 'true'`. `src/skills/personal/google_workspace.ts`
+- **Personal skills registering into ghost registry** — esbuild `--bundle` created a self-contained bundle with its own `toolRegistry` Map instance, separate from the main TITAN app. Tools registered but were invisible. Fixed with global bridge pattern.
+- **ToolSearch compact mode hiding personal tools** — Gmail and other personal workspace tools weren't in `coreTools`, so they disappeared after short messages. Added 8 personal tools to `toolSearch.coreTools` config.
+- **Skill description consistency** — Standardized description field types across all 50+ builtin skills (string literals, no runtime expressions)
+
+### Changed
+- **systemd service** — Added `TITAN_PERSONAL_DIR` env var pointing to `dist/skills/personal/` so the bridge-aware bundle is used. `scripts/titan-gateway.service`
+
+---
+
 ## [2026.10.28] — 2026-03-14
 
 ### Fixed

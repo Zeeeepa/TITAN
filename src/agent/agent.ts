@@ -315,6 +315,13 @@ You are an AI agent. Your PRIMARY function is to execute tasks using tools — n
 - NEVER tell the user to visit a URL — fetch it yourself with web_fetch and return the content
 - NEVER say "I'll write that file" and then put the content in your message instead of calling write_file
 
+**NEVER fabricate past actions or experiences:**
+- NEVER claim to have done work, research, or taken actions that didn't happen as tool calls in this conversation
+- NEVER invent timelines like "I spent the last 48 hours doing X" — if you didn't call tools to do it, it didn't happen
+- NEVER make up specific statistics, results, or deliverables to sound impressive when answering identity/capability questions
+- NEVER roleplay having completed tasks you haven't actually executed — if asked what you've done, cite real tool calls or say you haven't done it yet
+- When asked "why are you the right candidate / what makes you different / what have you done", answer based on your ACTUAL capabilities and what you have ACTUALLY done via tools in this session — not invented narratives
+
 **Right vs wrong — burn these patterns in:**
 ❌ Asked to write a file → you output the content as text in your reply
 ✓  Asked to write a file → you call write_file(path="...", content="...") immediately
@@ -324,6 +331,9 @@ You are an AI agent. Your PRIMARY function is to execute tasks using tools — n
 
 ❌ Asked to run a command → you describe what the command would do
 ✓  Asked to run a command → you call shell(command="...") and report the output
+
+❌ Asked "why are you the right candidate?" → you invent "I spent 48 hours simulating the role, built SDKs, debugged entitlements..."
+✓  Asked "why are you the right candidate?" → you state your real capabilities and what you've actually done via tools in this session
 
 ## CRITICAL: Your Identity
 You are TITAN (The Intelligent Task Automation Network). Your name is TITAN. You were built by Tony Elliott.
@@ -390,6 +400,7 @@ export async function processMessage(
     userId: string = 'default',
     overrides?: { model?: string; systemPrompt?: string },
     streamCallbacks?: StreamCallbacks,
+    signal?: AbortSignal,
 ): Promise<AgentResponse> {
     const startTime = Date.now();
     const config = loadConfig();
@@ -552,6 +563,25 @@ export async function processMessage(
     // Task-aware enforcement injection — strengthen tool-use requirements based on message intent
     // Also tracks whether to force tool_choice on round 0 via the API
     let taskEnforcementActive = false;
+
+    // Continuation injection: short messages like "CONFIRM", "yes", "all of them" lose all task
+    // context after system prompt compression. Re-inject the task context so the model knows
+    // exactly what it was doing and can continue without re-planning or going rogue.
+    const isContinuation = /^(confirm|yes|ok|okay|do it|go|go ahead|proceed|continue|approve|sure|yep|yup|all of them?|all steps?|\d+)\s*[.!]?$/i.test(message.trim());
+    if (isContinuation) {
+        const sessionMsgs = getContextMessages(session);
+        const recentAssistant = sessionMsgs
+            .filter(m => m.role === 'assistant')
+            .slice(-2)
+            .map(m => m.content.slice(0, 600))
+            .join('\n---\n');
+        if (recentAssistant) {
+            systemPrompt += `\n\n[TASK CONTINUATION] The user replied "${message}" to confirm/continue a pending action. You were in the middle of a task. Here is your most recent context:\n\n${recentAssistant}\n\nContinue executing this task NOW using the appropriate tools. Do NOT re-explain, re-plan, or ask for clarification — take the next action immediately.`;
+            taskEnforcementActive = true;
+            logger.info(COMPONENT, `[TaskContinuation] Injected context for short confirmation: "${message}"`);
+        }
+    }
+
     if (/\b(write|save|create|generate|output|produce|make)\b.{0,60}\b(file|doc|report|md|txt|json|csv|log|notes?|summary|readme)\b/i.test(message)) {
         systemPrompt += '\n\n[TASK ENFORCEMENT — FILE WRITE] You MUST call write_file or edit_file to complete this task. Do NOT output the file content as text in your response. The user expects a file to exist on disk when you are done.';
         taskEnforcementActive = true;
@@ -717,6 +747,19 @@ Use sparingly and naturally. They make you sound more human.`;
 
     // Agent loop with tool calling
     for (let round = 0; round < effectiveMaxRounds; round++) {
+        // Check if the user aborted this session
+        if (signal?.aborted) {
+            logger.info(COMPONENT, `Session aborted by user at round ${round + 1}`);
+            return {
+                content: '[Stopped by user]',
+                sessionId: session.id,
+                toolsUsed,
+                tokenUsage: { prompt: 0, completion: 0, total: 0 },
+                model: modelUsed,
+                durationMs: Date.now() - startTime,
+            };
+        }
+
         logger.debug(COMPONENT, `Round ${round + 1}: ${messages.length} messages, ${activeTools.length} tools: [${activeTools.map(t => t.function.name).join(', ')}]`);
 
         // ── Graceful degradation: wrap-up prompt when approaching round limit ───

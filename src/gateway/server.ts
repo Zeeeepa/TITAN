@@ -20,7 +20,7 @@ import { initBuiltinSkills, getSkills, toggleSkill, getSkillTools } from '../ski
 import { listPersonas, getPersona, invalidatePersonaCache } from '../personas/manager.js';
 import { searchSkills as marketplaceSearch, installSkill, uninstallSkill, listSkills as listMarketplaceSkills, listInstalled as listInstalledMarketplace } from '../skills/marketplace.js';
 import { getRegisteredTools } from '../agent/toolRunner.js';
-import { listSessions } from '../agent/session.js';
+import { listSessions, cleanupStaleSessions } from '../agent/session.js';
 import { healthCheckAll, discoverAllModels, getModelAliases, chatStream, getFallbackState } from '../providers/router.js';
 import { auditSecurity } from '../security/sandbox.js';
 import { WebChatChannel } from '../channels/webchat.js';
@@ -56,7 +56,7 @@ import { getCostStatus } from '../agent/costOptimizer.js';
 import { initLearning, getLearningStats } from '../memory/learning.js';
 import { initGraph, getGraphData, getGraphStats, clearGraph } from '../memory/graph.js';
 import { getLogFilePath } from '../utils/logger.js';
-import { closeSession } from '../agent/session.js';
+import { closeSession, renameSession } from '../agent/session.js';
 import { initCronScheduler } from '../skills/builtin/cron.js';
 import { checkAndSendBriefing } from '../memory/briefing.js';
 import { initPersistentWebhooks } from '../skills/builtin/webhook.js';
@@ -118,6 +118,9 @@ export function stopGateway(): Promise<void> {
 
 /** Active session tokens (in-memory, cleared on restart) */
 const authTokens = new Map<string, { createdAt: number }>();
+
+// Active session abort controllers — keyed by sessionId
+const sessionAborts = new Map<string, AbortController>();
 
 // Clean expired tokens every 10 minutes
 tokenCleanupInterval = setInterval(() => {
@@ -332,6 +335,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   let host = options?.host || config.gateway.host;
 
   logger.info(COMPONENT, `Starting ${TITAN_NAME} Gateway v${TITAN_VERSION}`);
+
+  // ── Stale session cleanup: mark orphaned active sessions as idle ──
+  cleanupStaleSessions();
 
   // ── Port pre-check: fail fast before loading subsystems ────
   const portAvailable = await new Promise<boolean>((resolve) => {
@@ -594,6 +600,21 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  app.patch('/api/sessions/:id', (req, res) => {
+    try {
+      const { name } = req.body as { name?: string };
+      if (!name || typeof name !== 'string') {
+        res.status(400).json({ error: 'name is required' });
+        return;
+      }
+      const ok = renameSession(req.params.id, name);
+      if (!ok) { res.status(404).json({ error: 'Session not found' }); return; }
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
   app.get('/api/skills', (_req, res) => {
     const skills = getSkills();
     res.json(skills);
@@ -847,7 +868,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   // Agent message endpoint (uses multi-agent routing)
   // Supports SSE streaming when Accept: text/event-stream header is present
   app.post('/api/message', rateLimit(60000, 30), async (req, res) => {
-    const { content, channel = 'api', userId = 'api-user', agentId } = req.body;
+    const { content, channel = 'api', userId = 'api-user', agentId, sessionId: requestedSessionId } = req.body;
     if (!content) {
       res.status(400).json({ error: 'content is required' });
       return;
@@ -855,6 +876,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
     const startTime = process.hrtime.bigint();
     const wantsSSE = req.headers.accept === 'text/event-stream';
+
+    // Set up abort controller for this request
+    const abortController = new AbortController();
+    if (requestedSessionId) sessionAborts.set(requestedSessionId, abortController);
 
     // Check slash commands first (same as handleInboundMessage)
     try {
@@ -919,7 +944,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           onToolCall: (name, args) => {
             safeWrite(`event: tool_call\ndata: ${JSON.stringify({ name, args })}\n\n`);
           },
-        }, agentId);
+        }, agentId, abortController.signal);
         titanRequestsTotal.increment({ channel, status: 'ok' });
         if (response.toolsUsed) {
           for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
@@ -934,7 +959,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           try { res.end(); } catch { /* client gone */ }
         }
       } else {
-        const response = await routeMessage(content, channel, userId, undefined, agentId);
+        const response = await routeMessage(content, channel, userId, undefined, agentId, abortController.signal);
         titanRequestsTotal.increment({ channel, status: 'ok' });
         if (response.toolsUsed) {
           for (const tool of response.toolsUsed) titanToolCallsTotal.increment({ tool });
@@ -959,6 +984,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       titanActiveSessions.dec();
       const durationSec = Number(process.hrtime.bigint() - startTime) / 1e9;
       titanRequestDuration.observe(durationSec, { channel });
+      if (requestedSessionId) sessionAborts.delete(requestedSessionId);
+    }
+  });
+
+  // Abort a running session
+  app.post('/api/sessions/:id/abort', (req, res) => {
+    const { id } = req.params;
+    const controller = sessionAborts.get(id);
+    if (controller) {
+      controller.abort();
+      sessionAborts.delete(id);
+      res.json({ ok: true, message: 'Session aborted' });
+    } else {
+      res.json({ ok: true, message: 'No active session to abort' });
     }
   });
 
@@ -2294,7 +2333,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     const publicUrl = (cfg.gateway as Record<string, unknown>).publicUrl as string | undefined;
     return publicUrl
       ? `${publicUrl}/api/auth/google/callback`
-      : `http://127.0.0.1:${port}/api/auth/google/callback`;
+      : `http://localhost:${port}/api/auth/google/callback`;
   }
 
   app.get('/api/auth/google/status', (_req, res) => {

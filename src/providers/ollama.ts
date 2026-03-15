@@ -91,24 +91,39 @@ Right: asked to write a file → call write_file immediately.
 Wrong: asked to write a file → output the content as text in your reply.`);
     }
 
-    // 2. Active tool descriptions — inject full descriptions of tools currently in use.
-    //    This prevents the model from forgetting available actions mid-task (e.g. after CONFIRM).
-    if (activeTools && activeTools.length > 0) {
-        const toolBlock = activeTools
-            .map(t => `**${t.name}**: ${t.description}`)
-            .join('\n\n');
-        sections.push(`## Active Tools — Use These For The Current Task\n${toolBlock}`);
-    }
-
-    // 3. Identity (shortened)
+    // 2. Identity (shortened)
     const identityMatch = content.match(/## CRITICAL: Your Identity[\s\S]*?(?=\n## )/);
     if (identityMatch) sections.push(identityMatch[0].trim());
 
-    // 4. Brief capabilities + behavior
+    // 3. Brief capabilities + behavior
     sections.push('## Tools Available\nShell, file read/write/edit, web search/fetch, browser, memory, weather, code execution, gmail, gdrive, gcal_personal, gtasks, gcontacts. Use tool_search to discover any tool not listed here.');
     sections.push('## Behavior\n- Lead with action — call tools immediately, explain briefly after\n- Never re-plan mid-task after CONFIRM — execute directly\n- Confirm before destructive operations');
 
+    // 4. Active tool descriptions — only inject if budget allows (max 2000 chars for tools).
+    //    This prevents the model from forgetting available actions mid-task (e.g. after CONFIRM).
+    if (activeTools && activeTools.length > 0) {
+        const TOOL_BUDGET = 2000;
+        const toolLines: string[] = [];
+        let toolChars = 0;
+        for (const t of activeTools) {
+            // Use first 150 chars of description to keep it compact
+            const desc = t.description.length > 150 ? t.description.slice(0, 147) + '...' : t.description;
+            const line = `- **${t.name}**: ${desc}`;
+            if (toolChars + line.length > TOOL_BUDGET) break;
+            toolLines.push(line);
+            toolChars += line.length;
+        }
+        if (toolLines.length > 0) {
+            sections.push(`## Active Tools\n${toolLines.join('\n')}`);
+        }
+    }
+
     const compressed = sections.join('\n\n');
+    // Safety: never return something larger than the original
+    if (compressed.length >= content.length) {
+        logger.info(COMPONENT, `Compressed prompt would be larger (${compressed.length} vs ${content.length}), using truncated original`);
+        return content.slice(0, CLOUD_MAX_SYSTEM_PROMPT);
+    }
     logger.info(COMPONENT, `Compressed system prompt for cloud model: ${content.length} → ${compressed.length} chars`);
     return compressed;
 }

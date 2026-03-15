@@ -58,7 +58,7 @@ export interface VoiceConfig {
   livekitApiSecret: string;
   agentUrl: string;
   ttsVoice: string;
-  ttsEngine?: 'orpheus' | 'kokoro';
+  ttsEngine?: 'tada';
   ttsUrl?: string;
   sttUrl?: string;
 }

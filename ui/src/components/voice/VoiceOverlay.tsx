@@ -83,13 +83,16 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   const sessionIdRef = useRef<string | undefined>(undefined);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const interruptCheckRef = useRef<number>(0);
 
   // Refs to avoid stale closures in recognition callbacks
   const isMutedRef = useRef(false);
+  const isSpeakingRef = useRef(false);
   const phaseRef = useRef<'picking' | 'active'>('picking');
 
   // Keep refs in sync with state
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
 
   // Animate in
@@ -111,7 +114,13 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   // Mic level monitoring
   const startMicMonitor = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       micStreamRef.current = stream;
       const ctx = new AudioContext();
       audioContextRef.current = ctx;
@@ -139,6 +148,7 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
 
   const stopMicMonitor = useCallback(() => {
     cancelAnimationFrame(levelAnimRef.current);
+    cancelAnimationFrame(interruptCheckRef.current);
     micStreamRef.current?.getTracks().forEach(t => t.stop());
     audioContextRef.current?.close();
     micStreamRef.current = null;
@@ -164,11 +174,17 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     recognition.lang = 'en-US';
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      // Ignore speech recognition results while TITAN is speaking — it's echo
+      if (isSpeakingRef.current) return;
+
       let interim = '';
       let final = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
+        // Filter low-confidence results — likely echo artifacts from speaker bleed
+        if (result[0].confidence > 0 && result[0].confidence < 0.5) continue;
+
         if (result.isFinal) {
           final += result[0].transcript;
         } else {
@@ -198,7 +214,8 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
 
     recognition.onend = () => {
       // Use refs (not state) to avoid stale closure — these always have current values
-      if (!isMutedRef.current && phaseRef.current === 'active') {
+      // Don't auto-restart while TITAN is speaking — mic would pick up TTS audio
+      if (!isMutedRef.current && !isSpeakingRef.current && phaseRef.current === 'active') {
         try { recognition.start(); } catch { /* already started */ }
       }
       setIsListening(false);
@@ -315,14 +332,51 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       const audio = new Audio(url);
       currentAudioRef.current = audio;
 
-      // Simulate audio levels from playback
+      // Simulate audio levels from playback + monitor mic for voice interrupts
       let levelFrame: number;
+      let interruptFrames = 0; // consecutive frames above threshold
+      const INTERRUPT_THRESHOLD = 0.45; // mic energy needed to interrupt (above TTS bleed)
+      const INTERRUPT_FRAMES = 8; // ~130ms of sustained loud input to trigger interrupt
+
       const simulateLevel = () => {
+        // Check mic energy — if user is speaking over TITAN, interrupt
+        const analyser = analyserRef.current;
+        if (analyser) {
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const micEnergy = sum / data.length / 255;
+
+          if (micEnergy > INTERRUPT_THRESHOLD) {
+            interruptFrames++;
+            if (interruptFrames >= INTERRUPT_FRAMES) {
+              // User is speaking — interrupt TITAN
+              audio.pause();
+              audio.src = '';
+              currentAudioRef.current = null;
+              cancelAnimationFrame(levelFrame);
+              setIsSpeaking(false);
+              setAudioLevel(0);
+              URL.revokeObjectURL(url);
+              // Resume recognition so user's speech is captured
+              try { recognitionRef.current?.start(); } catch { /* ok */ }
+              return;
+            }
+          } else {
+            interruptFrames = 0;
+          }
+        }
+
         setAudioLevel(0.3 + Math.random() * 0.4);
         levelFrame = requestAnimationFrame(simulateLevel);
       };
 
-      audio.onplay = () => { simulateLevel(); };
+      audio.onplay = () => {
+        // Fully stop STT during TTS playback to prevent buffered echo
+        try { recognitionRef.current?.stop(); } catch { /* ok */ }
+        simulateLevel();
+      };
 
       const cleanup = () => {
         cancelAnimationFrame(levelFrame);
@@ -331,7 +385,12 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         currentAudioRef.current = null;
         setIsSpeaking(false);
         setAudioLevel(0);
-        try { recognitionRef.current?.start(); } catch { /* ok */ }
+        // Grace period — let echo decay before restarting STT (500ms)
+        setTimeout(() => {
+          if (!isMutedRef.current && phaseRef.current === 'active') {
+            try { recognitionRef.current?.start(); } catch { /* ok */ }
+          }
+        }, 500);
       };
 
       audio.onended = cleanup;

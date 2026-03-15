@@ -10,11 +10,12 @@ function VoiceSettingsPanel() {
     livekitApiKey: '',
     livekitApiSecret: '',
     agentUrl: '',
-    ttsVoice: '',
-    ttsEngine: 'orpheus',
-    ttsUrl: 'http://localhost:5005',
+    ttsVoice: 'default',
+    ttsEngine: 'tada',
+    ttsUrl: 'http://localhost:48421',
     sttUrl: 'http://localhost:8300',
   });
+  const [voices, setVoices] = useState<string[]>(['default']);
   const [health, setHealth] = useState<VoiceHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,6 +31,14 @@ function VoiceSettingsPanel() {
         if (h.status === 'fulfilled') {
           setHealth(h.value);
         }
+        // Fetch available TADA voices from the voice server
+        try {
+          const res = await fetch('/api/voice/voices');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.voices?.length) setVoices(data.voices);
+          }
+        } catch { /* voice server may be offline */ }
       } catch {
         // ignore
       } finally {
@@ -79,6 +88,7 @@ function VoiceSettingsPanel() {
       <div className="flex items-center gap-3">
         <Mic className="h-5 w-5 text-[#6366f1]" />
         <h2 className="text-lg font-semibold text-[#fafafa]">Voice Settings</h2>
+        <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-xs font-medium text-[#a78bfa]">TADA</span>
       </div>
 
       {toast && (
@@ -107,7 +117,7 @@ function VoiceSettingsPanel() {
               [
                 ['LiveKit', health.livekit],
                 ['STT', health.stt],
-                [`TTS (${health.ttsEngine || 'orpheus'})`, health.tts],
+                ['TTS (TADA)', health.tts],
                 ['Agent', health.agent],
               ] as const
             ).map(([name, ok]) => (
@@ -131,43 +141,16 @@ function VoiceSettingsPanel() {
           />
           <span className="text-sm text-[#fafafa]">Enable Voice</span>
         </label>
+        <p className="mt-2 text-xs text-[#52525b]">
+          Powered by Hume AI TADA — 0.09 RTF, zero hallucinations, voice cloning
+        </p>
       </div>
 
-      {/* TTS Engine selector */}
-      <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6 space-y-4">
-        <h3 className="text-sm font-medium text-[#a1a1aa]">TTS Engine</h3>
-        <div className="flex gap-3">
-          {(['orpheus', 'kokoro'] as const).map((engine) => (
-            <button
-              key={engine}
-              onClick={() => {
-                update('ttsEngine', engine);
-                update('ttsUrl', engine === 'orpheus' ? 'http://localhost:5005' : 'http://localhost:8880');
-                update('ttsVoice', engine === 'orpheus' ? 'tara' : 'af_heart');
-              }}
-              className={`flex-1 rounded-lg border px-4 py-3 text-left transition-all ${
-                voice.ttsEngine === engine
-                  ? 'border-[#6366f1] bg-[#6366f1]/10'
-                  : 'border-[#3f3f46] hover:border-[#52525b]'
-              }`}
-            >
-              <div className="text-sm font-medium text-[#fafafa] capitalize">{engine}</div>
-              <div className="text-xs text-[#71717a] mt-0.5">
-                {engine === 'orpheus' ? 'Emotional, GPU-accelerated, local' : 'Fast, lightweight, legacy'}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* TTS Voice selector */}
+      {/* Voice selector */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6 space-y-4">
         <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
         <div className="grid grid-cols-4 gap-2">
-          {(voice.ttsEngine === 'orpheus'
-            ? ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac']
-            : ['af_heart', 'af_bella', 'af_nova', 'af_sky', 'am_adam', 'am_michael']
-          ).map((v) => (
+          {voices.map((v) => (
             <button
               key={v}
               onClick={() => update('ttsVoice', v)}
@@ -181,6 +164,9 @@ function VoiceSettingsPanel() {
             </button>
           ))}
         </div>
+        <p className="text-xs text-[#52525b]">
+          Add custom voices by placing WAV reference files in ~/.titan/voices/ (e.g., tony.wav → voice &quot;tony&quot;)
+        </p>
       </div>
 
       {/* Connection fields */}
@@ -192,7 +178,7 @@ function VoiceSettingsPanel() {
           <input
             value={voice.ttsUrl || ''}
             onChange={(e) => update('ttsUrl', e.target.value)}
-            placeholder={voice.ttsEngine === 'orpheus' ? 'http://localhost:5005' : 'http://localhost:8880'}
+            placeholder="http://localhost:48421"
             className="w-full rounded-lg border border-[#3f3f46] bg-[#09090b] px-3 py-2 text-sm text-[#fafafa] outline-none focus:border-[#6366f1]"
           />
         </div>

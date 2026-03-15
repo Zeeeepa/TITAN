@@ -1188,6 +1188,9 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       if (body.gatewayAuthMode !== undefined) { cfg.gateway.auth.mode = body.gatewayAuthMode as 'none' | 'token' | 'password'; changedFields.push('gateway.auth.mode'); }
       if (body.gatewayPassword !== undefined) { cfg.gateway.auth.password = body.gatewayPassword as string; changedFields.push('gateway.auth.password'); }
       if (body.gatewayToken !== undefined) { cfg.gateway.auth.token = body.gatewayToken as string; changedFields.push('gateway.auth.token'); }
+      // Home Assistant
+      if (body.homeAssistantUrl !== undefined) { cfg.homeAssistant.url = body.homeAssistantUrl as string; changedFields.push('homeAssistant.url'); }
+      if (body.homeAssistantToken !== undefined) { cfg.homeAssistant.token = body.homeAssistantToken as string; changedFields.push('homeAssistant.token'); }
       // Channels
       if (body.channels !== undefined && typeof body.channels === 'object') {
         for (const [ch, val] of Object.entries(body.channels as Record<string, unknown>)) {
@@ -1202,7 +1205,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           'googleKey', 'ollamaUrl', 'groqKey', 'mistralKey', 'openrouterKey', 'fireworksKey', 'xaiKey',
           'togetherKey', 'deepseekKey', 'perplexityKey', 'maxTokens', 'temperature', 'systemPrompt',
           'shieldEnabled', 'shieldMode', 'deniedTools', 'networkAllowlist', 'gatewayPort', 'gatewayAuthMode',
-          'gatewayPassword', 'gatewayToken', 'channels', 'googleOAuthClientId', 'googleOAuthClientSecret'];
+          'gatewayPassword', 'gatewayToken', 'channels', 'googleOAuthClientId', 'googleOAuthClientSecret',
+          'homeAssistantUrl', 'homeAssistantToken'];
         res.status(400).json({ error: 'No recognized fields in request body', validFields });
         return;
       }
@@ -2237,13 +2241,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
   app.get('/api/voice/health', async (_req, res) => {
     const cfg = loadConfig();
     if (!cfg.voice?.enabled) {
-      res.json({ livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'orpheus' });
+      res.json({ livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'tada' });
       return;
     }
-    const results = { livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: cfg.voice.ttsEngine || 'orpheus' };
+    const results = { livekit: false, stt: false, tts: false, agent: false, overall: false, ttsEngine: 'tada' as string };
     const sttUrl = cfg.voice.sttUrl || 'http://localhost:8300';
-    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:5005';
-    const ttsHealthUrl = cfg.voice.ttsEngine === 'kokoro' ? `${ttsUrl}/v1/audio/voices` : `${ttsUrl}/v1/audio/speech`;
+    const ttsUrl = cfg.voice.ttsUrl || 'http://localhost:48421';
     const checks = [
       { key: 'livekit' as const, url: cfg.voice.livekitUrl.replace('ws://', 'http://').replace('wss://', 'https://') },
       { key: 'agent' as const, url: cfg.voice.agentUrl },
@@ -2255,30 +2258,22 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         results[key] = resp.ok || resp.status < 500;
       } catch { results[key] = false; }
     }));
-    // TTS check — probe the actual TTS endpoint (not root URL which may 404)
+    // TTS health check — TADA voice server /health endpoint
     try {
-      const resp = await fetch(ttsHealthUrl, {
-        method: cfg.voice.ttsEngine === 'kokoro' ? 'GET' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: cfg.voice.ttsEngine === 'kokoro' ? undefined : JSON.stringify({ input: 'test', voice: 'tara', response_format: 'wav' }),
-        signal: AbortSignal.timeout(5000),
-      });
-      // Any non-5xx means the server is alive (even 400 from bad input is fine)
+      const resp = await fetch(`${ttsUrl}/health`, { signal: AbortSignal.timeout(5000) });
       results.tts = resp.status < 500;
     } catch { results.tts = false; }
-    // Overall: TTS is required, LiveKit/STT optional for text-to-speech mode
     results.overall = results.tts;
     res.json(results);
   });
 
-  // Voice preview — synthesize a short sample and return audio
+  // Voice preview — synthesize a short sample via TADA voice server
   app.post('/api/voice/preview', async (req, res) => {
     const cfg = loadConfig();
-    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'tara';
+    const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'default';
     const rawText = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
-    // Truncate to prevent extremely long TTS requests from hanging
     const text = rawText.length > 500 ? rawText.slice(0, 497) + '...' : rawText;
-    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:48421';
     const ttsEndpoint = `${ttsUrl}/v1/audio/speech`;
     logger.info('Gateway', `TTS request: voice=${voiceId}, text=${text.slice(0, 80)}...`);
 
@@ -2287,7 +2282,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input: text, voice: voiceId, response_format: 'wav' }),
-        signal: AbortSignal.timeout(60000), // Orpheus can take longer on CPU
+        signal: AbortSignal.timeout(30000),
       });
       if (!ttsRes.ok) {
         res.status(502).json({ error: 'TTS service unavailable' });
@@ -2301,24 +2296,17 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
-  // Voice available voices
+  // Voice available voices — query TADA voice server
   app.get('/api/voice/voices', async (_req, res) => {
     const cfg = loadConfig();
-    const engine = cfg.voice?.ttsEngine || 'orpheus';
-    if (engine === 'orpheus') {
-      // Orpheus voices are fixed — return the known set
-      res.json({ voices: ['tara', 'leah', 'jess', 'leo', 'dan', 'mia', 'zac', 'zoe'] });
-      return;
-    }
-    // Kokoro — query the service
-    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:8880';
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:48421';
     try {
       const ttsRes = await fetch(`${ttsUrl}/v1/audio/voices`, { signal: AbortSignal.timeout(3000) });
-      if (!ttsRes.ok) { res.json({ voices: [] }); return; }
+      if (!ttsRes.ok) { res.json({ voices: ['default'] }); return; }
       const data = await ttsRes.json() as { voices?: string[] };
       res.json(data);
     } catch {
-      res.json({ voices: [] });
+      res.json({ voices: ['default'] });
     }
   });
 

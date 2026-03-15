@@ -247,11 +247,11 @@ export const VoiceConfigSchema = z.object({
     /** URL of the voice agent (for health checks) */
     agentUrl: z.string().default('http://localhost:8081'),
     /** Default TTS voice name */
-    ttsVoice: z.string().default('tara'),
-    /** TTS engine: 'orpheus' (emotional, local GPU) or 'kokoro' (legacy) */
-    ttsEngine: z.enum(['orpheus', 'kokoro']).default('orpheus'),
-    /** TTS server URL (Orpheus: http://localhost:5005, Kokoro: http://localhost:8880) */
-    ttsUrl: z.string().default('http://localhost:5005'),
+    ttsVoice: z.string().default('default'),
+    /** TTS engine: 'tada' (Hume AI TADA — fastest, zero hallucinations, voice cloning) */
+    ttsEngine: z.enum(['tada']).default('tada'),
+    /** TTS server URL (TADA voice server) */
+    ttsUrl: z.string().default('http://localhost:48421'),
     /** STT server URL (e.g. faster-whisper) */
     sttUrl: z.string().default('http://localhost:8300'),
 });
@@ -516,6 +516,12 @@ export const TitanConfigSchema = z.object({
     teams: TeamConfigSchema.default({}),
     researchPipeline: ResearchPipelineConfigSchema.default({}),
     autoresearch: AutoresearchConfigSchema.default({}),
+    homeAssistant: z.object({
+        /** Home Assistant instance URL (e.g., http://homeassistant.local:8123) */
+        url: z.string().default(''),
+        /** Long-lived access token for Home Assistant API */
+        token: z.string().default(''),
+    }).default({}),
     mcp: z.object({
         /** MCP server mode — expose TITAN's tools to other agents */
         server: z.object({

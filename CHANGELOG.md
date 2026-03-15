@@ -4,6 +4,25 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.30] — 2026-03-15
+
+### Added
+- **TADA TTS integration** — Hume AI TADA (Text-Acoustic Dual Alignment) as the sole TTS engine. 0.09 RTF, zero hallucinations, voice cloning via reference WAV files in `~/.titan/voices/`. `titan-voice-server/tts.py`, `titan-voice-server/server.py`
+- **Home Assistant skill (11 tools)** — Full smart home control: `ha_setup`, `ha_devices`, `ha_control`, `ha_status`, `ha_automations`, `ha_scenes`, `ha_history`, `ha_areas`, `ha_call_service`, `ha_dashboard`, `ha_notify`. Config persistence via chat. `src/skills/builtin/smart_home.ts`
+- **Voice server REST API** — OpenAI-compatible `/v1/audio/speech` + `/v1/audio/voices` + `/health` endpoints. `titan-voice-server/server.py`
+- **Home Assistant config in schema** — `homeAssistant.url` and `homeAssistant.token` fields in Zod config. `src/config/schema.ts`
+
+### Changed
+- **TADA-only voice** — Removed Orpheus and Kokoro TTS engines. Config `ttsEngine` is now `'tada'` only with default voice `'default'` and URL `localhost:48421`. `src/config/schema.ts`, `src/gateway/server.ts`, `ui/src/components/admin/VoiceSettingsPanel.tsx`
+- **VoiceSettingsPanel** — Simplified to TADA-only with dynamic voice list from API, voice cloning instructions. No engine selector needed.
+- **Gateway voice endpoints** — Simplified health check, preview, and voices endpoints for TADA-only architecture.
+
+### Fixed
+- **Voice echo cancellation** — Browser AEC/noise suppression constraints, STT paused during TTS playback, 500ms grace period, confidence filtering (< 0.5 = echo). `ui/src/components/voice/VoiceOverlay.tsx`
+- **Ollama provider** — Improved error handling and response parsing. `src/providers/ollama.ts`
+
+---
+
 ## [2026.10.29] — 2026-03-14
 
 ### Added

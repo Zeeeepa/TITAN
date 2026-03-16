@@ -4,6 +4,20 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.35] — 2026-03-15
+
+### Fixed
+- **Voice echo prevention** — `processingRef` guard prevents duplicate API calls; 1500ms grace period after TTS playback; transcript buffer cleared between exchanges
+- **TTS/display mismatch** — TTS now uses same `displayText` as chat display (was using pre-stripped `cleanText`)
+- **Tool narration in voice mode** — Client-side `stripToolNarration()` removes LLM tool-mention leaks ("I'll use the ha_setup tool...") from voice responses
+- **STT restart after first exchange** — `processingRef` removed from `onresult`/`onend` callbacks (only guards `handleUserMessage`)
+
+### Changed
+- Voice mode system prompt strengthened with explicit "NEVER mention tool names" directive
+- Voice text pipeline: `rawText → stripMarkdown → stripEmotionTags → stripToolNarration → displayText`
+
+---
+
 ## [2026.10.34] — 2026-03-15
 
 ### Changed

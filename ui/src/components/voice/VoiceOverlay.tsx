@@ -32,6 +32,15 @@ const stripMarkdown = (text: string) =>
     .replace(/\n{2,}/g, ' ')           // collapse newlines
     .trim();
 
+/** Strip tool narration that LLMs leak despite prompt instructions */
+const stripToolNarration = (text: string) =>
+  text
+    .replace(/(?:Let me |I'll |I will |I'm going to )(?:use|call|check|run|invoke|execute|try)(?: the)? \w[\w_]*(?: tool)?(?:\s+(?:to|for|and)\b[^.!?]*)?[.!]?\s*/gi, '')
+    .replace(/\b(?:Using|Calling|Running|Checking|Invoking|Executing) (?:the )?\w[\w_]*(?: tool)?(?:\s+(?:to|for)\b[^.!?]*)?[.!]?\s*/gi, '')
+    .replace(/\b\w[\w_]*(?:_\w+)+\b/g, '')  // bare tool_names like ha_setup, web_search
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Browser Speech Recognition types
@@ -88,6 +97,7 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const interruptCheckRef = useRef<number>(0);
+  const processingRef = useRef(false); // guard against overlapping handleUserMessage calls
 
   // Refs to avoid stale closures in recognition callbacks
   const isMutedRef = useRef(false);
@@ -277,6 +287,10 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
 
   // Send user message to TITAN and speak the response via TTS
   const handleUserMessage = useCallback(async (text: string) => {
+    // Prevent overlapping calls (echo can trigger rapid duplicate messages)
+    if (processingRef.current) return;
+    processingRef.current = true;
+
     // If TITAN is speaking, interrupt it
     stopCurrentAudio();
 
@@ -318,11 +332,10 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         sessionIdRef.current = data.sessionId;
       }
 
-      // Process response text
+      // Process response text: markdown → emotion tags → tool narration
       const rawText = data.content || 'Sorry, I couldn\'t process that.';
       const cleanText = stripMarkdown(rawText);
-      // Strip emotion tags for display, keep for TTS
-      const displayText = stripEmotionTags(cleanText);
+      const displayText = stripToolNarration(stripEmotionTags(cleanText));
 
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
       setIsThinking(false);
@@ -331,8 +344,9 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       setIsSpeaking(true);
       const voice = selectedVoiceRef.current || 'tara';
 
-      // Truncate text for TTS to avoid long hangs (max ~300 chars)
-      const ttsText = cleanText.length > 300 ? cleanText.slice(0, 297) + '...' : cleanText;
+      // Use displayText for TTS so spoken words match what's shown
+      // Truncate for TTS to avoid long hangs (max ~500 chars)
+      const ttsText = displayText.length > 500 ? displayText.slice(0, 497) + '...' : displayText;
 
       // Try server TTS (Orpheus) — separate AbortController so it doesn't kill other requests
       let useBrowserTTS = false;
@@ -372,16 +386,20 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
           clearInterval(synthInterval);
           setIsSpeaking(false);
           setAudioLevel(0);
+          currentTranscriptRef.current = '';
           setTimeout(() => {
+            processingRef.current = false;
             if (!isMutedRef.current && phaseRef.current === 'active') {
               try { recognitionRef.current?.start(); } catch { /* ok */ }
             }
-          }, 500);
+          }, 1500);
         };
         utterance.onerror = () => {
           clearInterval(synthInterval);
           setIsSpeaking(false);
           setAudioLevel(0);
+          currentTranscriptRef.current = '';
+          processingRef.current = false;
           try { recognitionRef.current?.start(); } catch { /* ok */ }
         };
         window.speechSynthesis.cancel();
@@ -391,6 +409,7 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
 
       if (useBrowserTTS) {
         setIsSpeaking(false);
+        processingRef.current = false;
         try { recognitionRef.current?.start(); } catch { /* ok */ }
         return;
       }
@@ -425,8 +444,13 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
               setIsSpeaking(false);
               setAudioLevel(0);
               URL.revokeObjectURL(url);
-              // Resume recognition so user's speech is captured
-              try { recognitionRef.current?.start(); } catch { /* ok */ }
+              // Clear any buffered echo transcript, then resume recognition
+              currentTranscriptRef.current = '';
+              setInterimText('');
+              processingRef.current = false;
+              setTimeout(() => {
+                try { recognitionRef.current?.start(); } catch { /* ok */ }
+              }, 300);
               return;
             }
           } else {
@@ -451,12 +475,16 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         currentAudioRef.current = null;
         setIsSpeaking(false);
         setAudioLevel(0);
-        // Grace period — let echo decay before restarting STT (500ms)
+        // Clear any buffered transcript that might be echo
+        currentTranscriptRef.current = '';
+        setInterimText('');
+        // Grace period — let echo fully decay before restarting STT (1.5s)
         setTimeout(() => {
+          processingRef.current = false;
           if (!isMutedRef.current && phaseRef.current === 'active') {
             try { recognitionRef.current?.start(); } catch { /* ok */ }
           }
-        }, 500);
+        }, 1500);
       };
 
       audio.onended = cleanup;
@@ -475,6 +503,8 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: isTimeout ? 'Sorry, that took too long. Try again.' : 'Sorry, something went wrong.' }]);
       setIsThinking(false);
       setIsSpeaking(false);
+      currentTranscriptRef.current = '';
+      processingRef.current = false;
       try { recognitionRef.current?.start(); } catch { /* ok */ }
     }
   }, [stopCurrentAudio]);

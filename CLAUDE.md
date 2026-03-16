@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.37
+- **Current version**: v2026.10.39
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -19,7 +19,7 @@
 | Skills | 91 loaded |
 | Tools | ~149 across 91 loaded skills |
 | Channels | 15 (Discord, Telegram, Slack, WhatsApp, Matrix, IRC, etc.) |
-| Tests | 3,839+ across 123 files (vitest) |
+| Tests | 3,879+ across 124 files (vitest) |
 | Default model | `anthropic/claude-sonnet-4-20250514` |
 | Gateway port | 48420 |
 
@@ -192,6 +192,8 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.39**: Security release — resolved all 23 Dependabot alerts (0 vulnerabilities), matrix-js-sdk v41, npm overrides for transitive deps
+- **v2026.10.38**: `titan doctor --json` (Issue #2), better provider error messages (Issue #3), npm download stats (Issue #4), 27 weather skill tests (Issue #6), 5 dependency patches
 - **v2026.10.33**: HA auto-save (gateway intercepts tokens), ha_setup in coreTools, voice test fix
 - **v2026.10.32**: Orpheus TTS restored (reverted TADA), voice selector dropdown in VoiceOverlay, VoicePicker with 8 named Orpheus voices, separate TTS AbortController, browser TTS fallback, all TADA references removed
 - **v2026.10.30**: Home Assistant skill (11 tools), voice server REST API, voice echo cancellation

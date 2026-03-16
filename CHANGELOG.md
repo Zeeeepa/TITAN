@@ -4,6 +4,36 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.40] — 2026-03-16
+
+### Added
+- **Structured Output skill** — `json_extract`, `json_transform`, `validate_json` tools with JSON Schema validation
+- **Workflow Engine skill** — DAG-based declarative workflows with parallel execution, conditional steps, template substitution
+- **Social Media Scheduler** — Multi-platform post scheduling (X, LinkedIn, Bluesky, Mastodon, Threads) with character limits and AI drafts
+- **Agent Handoff skill** — `agent_delegate`, `agent_team`, `agent_chain`, `agent_critique` for multi-agent patterns
+- **Event Triggers skill** — Reactive "when X → do Y" automation (file_change, webhook, schedule, system, email, custom)
+- **Knowledge Base skill** — `kb_ingest`, `kb_search`, `kb_ingest_url`, `kb_ingest_file`, `kb_list`, `kb_delete` with TF-IDF search
+- **Eval Framework skill** — Dataset management, 5 scorers (exact_match, contains, llm_judge, length, json_valid), model comparison
+- **Approval Gates skill** — Human-in-the-loop tool-level approve/deny with timeout auto-actions and audit history
+- **A2A Protocol skill** — Agent-to-Agent interoperability following Google/Linux Foundation standard
+- **Integration tests** — 1,522-line cross-skill interaction test suite
+- **Security tests** — 391-line injection, traversal, and DoS vector test suite
+
+### Fixed
+- **Critical**: SSE daemon `removeAllListeners` bug — multi-client disconnect no longer nukes other clients' listeners
+- **Critical**: YAML skill sandbox — removed `child_process`, `http`, `https` from allowed modules (arbitrary code execution vector)
+- Knowledge base path validation now includes `os.tmpdir()` (macOS compatibility)
+- Event triggers file watcher cleanup and input validation hardened
+- A2A protocol stricter task state transitions
+- Structured output JSON schema edge cases
+- Workflow template substitution safety improvements
+
+### Stats
+- 9 new skills, 40 new tools (~189 total)
+- 4,321 tests across 135 files (all passing)
+
+---
+
 ## [2026.10.39] — 2026-03-16
 
 ### Fixed

@@ -149,7 +149,7 @@ vi.mock('../src/providers/router.js', () => ({
 }));
 
 vi.mock('../src/utils/updater.js', () => ({
-    getUpdateInfo: vi.fn().mockResolvedValue({ current: '2026.10.39', latest: '2026.10.39', upToDate: true }),
+    getUpdateInfo: vi.fn().mockResolvedValue({ current: '2026.10.40', latest: '2026.10.40', upToDate: true }),
 }));
 
 vi.mock('../src/skills/registry.js', () => ({
@@ -273,7 +273,7 @@ describe('Mission Control v2', () => {
             expect(res.status).toBe(200);
             const body = await res.json() as any;
             expect(body.status).toBe('ok');
-            expect(body.version).toBe('2026.10.39');
+            expect(body.version).toBe('2026.10.40');
             expect(typeof body.uptime).toBe('number');
         });
 
@@ -281,7 +281,7 @@ describe('Mission Control v2', () => {
             const res = await fetch(`${BASE}/api/stats`);
             expect(res.status).toBe(200);
             const body = await res.json() as any;
-            expect(body.version).toBe('2026.10.39');
+            expect(body.version).toBe('2026.10.40');
             expect(typeof body.uptime).toBe('number');
         });
     });
@@ -306,7 +306,7 @@ describe('Mission Control v2', () => {
             const res = await fetch(`${BASE}/api/update`);
             expect(res.status).toBe(200);
             const body = await res.json() as any;
-            expect(body.current).toBe('2026.10.39');
+            expect(body.current).toBe('2026.10.40');
         });
     });
 

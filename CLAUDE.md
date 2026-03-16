@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.39
+- **Current version**: v2026.10.40
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -16,10 +16,10 @@
 | Stat | Value |
 |------|-------|
 | Providers | 34 (4 native + 30 OpenAI-compatible) |
-| Skills | 91 loaded |
-| Tools | ~149 across 91 loaded skills |
+| Skills | 100 loaded |
+| Tools | ~189 across 100 loaded skills |
 | Channels | 15 (Discord, Telegram, Slack, WhatsApp, Matrix, IRC, etc.) |
-| Tests | 3,879+ across 124 files (vitest) |
+| Tests | 4,321+ across 135 files (vitest) |
 | Default model | `anthropic/claude-sonnet-4-20250514` |
 | Gateway port | 48420 |
 
@@ -192,6 +192,7 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.40**: 9 new skills (40 tools) — structured output, workflows, social scheduler, agent handoff, event triggers, knowledge base, evals, approval gates, A2A protocol. 2 critical security fixes (SSE listener leak, YAML sandbox). 4,321 tests across 135 files.
 - **v2026.10.39**: Security release — resolved all 23 Dependabot alerts (0 vulnerabilities), matrix-js-sdk v41, npm overrides for transitive deps
 - **v2026.10.38**: `titan doctor --json` (Issue #2), better provider error messages (Issue #3), npm download stats (Issue #4), 27 weather skill tests (Issue #6), 5 dependency patches
 - **v2026.10.33**: HA auto-save (gateway intercepts tokens), ha_setup in coreTools, voice test fix

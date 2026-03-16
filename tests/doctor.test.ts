@@ -72,6 +72,10 @@ vi.mock('child_process', () => ({
     execSync: vi.fn().mockReturnValue('/dev/sda1 100G 50G 50G 50% /\n'),
 }));
 
+// Mock global fetch for npm downloads check
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
 // Mock selfHeal module - we spy on the actual fix functions
 const mockFixMissingTitanHome = vi.fn().mockReturnValue({ action: 'fixMissingTitanHome', success: true, message: 'Fixed' });
 const mockFixMissingConfig = vi.fn().mockReturnValue({ action: 'fixMissingConfig', success: true, message: 'Fixed' });
@@ -93,7 +97,7 @@ vi.mock('../src/cli/selfHeal.js', () => ({
     fixOrphanedSessions: (...args: unknown[]) => mockFixOrphanedSessions(...args),
 }));
 
-import { runDoctor } from '../src/cli/doctor.js';
+import { runDoctor, type DoctorReport } from '../src/cli/doctor.js';
 import { auditSecurity } from '../src/security/sandbox.js';
 import { getStallStats } from '../src/agent/stallDetector.js';
 
@@ -103,6 +107,8 @@ const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 beforeEach(() => {
     vi.clearAllMocks();
     consoleSpy.mockClear();
+    // Default fetch mock for npm downloads
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ downloads: 5500 }) });
     // Default: everything exists and is healthy
     mockExistsSync.mockReturnValue(true);
     mockConfigExists.mockReturnValue(true);
@@ -146,15 +152,21 @@ describe('runDoctor', () => {
     });
 
     it('should accept no options', async () => {
-        await expect(runDoctor()).resolves.toBeUndefined();
+        const report = await runDoctor();
+        expect(report).toBeDefined();
+        expect(report.version).toBeTruthy();
     });
 
     it('should accept options with fix: false', async () => {
-        await expect(runDoctor({ fix: false })).resolves.toBeUndefined();
+        const report = await runDoctor({ fix: false });
+        expect(report).toBeDefined();
+        expect(report.version).toBeTruthy();
     });
 
     it('should accept options with fix: true', async () => {
-        await expect(runDoctor({ fix: true })).resolves.toBeUndefined();
+        const report = await runDoctor({ fix: true });
+        expect(report).toBeDefined();
+        expect(report.version).toBeTruthy();
     });
 
     it('should output version in header', async () => {
@@ -247,7 +259,8 @@ describe('runDoctor - Providers', () => {
     it('should handle provider check failure gracefully', async () => {
         mockConfigExists.mockReturnValue(true);
         mockHealthCheckAll.mockRejectedValue(new Error('Network error'));
-        await expect(runDoctor()).resolves.toBeUndefined();
+        const report = await runDoctor();
+        expect(report).toBeDefined();
     });
 
     it('should skip provider checks when no config', async () => {
@@ -563,5 +576,146 @@ describe('runDoctor - System checks', () => {
         const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
         expect(output).toContain('Memory usage');
         expect(output).toContain('MB RSS');
+    });
+});
+
+// ─── --json flag (Issue #2) ──────────────────────────────────────
+
+describe('runDoctor --json', () => {
+    it('should return a DoctorReport object', async () => {
+        const report = await runDoctor({ json: true });
+        expect(report).toBeDefined();
+        expect(report.version).toBe('2026.5.4');
+        expect(report.timestamp).toBeTruthy();
+        expect(Array.isArray(report.checks)).toBe(true);
+        expect(report.summary).toHaveProperty('pass');
+        expect(report.summary).toHaveProperty('warn');
+        expect(report.summary).toHaveProperty('fail');
+    });
+
+    it('should output valid JSON to console', async () => {
+        await runDoctor({ json: true });
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        const parsed = JSON.parse(output);
+        expect(parsed.version).toBe('2026.5.4');
+        expect(parsed.checks).toBeDefined();
+        expect(parsed.summary).toBeDefined();
+    });
+
+    it('should not print human-readable decorations in json mode', async () => {
+        await runDoctor({ json: true });
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).not.toContain('Running diagnostics');
+        expect(output).not.toContain('🩺');
+    });
+
+    it('should include npm download stats in json output', async () => {
+        mockFetch.mockResolvedValue({ ok: true, json: async () => ({ downloads: 9999 }) });
+        const report = await runDoctor({ json: true });
+        expect(report.npm?.weeklyDownloads).toBe(9999);
+    });
+
+    it('should include fixes in json output when --fix is used', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        const report = await runDoctor({ json: true, fix: true });
+        expect(report.fixes).toBeDefined();
+        expect(Array.isArray(report.fixes)).toBe(true);
+    });
+
+    it('should support both --json and --fix together', async () => {
+        const report = await runDoctor({ json: true, fix: true });
+        expect(report).toBeDefined();
+        expect(report.version).toBeTruthy();
+    });
+});
+
+// ─── Provider error messages (Issue #3) ─────────────────────────
+
+describe('runDoctor - Provider error messages', () => {
+    it('should show actionable message for missing API key', async () => {
+        mockConfigExists.mockReturnValue(true);
+        mockLoadConfig.mockReturnValue({
+            agent: { model: 'anthropic/claude-sonnet-4-20250514' },
+            providers: { anthropic: {} },
+            security: { sandboxMode: 'host', deniedTools: [], allowedTools: [], networkAllowlist: ['*'], fileSystemAllowlist: [], commandTimeout: 30000, shield: { enabled: true, mode: 'strict' } },
+            channels: {},
+        });
+        mockHealthCheckAll.mockResolvedValue({ anthropic: false });
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('ANTHROPIC_API_KEY');
+    });
+
+    it('should show ollama-specific message when ollama is unreachable', async () => {
+        mockConfigExists.mockReturnValue(true);
+        mockLoadConfig.mockReturnValue({
+            agent: { model: 'ollama/llama3' },
+            providers: { ollama: { baseUrl: 'http://localhost:11434' } },
+            security: { sandboxMode: 'host', deniedTools: [], allowedTools: [], networkAllowlist: ['*'], fileSystemAllowlist: [], commandTimeout: 30000, shield: { enabled: true, mode: 'strict' } },
+            channels: {},
+        });
+        mockHealthCheckAll.mockResolvedValue({ ollama: false });
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('is Ollama running');
+    });
+
+    it('should show validity message when key is set but provider unreachable', async () => {
+        mockConfigExists.mockReturnValue(true);
+        mockLoadConfig.mockReturnValue({
+            agent: { model: 'openai/gpt-4o' },
+            providers: { openai: { apiKey: 'sk-test-key' } },
+            security: { sandboxMode: 'host', deniedTools: [], allowedTools: [], networkAllowlist: ['*'], fileSystemAllowlist: [], commandTimeout: 30000, shield: { enabled: true, mode: 'strict' } },
+            channels: {},
+        });
+        mockHealthCheckAll.mockResolvedValue({ openai: false });
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('check key validity');
+    });
+});
+
+// ─── npm downloads (Issue #4) ───────────────────────────────────
+
+describe('runDoctor - npm downloads', () => {
+    it('should show npm weekly download count', async () => {
+        mockFetch.mockResolvedValue({ ok: true, json: async () => ({ downloads: 5500 }) });
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('npm weekly downloads');
+        expect(output).toContain('5,500');
+    });
+
+    it('should warn when npm stats are unavailable', async () => {
+        mockFetch.mockResolvedValue({ ok: false });
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('Could not fetch npm download stats');
+    });
+
+    it('should handle npm fetch timeout gracefully', async () => {
+        mockFetch.mockRejectedValue(new Error('timeout'));
+        await runDoctor();
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('Could not fetch npm download stats');
+    });
+
+    it('should include download count in report', async () => {
+        mockFetch.mockResolvedValue({ ok: true, json: async () => ({ downloads: 1234 }) });
+        const report = await runDoctor({ json: true });
+        expect(report.npm?.weeklyDownloads).toBe(1234);
     });
 });

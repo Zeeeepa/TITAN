@@ -306,9 +306,10 @@ program
     .command('doctor')
     .description('Diagnose TITAN configuration and connectivity')
     .option('--fix', 'Auto-fix detected issues')
+    .option('--json', 'Output results as JSON (machine-readable)')
     .action(async (options) => {
-        console.log(chalk.cyan(TITAN_ASCII_LOGO));
-        await runDoctor({ fix: options.fix });
+        if (!options.json) console.log(chalk.cyan(TITAN_ASCII_LOGO));
+        await runDoctor({ fix: options.fix, json: options.json });
         process.exit(0);
     });
 

@@ -90,7 +90,9 @@ function ensureQueueDir(): void {
 }
 
 function postFilePath(id: string): string {
-    return join(QUEUE_DIR, `${id}.json`);
+    // Sanitize ID to prevent path traversal
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+    return join(QUEUE_DIR, `${safeId}.json`);
 }
 
 function savePost(post: ScheduledPost): void {

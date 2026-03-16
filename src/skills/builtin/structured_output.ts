@@ -74,13 +74,20 @@ export function validateAgainstSchema(
             errors.push({ path, message: `String length ${value.length} exceeds maximum ${schema.maxLength}` });
         }
         if (schema.pattern) {
-            try {
-                const re = new RegExp(schema.pattern);
-                if (!re.test(value)) {
-                    errors.push({ path, message: `String does not match pattern: ${schema.pattern}` });
+            // Security: limit pattern length to mitigate ReDoS
+            if (schema.pattern.length > 200) {
+                errors.push({ path, message: 'Schema pattern exceeds maximum length (200 chars)' });
+            } else {
+                try {
+                    const re = new RegExp(schema.pattern);
+                    // Limit test input length to prevent catastrophic backtracking
+                    const testValue = value.length > 10000 ? value.slice(0, 10000) : value;
+                    if (!re.test(testValue)) {
+                        errors.push({ path, message: `String does not match pattern: ${schema.pattern}` });
+                    }
+                } catch {
+                    errors.push({ path, message: `Invalid pattern in schema: ${schema.pattern}` });
                 }
-            } catch {
-                errors.push({ path, message: `Invalid pattern in schema: ${schema.pattern}` });
             }
         }
     }

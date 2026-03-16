@@ -116,10 +116,14 @@ function saveHistory(history: ApprovalHistoryEntry[]): void {
     }
 }
 
+const MAX_HISTORY_ENTRIES = 500;
+
 function appendHistory(entry: ApprovalHistoryEntry): void {
     const history = loadHistory();
     history.push(entry);
-    saveHistory(history);
+    // Cap history to prevent unbounded growth
+    const trimmed = history.slice(-MAX_HISTORY_ENTRIES);
+    saveHistory(trimmed);
 }
 
 // ── Core approval logic (exported for agent loop integration) ─────

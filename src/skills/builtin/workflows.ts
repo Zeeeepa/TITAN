@@ -61,7 +61,15 @@ export function ensureWorkflowsDir(): void {
     }
 }
 
+/** Validate workflow name is safe (no path traversal) */
+export function isValidWorkflowName(name: string): boolean {
+    return /^[a-zA-Z0-9_-]+$/.test(name) && !name.includes('..');
+}
+
 export function getWorkflowPath(name: string): string {
+    if (!isValidWorkflowName(name)) {
+        throw new Error('Invalid workflow name: must be alphanumeric with hyphens/underscores only');
+    }
     return join(WORKFLOWS_DIR, `${name}.json`);
 }
 
@@ -483,6 +491,9 @@ export function registerWorkflowsSkill(): void {
         execute: async (args) => {
             try {
                 const name = args.name as string;
+                if (!name || !isValidWorkflowName(name)) {
+                    return 'Error: Workflow name must be alphanumeric with hyphens/underscores only';
+                }
                 const workflow = loadWorkflow(name);
 
                 if (!workflow) {
@@ -568,6 +579,9 @@ export function registerWorkflowsSkill(): void {
         execute: async (args) => {
             try {
                 const name = args.name as string;
+                if (!name || !isValidWorkflowName(name)) {
+                    return 'Error: Workflow name must be alphanumeric with hyphens/underscores only';
+                }
                 const deleted = deleteWorkflowFile(name);
 
                 if (!deleted) {

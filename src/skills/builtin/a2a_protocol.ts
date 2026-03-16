@@ -15,6 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
 import { registerSkill } from '../registry.js';
 import { getRegisteredTools } from '../../agent/toolRunner.js';
 import { isToolSkillEnabled } from '../registry.js';
@@ -69,17 +70,26 @@ function ensureTasksDir(): void {
     }
 }
 
+/** Sanitize task ID to prevent path traversal */
+function sanitizeTaskId(id: string): string {
+    return id.replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
 function saveTask(task: A2ATask): void {
     ensureTasksDir();
+    const safeId = sanitizeTaskId(task.id);
+    if (!safeId) throw new Error('Invalid task ID');
     writeFileSync(
-        join(A2A_TASKS_DIR, `${task.id}.json`),
+        join(A2A_TASKS_DIR, `${safeId}.json`),
         JSON.stringify(task, null, 2),
         'utf-8',
     );
 }
 
 function loadTask(taskId: string): A2ATask | null {
-    const taskPath = join(A2A_TASKS_DIR, `${taskId}.json`);
+    const safeId = sanitizeTaskId(taskId);
+    if (!safeId) return null;
+    const taskPath = join(A2A_TASKS_DIR, `${safeId}.json`);
     if (!existsSync(taskPath)) return null;
     try {
         return JSON.parse(readFileSync(taskPath, 'utf-8')) as A2ATask;
@@ -89,7 +99,7 @@ function loadTask(taskId: string): A2ATask | null {
 }
 
 function generateTaskId(): string {
-    return `a2a-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `a2a-${randomUUID()}`;
 }
 
 // ─── Agent Card Generation ───────────────────────────────────────

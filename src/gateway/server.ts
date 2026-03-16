@@ -1789,8 +1789,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
                      'daemon:heartbeat', 'goal:subtask:ready', 'health:ollama:down',
                      'health:ollama:degraded', 'cron:stuck'];
 
+    // Store per-client listener references so we only remove THIS client's listeners on disconnect
+    const listeners = new Map<string, (data: unknown) => void>();
     for (const evt of events) {
-      titanEvents.on(evt, (data: unknown) => onEvent(evt, data));
+      const handler = (data: unknown) => onEvent(evt, data);
+      listeners.set(evt, handler);
+      titanEvents.on(evt, handler);
     }
 
     const keepalive = setInterval(() => {
@@ -1799,8 +1803,8 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
     req.on('close', () => {
       clearInterval(keepalive);
-      for (const evt of events) {
-        titanEvents.removeAllListeners(evt);
+      for (const [evt, handler] of listeners) {
+        titanEvents.removeListener(evt, handler);
       }
     });
   });

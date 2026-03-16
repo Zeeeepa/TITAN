@@ -249,6 +249,15 @@ export async function initBuiltinSkills(): Promise<void> {
     const { registerWeeklyReportSkill } = await import('./builtin/weekly_report.js');
     const { registerSelfImproveSkill } = await import('./builtin/self_improve.js');
     const { registerModelTrainerSkill } = await import('./builtin/model_trainer.js');
+    const { registerSocialSchedulerSkill } = await import('./builtin/social_scheduler.js');
+    const { registerStructuredOutputSkill } = await import('./builtin/structured_output.js');
+    const { registerWorkflowsSkill } = await import('./builtin/workflows.js');
+    const { registerAgentHandoffSkill } = await import('./builtin/agent_handoff.js');
+    const { registerKnowledgeBaseSkill } = await import('./builtin/knowledge_base.js');
+    const { registerEventTriggersSkill } = await import('./builtin/event_triggers.js');
+    const { registerA2AProtocolSkill } = await import('./builtin/a2a_protocol.js');
+    const { registerEvalsSkill } = await import('./builtin/evals.js');
+    const { registerApprovalGatesSkill } = await import('./builtin/approval_gates.js');
 
     const registrations: [string, () => void][] = [
         ['shell', registerShellSkill],
@@ -303,6 +312,15 @@ export async function initBuiltinSkills(): Promise<void> {
         ['weekly_report', registerWeeklyReportSkill],
         ['self_improve', registerSelfImproveSkill],
         ['model_trainer', registerModelTrainerSkill],
+        ['social_scheduler', registerSocialSchedulerSkill],
+        ['structured_output', registerStructuredOutputSkill],
+        ['workflows', registerWorkflowsSkill],
+        ['agent_handoff', registerAgentHandoffSkill],
+        ['knowledge_base', registerKnowledgeBaseSkill],
+        ['event_triggers', registerEventTriggersSkill],
+        ['evals', registerEvalsSkill],
+        ['a2a_protocol', registerA2AProtocolSkill],
+        ['approval_gates', registerApprovalGatesSkill],
     ];
 
     for (const [name, fn] of registrations) {
@@ -504,7 +522,8 @@ function loadYamlSkill(filePath: string): ToolHandler | null {
             try {
                 // Run in a restricted VM context — no access to globalThis, process, eval, or Function
                 const safeRequire = (mod: string) => {
-                    const allowed = ['fs', 'path', 'os', 'crypto', 'child_process', 'http', 'https', 'url', 'util'];
+                    // SECURITY: child_process, http, https removed — YAML skills must use builtin tools for shell/network
+                    const allowed = ['fs', 'path', 'os', 'crypto', 'url', 'util'];
                     if (!allowed.includes(mod)) throw new Error(`Module "${mod}" not allowed in YAML skills`);
                     return require(mod); // eslint-disable-line @typescript-eslint/no-require-imports
                 };

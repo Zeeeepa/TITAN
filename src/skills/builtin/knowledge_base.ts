@@ -3,14 +3,55 @@
  * Persistent, searchable knowledge collections with chunking and TF-IDF search.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, normalize } from 'path';
 import { randomUUID } from 'crypto';
+import { homedir, tmpdir } from 'os';
 import { registerSkill } from '../registry.js';
 import { TITAN_HOME } from '../../utils/constants.js';
 import logger from '../../utils/logger.js';
 
 const COMPONENT = 'KnowledgeBase';
 const KB_ROOT = join(TITAN_HOME, 'knowledge');
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB max ingest
+
+/** Validate a collection name is safe (no path traversal) */
+function isValidCollectionName(name: string): boolean {
+    return /^[\w-]+$/.test(name) && !name.includes('..');
+}
+
+/** Block SSRF: reject internal/metadata URLs */
+function isBlockedUrl(url: string): boolean {
+    try {
+        const parsed = new URL(url);
+        const hostname = parsed.hostname.toLowerCase();
+        // Block cloud metadata endpoints
+        if (hostname === '169.254.169.254') return true;
+        if (hostname === 'metadata.google.internal') return true;
+        // Block loopback unless explicitly allowed
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+        // Block file:// protocol
+        if (parsed.protocol === 'file:') return true;
+        return false;
+    } catch {
+        return true; // Invalid URL = blocked
+    }
+}
+
+/** Validate that a resolved file path is safe to read */
+function isAllowedFilePath(filePath: string): boolean {
+    const normalized = normalize(filePath);
+    const home = homedir();
+    const tmp = tmpdir();
+    // Must be under home directory, /tmp, or OS temp directory
+    if (!normalized.startsWith(home) && !normalized.startsWith('/tmp') && !normalized.startsWith(tmp)) return false;
+    // Block sensitive directories
+    const lowerPath = normalized.toLowerCase();
+    const blocked = ['.ssh', '.gnupg', '.env', 'credentials', '.aws', '.gcloud', '.azure', '.kube', '.docker/config'];
+    for (const b of blocked) {
+        if (lowerPath.includes(`/${b}`) || lowerPath.includes(`${b}/`) || lowerPath.endsWith(`/${b}`)) return false;
+    }
+    return true;
+}
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -215,6 +256,9 @@ export function registerKnowledgeBaseSkill(): void {
                 const limit = (args.limit as number) || 5;
 
                 if (!query) return 'Error: query is required';
+                if (collection && !isValidCollectionName(collection)) {
+                    return 'Error: collection name must be alphanumeric with hyphens/underscores only';
+                }
 
                 try {
                     // Gather documents
@@ -281,7 +325,12 @@ export function registerKnowledgeBaseSkill(): void {
                 const collection = args.collection as string;
 
                 if (!url || !collection) return 'Error: url and collection are required';
-                if (!/^[\w-]+$/.test(collection)) return 'Error: collection name must be alphanumeric with hyphens/underscores only';
+                if (!isValidCollectionName(collection)) return 'Error: collection name must be alphanumeric with hyphens/underscores only';
+
+                // Security: block SSRF to internal/metadata endpoints
+                if (isBlockedUrl(url)) {
+                    return 'Error: URL targets a blocked address (internal network, metadata service, or file:// protocol)';
+                }
 
                 try {
                     const response = await fetch(url, {
@@ -338,16 +387,35 @@ export function registerKnowledgeBaseSkill(): void {
                 required: ['path', 'collection'],
             },
             execute: async (args) => {
-                const filePath = resolve(args.path as string);
+                const rawPath = args.path as string;
+                if (!rawPath) return 'Error: path is required';
+                const filePath = resolve(rawPath);
+
+                // Security: validate file path is within allowed directories
+                if (!isAllowedFilePath(filePath)) {
+                    return 'Error: File path is outside allowed directories or references a sensitive location';
+                }
+
                 const collection = args.collection as string;
 
                 if (!collection) return 'Error: collection is required';
-                if (!/^[\w-]+$/.test(collection)) return 'Error: collection name must be alphanumeric with hyphens/underscores only';
-                if (!existsSync(filePath)) return `Error: File not found: ${filePath}`;
+                if (!isValidCollectionName(collection)) return 'Error: collection name must be alphanumeric with hyphens/underscores only';
+                if (!existsSync(filePath)) return 'Error: File not found';
+
+                // Security: check file size before reading
+                try {
+                    const stats = statSync(filePath);
+                    if (stats.size > MAX_FILE_SIZE_BYTES) {
+                        return `Error: File too large (${(stats.size / 1024 / 1024).toFixed(1)}MB). Maximum is ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB`;
+                    }
+                    if (!stats.isFile()) return 'Error: Path is not a regular file';
+                } catch {
+                    return 'Error: Cannot read file metadata';
+                }
 
                 try {
                     const content = readFileSync(filePath, 'utf-8');
-                    if (!content.trim()) return `Error: File is empty: ${filePath}`;
+                    if (!content.trim()) return 'Error: File is empty';
 
                     const dir = ensureCollection(collection);
                     const chunks = chunkText(content);
@@ -435,6 +503,16 @@ export function registerKnowledgeBaseSkill(): void {
             execute: async (args) => {
                 const collection = args.collection as string;
                 const documentId = args.documentId as string | undefined;
+
+                if (!collection || !isValidCollectionName(collection)) {
+                    return 'Error: collection name must be alphanumeric with hyphens/underscores only';
+                }
+
+                // Security: validate documentId has no path traversal
+                if (documentId && !/^[\w-]+$/.test(documentId)) {
+                    return 'Error: documentId contains invalid characters';
+                }
+
                 const dir = join(KB_ROOT, collection);
 
                 if (!existsSync(dir)) return `Error: Collection "${collection}" not found.`;

@@ -223,7 +223,8 @@ describe('Knowledge Base — kb_ingest_file', () => {
     });
 
     it('should error on missing file', async () => {
-        const result = await exec('kb_ingest_file', { path: '/nonexistent/file.txt', collection: 'test' });
+        const { TITAN_HOME } = await import('../src/utils/constants.js');
+        const result = await exec('kb_ingest_file', { path: join(TITAN_HOME, 'nonexistent-file.txt'), collection: 'test' });
         expect(result).toContain('Error');
         expect(result).toContain('not found');
     });

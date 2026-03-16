@@ -62,7 +62,13 @@ function ensureEvalsDir(): void {
     mkdirSync(RESULTS_DIR, { recursive: true });
 }
 
+/** Validate name is safe for use as a filename (no path traversal) */
+function isValidName(name: string): boolean {
+    return /^[\w-]+$/.test(name) && !name.includes('..');
+}
+
 function datasetPath(name: string): string {
+    if (!isValidName(name)) throw new Error('Invalid dataset name: must be alphanumeric with hyphens/underscores only');
     return join(EVALS_DIR, `${name}.json`);
 }
 
@@ -82,6 +88,7 @@ export function saveDataset(ds: EvalDataset): void {
 }
 
 export function loadResult(runId: string): EvalRunResult | null {
+    if (!isValidName(runId)) return null;
     const p = join(RESULTS_DIR, `${runId}.json`);
     if (!existsSync(p)) return null;
     try {
@@ -92,6 +99,7 @@ export function loadResult(runId: string): EvalRunResult | null {
 }
 
 export function saveResult(result: EvalRunResult): void {
+    if (!isValidName(result.id)) throw new Error('Invalid result ID');
     ensureEvalsDir();
     writeFileSync(join(RESULTS_DIR, `${result.id}.json`), JSON.stringify(result, null, 2), 'utf-8');
 }

@@ -6,7 +6,8 @@
  * Triggers are persisted to ~/.titan/triggers/ as JSON files.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync, watch, type FSWatcher } from 'fs';
-import { join } from 'path';
+import { join, resolve, normalize } from 'path';
+import { homedir } from 'os';
 import { registerSkill } from '../registry.js';
 import { TITAN_HOME } from '../../utils/constants.js';
 import { randomUUID } from 'crypto';
@@ -82,7 +83,9 @@ function ensureTriggersDir(): void {
 }
 
 function triggerFilePath(id: string): string {
-    return join(TRIGGERS_DIR, `${id}.json`);
+    // Sanitize ID to prevent path traversal
+    const safeId = id.replace(/[^a-zA-Z0-9_-]/g, '');
+    return join(TRIGGERS_DIR, `${safeId}.json`);
 }
 
 export function saveTrigger(trigger: Trigger): void {
@@ -234,10 +237,31 @@ export function initFileWatchers(): void {
     }
 }
 
+/** Security: validate that a watch path is within allowed directories */
+function isAllowedWatchPath(watchPath: string): boolean {
+    const normalized = normalize(resolve(watchPath));
+    const home = homedir();
+    // Only allow watching under home directory or /tmp
+    if (!normalized.startsWith(home) && !normalized.startsWith('/tmp')) return false;
+    // Block sensitive directories
+    const lowerPath = normalized.toLowerCase();
+    const blocked = ['.ssh', '.gnupg', '.env', 'credentials', '.aws', '.gcloud', '.kube'];
+    for (const b of blocked) {
+        if (lowerPath.includes(`/${b}`) || lowerPath.endsWith(`/${b}`)) return false;
+    }
+    return true;
+}
+
 function startFileWatcher(trigger: Trigger): void {
     const watchPath = trigger.condition.path;
     if (!watchPath || !existsSync(watchPath)) {
-        logger.warn(COMPONENT, `Cannot watch "${watchPath}" for trigger "${trigger.name}" — path does not exist`);
+        logger.warn(COMPONENT, `Cannot watch path for trigger "${trigger.name}" — path does not exist`);
+        return;
+    }
+
+    // Security: confine file watchers to allowed directories
+    if (!isAllowedWatchPath(watchPath)) {
+        logger.warn(COMPONENT, `Blocked file watcher for trigger "${trigger.name}" — path outside allowed directories`);
         return;
     }
 
@@ -257,12 +281,18 @@ function startFileWatcher(trigger: Trigger): void {
     }
 }
 
-/** Simple glob matching (supports * and ?) */
+/** Simple glob matching (supports * and ?) with ReDoS protection */
 function matchGlob(filename: string, pattern: string): boolean {
+    // Security: limit pattern length to prevent ReDoS
+    if (pattern.length > 200) return false;
+    // Security: limit consecutive wildcards (collapse ** into *)
+    const safePattern = pattern.replace(/\*{2,}/g, '*');
     const regex = new RegExp(
-        '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
+        '^' + safePattern.replace(/\./g, '\\.').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]') + '$',
     );
-    return regex.test(filename);
+    // Limit filename length for regex test
+    const testName = filename.length > 1000 ? filename.slice(0, 1000) : filename;
+    return regex.test(testName);
 }
 
 // ─── Stop all watchers (for shutdown) ────────────────────────────
@@ -296,6 +326,10 @@ function validateTriggerInput(args: Record<string, unknown>): string | null {
     if (event === 'file_change') {
         const cond = condition as TriggerCondition;
         if (!cond.path) return 'Error: file_change triggers require "condition.path"';
+        // Security: validate watch path is within allowed directories
+        if (!isAllowedWatchPath(cond.path)) {
+            return 'Error: file_change path must be within your home directory or /tmp, and cannot target sensitive directories (.ssh, .gnupg, etc.)';
+        }
     }
     if (event === 'webhook') {
         const cond = condition as TriggerCondition;

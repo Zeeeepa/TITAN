@@ -2386,21 +2386,50 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.flushHeaders();
 
     let clientDisconnected = false;
-    req.on('close', () => { clientDisconnected = true; });
+    res.on('close', () => { clientDisconnected = true; });
     const safeWrite = (data: string) => {
       if (clientDisconnected) return;
       try { res.write(data); } catch { clientDisconnected = true; }
     };
 
+    // SSE heartbeat — keeps the connection alive during LLM inference
+    const heartbeat = setInterval(() => {
+      if (clientDisconnected) { clearInterval(heartbeat); return; }
+      safeWrite(': heartbeat\n\n');
+    }, 2000);
+
     const abortController = new AbortController();
     if (requestedSessionId) sessionAborts.set(requestedSessionId, abortController);
 
-    // Sentence buffer and TTS queue
+    // Sentence buffer and sequential TTS queue
     let tokenBuffer = '';
     let sentenceIndex = 0;
     let firstChunkSent = false;
+    let totalTtsChars = 0;
     const FIRST_CHUNK_MIN = 60; // chars before forcing first flush (low TTFA)
-    const pendingTTS: Promise<void>[] = [];
+    const MAX_TTS_SENTENCES = 4; // only TTS first N sentences, display rest as text only
+    const MAX_TTS_CHARS = 500;   // stop TTS after this many chars spoken
+
+    // Sequential TTS queue — processes one sentence at a time to avoid overwhelming Orpheus
+    const ttsQueue: Array<{ sentence: string; index: number }> = [];
+    let ttsRunning = false;
+    let ttsResolve: (() => void) | null = null;
+    const ttsAllDone = new Promise<void>(resolve => { ttsResolve = resolve; });
+    let ttsFinished = false;
+
+    const processTtsQueue = async () => {
+      if (ttsRunning) return;
+      ttsRunning = true;
+      while (ttsQueue.length > 0) {
+        if (clientDisconnected) break;
+        const item = ttsQueue.shift()!;
+        await fireTTSInternal(item.sentence, item.index);
+      }
+      ttsRunning = false;
+      if (ttsFinished && ttsQueue.length === 0 && ttsResolve) {
+        ttsResolve();
+      }
+    };
 
     // Strip markdown/emotion/tool narration for voice display+TTS
     const cleanForVoice = (text: string): string => {
@@ -2411,7 +2440,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         .replace(/^#+\s+/gm, '')
         .replace(/^[-*]\s+/gm, '')
         .replace(/\n{2,}/g, ' ')
-        .replace(/<(?:laugh|chuckle|sigh|cough|sniffle|groan|yawn|gasp)>/gi, '')
+        .replace(/<(?:laugh|chuckle|sigh|cough|sniffle|groan|yawn|gasp|smile)>/gi, '')
         .replace(/(?:Let me |I'll |I will |I'm going to )(?:use|call|check|run|invoke|execute|try)(?: the)? \w[\w_]*(?: tool)?(?:\s+(?:to|for|and)\b[^.!?]*)?[.!]?\s*/gi, '')
         .replace(/\b(?:Using|Calling|Running|Checking|Invoking|Executing) (?:the )?\w[\w_]*(?: tool)?(?:\s+(?:to|for)\b[^.!?]*)?[.!]?\s*/gi, '')
         .replace(/\b\w[\w_]*(?:_\w+)+\b/g, '')
@@ -2419,15 +2448,19 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         .trim();
     };
 
-    // Fire TTS for a sentence and stream audio back as SSE event
-    const fireTTS = async (sentence: string, index: number) => {
+    // Fire TTS for a single sentence — called sequentially from the queue
+    const fireTTSInternal = async (sentence: string, index: number) => {
       const clean = cleanForVoice(sentence);
       if (!clean || clean.length < 3) return;
 
-      // Send text event immediately so client can display it
+      // Always send text event so client can display it
       safeWrite(`event: sentence\ndata: ${JSON.stringify({ text: clean, index })}\n\n`);
 
-      if (ttsEngine === 'browser') return; // client handles browser TTS
+      // Skip audio if we've exceeded TTS limits (still display text)
+      if (index >= MAX_TTS_SENTENCES || totalTtsChars >= MAX_TTS_CHARS) return;
+      if (ttsEngine === 'browser') return;
+
+      totalTtsChars += clean.length;
 
       try {
         const ttsRes = await fetch(`${ttsUrl}/v1/audio/speech`, {
@@ -2446,12 +2479,13 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       }
     };
 
-    // Flush accumulated buffer as a sentence
+    // Flush accumulated buffer as a sentence — adds to sequential queue
     const flushSentence = (text: string) => {
       const trimmed = text.trim();
       if (trimmed.length < 3) return;
       const idx = sentenceIndex++;
-      pendingTTS.push(fireTTS(trimmed, idx));
+      ttsQueue.push({ sentence: trimmed, index: idx });
+      processTtsQueue(); // kick off processing if not already running
     };
 
     activeLlmRequests++;
@@ -2475,12 +2509,21 @@ export async function startGateway(options?: { port?: number; host?: string; ver
             }
           }
 
-          // Detect sentence boundaries: . ! ? followed by space or end
-          const match = tokenBuffer.match(/^(.*?[.!?])(\s|$)/s);
+          // Detect sentence boundaries: .!? followed by space or end
+          // Negative lookbehind avoids splitting on decimals like "PM2.5" or "8.8kW"
+          const match = tokenBuffer.match(/^(.*?(?<!\d)[.!?])(\s|$)/s);
           if (match) {
             flushSentence(match[1]);
             tokenBuffer = tokenBuffer.slice(match[0].length);
             firstChunkSent = true;
+          } else if (tokenBuffer.length > 150) {
+            // Force flush long runs without punctuation (bullet lists, etc.)
+            const lastSpace = tokenBuffer.lastIndexOf(' ', 150);
+            if (lastSpace > 50) {
+              flushSentence(tokenBuffer.slice(0, lastSpace));
+              tokenBuffer = tokenBuffer.slice(lastSpace + 1);
+              firstChunkSent = true;
+            }
           }
         },
         onToolCall: (name) => {
@@ -2495,8 +2538,12 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         tokenBuffer = '';
       }
 
-      // Wait for all TTS requests to complete
-      await Promise.allSettled(pendingTTS);
+      // Signal no more sentences coming, wait for TTS queue to drain
+      ttsFinished = true;
+      if (!ttsRunning && ttsQueue.length === 0 && ttsResolve) {
+        ttsResolve();
+      }
+      await ttsAllDone;
 
       // Send done event with metadata
       if (!clientDisconnected) {
@@ -2515,6 +2562,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         try { res.end(); } catch { /* client gone */ }
       }
     } finally {
+      clearInterval(heartbeat);
       activeLlmRequests--;
       titanActiveSessions.dec();
       const durationSec = Number(process.hrtime.bigint() - startTime) / 1e9;

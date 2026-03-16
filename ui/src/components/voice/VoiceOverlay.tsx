@@ -287,34 +287,83 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Helper: play audio queue sequentially (sentence-by-sentence)
-  const playAudioQueue = useCallback((queue: string[], onDone: () => void) => {
+  /**
+   * Reactive audio queue player — pulls from a shared array as new items arrive.
+   * Unlike a static snapshot, this checks for new entries after each track finishes.
+   * Call `queue.finish()` when the stream is done so it knows when to stop waiting.
+   */
+  const createAudioPlayer = useCallback(() => {
+    const urls: string[] = [];
     let idx = 0;
     let cancelled = false;
+    let streamDone = false;
+    let onDone: (() => void) | null = null;
+    let waitingForMore: (() => void) | null = null;
+
     const levelInterval = setInterval(() => {
       if (!cancelled) setAudioLevel(0.3 + Math.random() * 0.4);
     }, 100);
 
-    const playNext = () => {
-      if (cancelled || idx >= queue.length) {
-        clearInterval(levelInterval);
-        setAudioLevel(0);
-        if (!cancelled) onDone();
-        return;
-      }
-      const dataUrl = queue[idx++];
-      const audio = new Audio(dataUrl);
-      currentAudioRef.current = audio;
-      audio.onplay = () => { try { recognitionRef.current?.stop(); } catch { /* ok */ } };
-      audio.onended = () => { URL.revokeObjectURL(dataUrl); playNext(); };
-      audio.onerror = () => { URL.revokeObjectURL(dataUrl); playNext(); };
-      audio.play().catch(() => { URL.revokeObjectURL(dataUrl); playNext(); });
+    const cleanup = () => {
+      clearInterval(levelInterval);
+      setAudioLevel(0);
     };
 
-    // Return cancel function
-    const cancel = () => { cancelled = true; clearInterval(levelInterval); };
-    playNext();
-    return cancel;
+    const playNext = () => {
+      if (cancelled) { cleanup(); return; }
+
+      if (idx < urls.length) {
+        // There's audio to play
+        const dataUrl = urls[idx++];
+        const audio = new Audio(dataUrl);
+        currentAudioRef.current = audio;
+        audio.onplay = () => { try { recognitionRef.current?.stop(); } catch { /* ok */ } };
+        audio.onended = () => { URL.revokeObjectURL(dataUrl); playNext(); };
+        audio.onerror = () => { URL.revokeObjectURL(dataUrl); playNext(); };
+        audio.play().catch(() => { URL.revokeObjectURL(dataUrl); playNext(); });
+      } else if (streamDone) {
+        // Stream finished and no more audio — we're done
+        cleanup();
+        if (onDone) onDone();
+      } else {
+        // Waiting for more audio from the stream
+        waitingForMore = playNext;
+      }
+    };
+
+    return {
+      /** Add a new audio URL to the queue */
+      push(url: string) {
+        urls.push(url);
+        // If the player was waiting for more audio, wake it up
+        if (waitingForMore) {
+          const resume = waitingForMore;
+          waitingForMore = null;
+          resume();
+        }
+      },
+      /** Signal that no more audio will arrive */
+      finish() {
+        streamDone = true;
+        // If waiting, trigger final check
+        if (waitingForMore) {
+          const resume = waitingForMore;
+          waitingForMore = null;
+          resume();
+        }
+      },
+      /** Start playing */
+      start(done: () => void) {
+        onDone = done;
+        playNext();
+      },
+      /** Cancel playback */
+      cancel() {
+        cancelled = true;
+        cleanup();
+      },
+      get length() { return urls.length; },
+    };
   }, []);
 
   // Send user message to TITAN and speak the response via streaming TTS
@@ -371,33 +420,25 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       const decoder = new TextDecoder();
       let buffer = '';
       const sentences: string[] = [];
-      const audioUrls: string[] = [];
       let assistantMsgId = '';
       let displayText = '';
       let audioPlaying = false;
-      let cancelAudio: (() => void) | null = null;
 
-      // Start playing audio as soon as first chunk arrives
-      const maybeStartAudio = () => {
-        if (audioPlaying || audioUrls.length === 0) return;
-        audioPlaying = true;
-        setIsSpeaking(true);
-        setIsThinking(false);
+      // Reactive audio player — items pushed as they arrive from SSE
+      const audioPlayer = createAudioPlayer();
 
-        cancelAudio = playAudioQueue([...audioUrls], () => {
-          // All audio done
-          currentAudioRef.current = null;
-          setIsSpeaking(false);
-          setAudioLevel(0);
-          currentTranscriptRef.current = '';
-          setInterimText('');
-          setTimeout(() => {
-            processingRef.current = false;
-            if (!isMutedRef.current && phaseRef.current === 'active') {
-              try { recognitionRef.current?.start(); } catch { /* ok */ }
-            }
-          }, 500);
-        });
+      const audioDoneCleanup = () => {
+        currentAudioRef.current = null;
+        setIsSpeaking(false);
+        setAudioLevel(0);
+        currentTranscriptRef.current = '';
+        setInterimText('');
+        setTimeout(() => {
+          processingRef.current = false;
+          if (!isMutedRef.current && phaseRef.current === 'active') {
+            try { recognitionRef.current?.start(); } catch { /* ok */ }
+          }
+        }, 500);
       };
 
       let currentEvent = '';
@@ -429,14 +470,20 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
                 }
                 setIsThinking(false);
               } else if (evt === 'audio') {
-                // Convert base64 WAV to blob URL
+                // Convert base64 WAV to blob URL and push to reactive queue
                 const binary = atob(data.audio);
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                 const blob = new Blob([bytes], { type: 'audio/wav' });
-                audioUrls.push(URL.createObjectURL(blob));
-                // Start playing as soon as first audio arrives
-                if (!audioPlaying) maybeStartAudio();
+                audioPlayer.push(URL.createObjectURL(blob));
+
+                // Start playback on first audio chunk
+                if (!audioPlaying) {
+                  audioPlaying = true;
+                  setIsSpeaking(true);
+                  setIsThinking(false);
+                  audioPlayer.start(audioDoneCleanup);
+                }
               } else if (evt === 'tool') {
                 setIsThinking(true);
               } else if (evt === 'done') {
@@ -455,6 +502,9 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
           }
         }
       }
+
+      // Stream ended — tell the audio player no more chunks are coming
+      audioPlayer.finish();
 
       // If no audio was played (browser TTS mode or TTS failure), handle cleanup
       if (!audioPlaying) {
@@ -508,7 +558,7 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       processingRef.current = false;
       try { recognitionRef.current?.start(); } catch { /* ok */ }
     }
-  }, [stopCurrentAudio, playAudioQueue]);
+  }, [stopCurrentAudio, createAudioPlayer]);
 
   // Legacy sequential path — fallback when /api/voice/stream is not available
   const handleUserMessageLegacy = useCallback(async (text: string) => {

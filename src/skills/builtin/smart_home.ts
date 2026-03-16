@@ -316,9 +316,10 @@ export function registerSmartHomeSkill(): void {
         },
         execute: async (args) => {
             try {
-                const entityId = args.entityId as string;
+                const entityId = (args.entityId || args.entity_id || args.entity) as string;
                 const action = args.action as string;
                 const data = (args.data as Record<string, unknown>) || {};
+                if (!entityId) return 'Error: entityId is required';
 
                 // Extract domain from entity_id (e.g., "light" from "light.living_room")
                 const [domain] = entityId.split('.');
@@ -364,7 +365,9 @@ export function registerSmartHomeSkill(): void {
         },
         execute: async (args) => {
             try {
-                const entityId = args.entityId as string;
+                // Accept both entityId and entity_id/sensor (models often use wrong param name)
+                const entityId = (args.entityId || args.entity_id || args.sensor || args.entity) as string;
+                if (!entityId) return 'Error: entityId is required (e.g., "sensor.temperature", "light.living_room")';
                 const entity = (await haRequest(`/api/states/${entityId}`)) as HAStateResponse;
                 return formatStateInfo(entity as HAEntity);
             } catch (e) {
@@ -524,7 +527,8 @@ export function registerSmartHomeSkill(): void {
         },
         execute: async (args) => {
             try {
-                const entityId = args.entityId as string;
+                const entityId = (args.entityId || args.entity_id || args.sensor || args.entity) as string;
+                if (!entityId) return 'Error: entityId is required';
                 const hours = Math.min(Math.max((args.hours as number) || 24, 1), 168);
 
                 const startTime = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();

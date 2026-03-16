@@ -619,6 +619,8 @@ STRICT RULES — NEVER BREAK THESE:
 - For greetings, just greet back warmly in one sentence
 - Answer the question directly. If you don't know, say so briefly.
 - Write as plain spoken English only. No formatting of any kind.
+- After using tools, ALWAYS summarize the actual results conversationally. NEVER say "I completed the tool operations" or similar generic filler. Tell the user what you found.
+- If asked about counts or lists, give the key number and 2-3 highlights. Do NOT list everything.
 
 ## Orpheus TTS Emotion Tags
 Express emotions naturally using these inline tags:
@@ -627,7 +629,12 @@ Example: "That's hilarious! <laugh> I can't believe that happened."
 Example: "<sigh> That's a tough one, but I'll figure it out."
 Use sparingly and naturally. They make you sound more human.`;
     }
-    const historyMessages = getContextMessages(session);
+    // Voice sessions: limit context to last 6 messages (3 turns) to prevent
+    // multi-turn degradation with local models. Long contexts cause Qwen to
+    // hallucinate system prompts and get stuck in tool loops.
+    const historyMessages = voiceFastPath
+        ? getContextMessages(session, 6)
+        : getContextMessages(session);
     const tools = getToolDefinitions();
 
     // ── Learning feedback: inject reliability tags into tool descriptions ──
@@ -883,7 +890,7 @@ Use sparingly and naturally. They make you sound more human.`;
             model: activeModel,
             messages: smartMessages,
             tools: activeTools.length > 0 ? activeTools : undefined,
-            maxTokens: config.agent.maxTokens,
+            maxTokens: voiceFastPath ? Math.min(config.agent.maxTokens, 100) : config.agent.maxTokens,
             temperature: config.agent.temperature,
             thinking: thinkingMode !== 'off',
             thinkingLevel: thinkingMode,
@@ -1076,8 +1083,8 @@ Use sparingly and naturally. They make you sound more human.`;
             const taskType = classifyTaskType(message);
             recordToolPreference(result.name, taskType, success);
 
-            // Active Learning: auto-inject known error resolutions
-            if (!success) {
+            // Active Learning: auto-inject known error resolutions (skip for voice — adds noise)
+            if (!success && !voiceFastPath) {
                 const resolution = getErrorResolution(result.content);
                 if (resolution) {
                     logger.info(COMPONENT, `[ActiveLearning] Known fix for error: ${resolution.slice(0, 80)}`);
@@ -1089,7 +1096,8 @@ Use sparingly and naturally. They make you sound more human.`;
             }
 
             // Track error resolutions: when a previous tool failed and a DIFFERENT tool succeeded
-            if (success && lastFailedTool) {
+            // Skip for voice fast-path to avoid recording noisy patterns from short voice sessions
+            if (!voiceFastPath && success && lastFailedTool) {
                 if (result.name !== lastFailedTool.name) {
                     // Different tool resolved it — that's a meaningful pattern worth recording
                     recordErrorResolution(lastFailedTool.error, `Resolved by using ${result.name} instead of ${lastFailedTool.name}`);

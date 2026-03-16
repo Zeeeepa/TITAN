@@ -481,6 +481,103 @@ describe('runDoctor --fix', () => {
     });
 });
 
+// ─── --dry-run flag (Issue #5) ───────────────────────────────────
+
+describe('runDoctor --dry-run', () => {
+    it('should not call any fix functions when --dry-run is used with --fix', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            if (path === '/tmp/titan-test-doctor/workspace') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor({ fix: true, dryRun: true });
+
+        expect(mockFixMissingTitanHome).not.toHaveBeenCalled();
+        expect(mockFixMissingConfig).not.toHaveBeenCalled();
+        expect(mockFixMissingWorkspace).not.toHaveBeenCalled();
+        expect(mockFixPermissions).not.toHaveBeenCalled();
+    });
+
+    it('should show what fixes would be applied in dry-run mode', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            if (path === '/tmp/titan-test-doctor/workspace') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor({ fix: true, dryRun: true });
+
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('Dry run');
+        expect(output).toContain('Would fix');
+    });
+
+    it('should include dry-run results in the report fixes array', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        const report = await runDoctor({ fix: true, dryRun: true });
+
+        expect(report.fixes).toBeDefined();
+        expect(report.fixes!.length).toBeGreaterThan(0);
+        expect(report.fixes!.every((f) => f.message.includes('[dry-run]'))).toBe(true);
+    });
+
+    it('should have no effect without --fix (doctor is already read-only)', async () => {
+        await runDoctor({ dryRun: true });
+
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).not.toContain('Dry run');
+        expect(output).not.toContain('Would fix');
+        expect(mockFixMissingTitanHome).not.toHaveBeenCalled();
+    });
+
+    it('should work with --json and --dry-run together', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        const report = await runDoctor({ fix: true, dryRun: true, json: true });
+
+        expect(report.fixes).toBeDefined();
+        expect(report.fixes!.length).toBeGreaterThan(0);
+        expect(report.fixes!.every((f) => f.message.includes('[dry-run]'))).toBe(true);
+    });
+
+    it('should show dry-run complete message with fix count', async () => {
+        mockExistsSync.mockImplementation((path: string) => {
+            if (path === '/tmp/titan-test-doctor') return false;
+            if (path === '/tmp/titan-test-doctor/workspace') return false;
+            return true;
+        });
+        mockConfigExists.mockReturnValue(false);
+        mockHealthCheckAll.mockResolvedValue({});
+        mockReaddirSync.mockReturnValue([]);
+
+        await runDoctor({ fix: true, dryRun: true });
+
+        const output = consoleSpy.mock.calls.map((c) => String(c[0])).join('\n');
+        expect(output).toContain('would be applied');
+        expect(output).toContain('without --dry-run');
+    });
+});
+
 // ─── Summary output ──────────────────────────────────────────────
 
 describe('runDoctor - Summary', () => {

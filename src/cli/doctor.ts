@@ -55,8 +55,9 @@ export interface DoctorReport {
     fixes?: HealResult[];
 }
 
-export async function runDoctor(options?: { fix?: boolean; json?: boolean }): Promise<DoctorReport> {
+export async function runDoctor(options?: { fix?: boolean; json?: boolean; dryRun?: boolean }): Promise<DoctorReport> {
     const autoFix = options?.fix ?? false;
+    const dryRun = options?.dryRun ?? false;
     const jsonOutput = options?.json ?? false;
 
     if (!jsonOutput) {
@@ -357,7 +358,11 @@ export async function runDoctor(options?: { fix?: boolean; json?: boolean }): Pr
 
     // Auto-fix pass if --fix was specified
     if (autoFix) {
-        if (!jsonOutput) console.log(chalk.cyan('\n  🔧 Running auto-fix...\n'));
+        if (dryRun) {
+            if (!jsonOutput) console.log(chalk.cyan('\n  🔧 Dry run — showing fixes that WOULD be applied:\n'));
+        } else {
+            if (!jsonOutput) console.log(chalk.cyan('\n  🔧 Running auto-fix...\n'));
+        }
 
         const issueChecks = checks.filter((c) => (c.status === 'warn' || c.status === 'fail') && c.fixKey);
         const fixKeysNeeded = new Set(issueChecks.map((c) => c.fixKey!));
@@ -373,22 +378,49 @@ export async function runDoctor(options?: { fix?: boolean; json?: boolean }): Pr
             staleSessions: fixOrphanedSessions,
         };
 
-        for (const key of fixKeysNeeded) {
-            const fixFn = fixMap[key];
-            if (fixFn) {
-                const result = fixFn();
-                healResults.push(result);
-                if (!jsonOutput) {
-                    const icon = result.success ? chalk.green('✅') : chalk.red('❌');
-                    console.log(`  ${icon} ${result.action}: ${chalk.gray(result.message)}`);
+        const fixDescriptions: Record<string, string> = {
+            titanHome: 'Create TITAN home directory',
+            config: 'Create default configuration file',
+            invalidConfig: 'Reset invalid configuration to defaults',
+            workspace: 'Create workspace directory',
+            channels: 'Disable misconfigured channels',
+            permissions: 'Fix file permissions on TITAN home',
+            staleLogs: 'Clean up stale log files',
+            staleSessions: 'Remove orphaned session files',
+        };
+
+        if (dryRun) {
+            for (const key of fixKeysNeeded) {
+                if (fixMap[key]) {
+                    const description = fixDescriptions[key] ?? key;
+                    healResults.push({ action: key, success: true, message: `[dry-run] Would fix: ${description}` });
+                    if (!jsonOutput) {
+                        console.log(`  ${chalk.yellow('⏭')}  ${key}: ${chalk.gray(`Would fix: ${description}`)}`);
+                    }
                 }
             }
-        }
 
-        if (!jsonOutput) {
-            const fixedCount = healResults.filter((r) => r.success).length;
-            const remainingCount = healResults.filter((r) => !r.success).length;
-            console.log(chalk.cyan(`\n  🔧 ${fixedCount} issues auto-fixed, ${remainingCount} remaining`));
+            if (!jsonOutput) {
+                console.log(chalk.cyan(`\n  🔧 Dry run complete — ${fixKeysNeeded.size} fix(es) would be applied. Run without --dry-run to apply.`));
+            }
+        } else {
+            for (const key of fixKeysNeeded) {
+                const fixFn = fixMap[key];
+                if (fixFn) {
+                    const result = fixFn();
+                    healResults.push(result);
+                    if (!jsonOutput) {
+                        const icon = result.success ? chalk.green('✅') : chalk.red('❌');
+                        console.log(`  ${icon} ${result.action}: ${chalk.gray(result.message)}`);
+                    }
+                }
+            }
+
+            if (!jsonOutput) {
+                const fixedCount = healResults.filter((r) => r.success).length;
+                const remainingCount = healResults.filter((r) => !r.success).length;
+                console.log(chalk.cyan(`\n  🔧 ${fixedCount} issues auto-fixed, ${remainingCount} remaining`));
+            }
         }
     }
 

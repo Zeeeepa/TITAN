@@ -4,6 +4,20 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.36] — 2026-03-15
+
+### Added
+- **Voice fast-path** — Voice channel skips deliberation, Brain tool filtering, reflection, orchestration, and context compression for ~200-500ms savings per request
+- **Adaptive silence timer** — STT silence detection adapts to utterance length: 400ms for short commands, 700ms for longer questions (was fixed 1200ms)
+- **Ollama keep_alive** — Models stay loaded in VRAM for 30 minutes between requests, eliminating 2-5s cold-start penalty
+- **Voice performance config** — New `voice.maxToolRounds` (default 3) and `voice.fastPath` (default true) settings
+
+### Changed
+- Echo grace period reduced from 1500ms to 500ms (browser echoCancellation + mic energy interrupt handle echo)
+- Voice tool rounds capped at 3 (configurable) for faster responses
+
+---
+
 ## [2026.10.35] — 2026-03-15
 
 ### Fixed

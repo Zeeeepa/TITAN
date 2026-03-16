@@ -429,12 +429,21 @@ export async function processMessage(
     const autonomyOverride = isAutonomous
         ? (config.autonomy as Record<string, unknown>).maxToolRoundsOverride as number || 25
         : MAX_TOOL_ROUNDS;
-    const effectiveMaxRounds = Math.max(dynamicBudget, autonomyOverride);
-    const reflectionEnabled = config.agent.reflectionEnabled ?? true;
+    const isVoice = channel === 'voice';
+    const voiceFastPath = isVoice && ((config.voice as Record<string, unknown>)?.fastPath !== false);
+    let effectiveMaxRounds = Math.max(dynamicBudget, autonomyOverride);
+    const reflectionEnabled = voiceFastPath ? false : (config.agent.reflectionEnabled ?? true);
     const reflectionInterval = config.agent.reflectionInterval ?? 3;
 
-    // ── Brain: background warmup (non-blocking) ──────────────
-    ensureBrainLoaded().catch(() => {});
+    // Voice fast-path: cap tool rounds + skip heavyweight operations for faster responses
+    if (voiceFastPath) {
+        const voiceMaxRounds = (config.voice as Record<string, unknown>)?.maxToolRounds as number || 3;
+        effectiveMaxRounds = Math.min(voiceMaxRounds, effectiveMaxRounds);
+        logger.debug(COMPONENT, `[Voice fast-path] maxRounds=${effectiveMaxRounds}, reflection=off, Brain=off`);
+    }
+
+    // ── Brain: background warmup (non-blocking) — skip for voice fast-path ──
+    if (!voiceFastPath) ensureBrainLoaded().catch(() => {});
 
     // ── Deliberation intercept ─────────────────────────────────
     const existingDelib = getDeliberation(session.id);
@@ -463,7 +472,7 @@ export async function processMessage(
     // Don't start a new deliberation if one is already executing
     if (existingDelib?.stage === 'executing') {
         // Fall through to normal processing
-    } else if (shouldDeliberate(message, config)) {
+    } else if (!voiceFastPath && shouldDeliberate(message, config)) {
         addMessage(session, 'user', message);
         const state = await analyze(message, session.id, config);
         if (state.stage === 'planning') {
@@ -690,7 +699,7 @@ Use sparingly and naturally. They make you sound more human.`;
     }
 
     // ── Brain: intelligent tool pre-filtering ──────────────────
-    if (!isKimiSwarm && !isSmallModel && isBrainAvailable()) {
+    if (!voiceFastPath && !isKimiSwarm && !isSmallModel && isBrainAvailable()) {
         const brainFiltered = await brainSelectTools(message, activeTools);
         if (brainFiltered.length > 0 && brainFiltered.length < activeTools.length) {
             logger.info(COMPONENT, `[Brain] Filtered: ${activeTools.length} → ${brainFiltered.length} tools`);
@@ -727,7 +736,7 @@ Use sparingly and naturally. They make you sound more human.`;
 
     // ── Orchestration: check if task benefits from sub-agent delegation ──
     const autoDelegate = (subAgentConfig as Record<string, unknown> | undefined)?.autoDelegate !== false;
-    if (isAutonomous && autoDelegate && message.split(/\s+/).length >= 10) {
+    if (!voiceFastPath && isAutonomous && autoDelegate && message.split(/\s+/).length >= 10) {
         try {
             const delegationPlan = await analyzeForDelegation(message);
             if (delegationPlan.shouldDelegate && delegationPlan.tasks.length >= 2) {
@@ -839,21 +848,27 @@ Use sparingly and naturally. They make you sound more human.`;
             }
         }
 
-        // ── Cost optimizer: context compression to save tokens ───
-        const { messages: compressedMessages, didCompress, savedTokens } = maybeCompressContext(
-            messages.filter((m) => m.role !== 'tool' || round < 3) // keep recent tool results
-        );
-        if (didCompress) {
-            logger.info(COMPONENT, `Context compressed, saved ~${savedTokens} tokens`);
-            messages.length = 0;
-            messages.push(...compressedMessages);
-        }
+        // ── Cost optimizer: context compression to save tokens (skip for voice fast-path) ───
+        let smartMessages: ChatMessage[];
+        if (voiceFastPath) {
+            // Voice fast-path: skip compression overhead — voice convos are short
+            smartMessages = messages as ChatMessage[];
+        } else {
+            const { messages: compressedMessages, didCompress, savedTokens } = maybeCompressContext(
+                messages.filter((m) => m.role !== 'tool' || round < 3) // keep recent tool results
+            );
+            if (didCompress) {
+                logger.info(COMPONENT, `Context compressed, saved ~${savedTokens} tokens`);
+                messages.length = 0;
+                messages.push(...compressedMessages);
+            }
 
-        // ── Smart context manager: second compression layer (skip if already compressed) ───
-        const tokenBudget = (config.agent.maxTokens || 4096) * 4; // rough context window estimate
-        const smartMessages = didCompress
-            ? compressedMessages as ChatMessage[]
-            : buildSmartContext(compressedMessages as ChatMessage[], tokenBudget);
+            // ── Smart context manager: second compression layer (skip if already compressed) ───
+            const tokenBudget = (config.agent.maxTokens || 4096) * 4; // rough context window estimate
+            smartMessages = didCompress
+                ? compressedMessages as ChatMessage[]
+                : buildSmartContext(compressedMessages as ChatMessage[], tokenBudget);
+        }
 
         // ── Response cache: check before calling LLM ───
         const cachedResponse = getCachedResponse(smartMessages, activeModel);

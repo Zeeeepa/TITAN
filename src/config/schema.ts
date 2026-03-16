@@ -254,6 +254,10 @@ export const VoiceConfigSchema = z.object({
     ttsUrl: z.string().default('http://localhost:5005'),
     /** STT server URL (e.g. faster-whisper) */
     sttUrl: z.string().default('http://localhost:48421'),
+    /** Voice performance: max tool rounds before forcing response */
+    maxToolRounds: z.number().default(3),
+    /** Voice performance: enable fast-path (skip deliberation, Brain, reflection) */
+    fastPath: z.boolean().default(true),
 });
 
 export const ContextEnginePluginConfigSchema = z.object({

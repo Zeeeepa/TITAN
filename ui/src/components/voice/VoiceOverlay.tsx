@@ -212,15 +212,17 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         currentTranscriptRef.current += final;
         setInterimText('');
 
-        // Reset silence timer — wait for user to stop speaking
+        // Reset silence timer — adaptive: short utterances fire faster
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        const wordCount = currentTranscriptRef.current.trim().split(/\s+/).length;
+        const silenceMs = wordCount < 10 ? 400 : 700;
         silenceTimerRef.current = setTimeout(() => {
           const text = currentTranscriptRef.current.trim();
           if (text) {
             currentTranscriptRef.current = '';
             handleUserMessage(text);
           }
-        }, 1200); // 1.2s silence = end of utterance
+        }, silenceMs);
       }
     };
 
@@ -478,13 +480,13 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
         // Clear any buffered transcript that might be echo
         currentTranscriptRef.current = '';
         setInterimText('');
-        // Grace period — let echo fully decay before restarting STT (1.5s)
+        // Grace period — let echo decay before restarting STT
         setTimeout(() => {
           processingRef.current = false;
           if (!isMutedRef.current && phaseRef.current === 'active') {
             try { recognitionRef.current?.start(); } catch { /* ok */ }
           }
-        }, 1500);
+        }, 500);
       };
 
       audio.onended = cleanup;

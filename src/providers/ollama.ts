@@ -244,6 +244,7 @@ export class OllamaProvider extends LLMProvider {
                 return msg;
             }),
             stream: false,
+            keep_alive: '30m',
             options: {
                 // Auto-configure context window per model's known maximum.
                 // getModelCtx() returns the correct num_ctx for each cloud/local model.
@@ -403,6 +404,7 @@ export class OllamaProvider extends LLMProvider {
                 return msg;
             }),
             stream: true,
+            keep_alive: '30m',
             options: { num_predict: options.maxTokens || (isCloudModel ? 32768 : 16384), num_ctx: getModelCtx(model), temperature: options.temperature ?? 0.7 },
         };
 

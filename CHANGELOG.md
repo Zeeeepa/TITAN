@@ -4,6 +4,19 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.34] — 2026-03-15
+
+### Changed
+- **Fish Speech removed** — All Fish Speech code, UI, and Gradio integration stripped; TTS is Orpheus-only with browser fallback
+- **TTS engine schema validated** — `z.enum(['orpheus', 'browser'])` replaces unvalidated string
+- **Dead code removed** — VoiceSettingsPanel.tsx (11KB, never imported)
+- **Agent error logging** — 5 silent catch blocks now log warnings/debug messages
+- **Double compression fix** — Skip `buildSmartContext` when `maybeCompressContext` already compressed
+- **Session cleanup hardening** — Periodic sweep of orphaned AbortControllers
+- **Titan PC cleanup** — Removed unhealthy llama-cpp-server container (3.8GB VRAM), Fish Speech files (11GB+ disk)
+
+---
+
 ## [2026.10.33] — 2026-03-15
 
 ### Changed

@@ -6,7 +6,7 @@
 
 **TITAN (The Intelligent Task Automation Network)** is a premium, autonomous AI agent framework built in TypeScript. It's published as `titan-agent` on npm with 5,500+ installs. Created by Tony Elliott.
 
-- **Current version**: v2026.10.32
+- **Current version**: v2026.10.34
 - **License**: MIT
 - **Repo**: https://github.com/Djtony707/TITAN
 - **Runtime**: Node.js >= 20, pure ESM
@@ -192,6 +192,7 @@ Always publish to npm after pushing to git.
 ## Recent History
 
 See `CHANGELOG.md` for full history. Key milestones:
+- **v2026.10.33**: HA auto-save (gateway intercepts tokens), ha_setup in coreTools, voice test fix
 - **v2026.10.32**: Orpheus TTS restored (reverted TADA), voice selector dropdown in VoiceOverlay, VoicePicker with 8 named Orpheus voices, separate TTS AbortController, browser TTS fallback, all TADA references removed
 - **v2026.10.30**: Home Assistant skill (11 tools), voice server REST API, voice echo cancellation
 - **v2026.10.29**: Personal skills bridge (ghost registry fix), stop button (end-to-end abort), task continuation injection, tool-aware system prompt compression, Gmail delete_label/bulk_delete_labels, confirmation gate string vs boolean fix, Google OAuth panel

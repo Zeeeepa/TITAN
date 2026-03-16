@@ -179,7 +179,7 @@ function extractToolCallFromContent(
                         function: { name: toolName, arguments: JSON.stringify(args) },
                     };
                 }
-            } catch { /* not valid JSON, skip */ }
+            } catch (e) { logger.debug(COMPONENT, `Non-JSON tool argument, skipping: ${(e as Error).message}`); }
         }
 
         // No JSON found but tool is mentioned — call with empty args to let the tool guide
@@ -203,7 +203,7 @@ function extractToolCallFromContent(
                             }),
                         },
                     };
-                } catch { /* skip */ }
+                } catch (e) { logger.debug(COMPONENT, `Tool output parse failed: ${(e as Error).message}`); }
             }
         }
     }
@@ -235,7 +235,7 @@ export interface AgentResponse {
 function readPromptFile(path: string): string {
     try {
         if (existsSync(path)) return readFileSync(path, 'utf-8');
-    } catch { /* ignore */ }
+    } catch (e) { logger.debug(COMPONENT, `Prompt file read failed: ${(e as Error).message}`); }
     return '';
 }
 
@@ -833,8 +833,8 @@ Use sparingly and naturally. They make you sound more human.`;
                     });
                 }
                 // 'continue' → no injection, just keep going
-            } catch {
-                // Reflection failed, continue without it
+            } catch (e) {
+                logger.warn(COMPONENT, `Reflection failed, continuing: ${(e as Error).message}`);
             }
         }
 
@@ -848,9 +848,11 @@ Use sparingly and naturally. They make you sound more human.`;
             messages.push(...compressedMessages);
         }
 
-        // ── Smart context manager: second compression layer ───
+        // ── Smart context manager: second compression layer (skip if already compressed) ───
         const tokenBudget = (config.agent.maxTokens || 4096) * 4; // rough context window estimate
-        const smartMessages = buildSmartContext(compressedMessages as ChatMessage[], tokenBudget);
+        const smartMessages = didCompress
+            ? compressedMessages as ChatMessage[]
+            : buildSmartContext(compressedMessages as ChatMessage[], tokenBudget);
 
         // ── Response cache: check before calling LLM ───
         const cachedResponse = getCachedResponse(smartMessages, activeModel);
@@ -1172,7 +1174,7 @@ Use sparingly and naturally. They make you sound more human.`;
                 lastContent: finalContent.slice(0, 500),
                 timestamp: Date.now(),
             });
-        } catch { /* ignore serialization failures */ }
+        } catch (e) { logger.debug(COMPONENT, `Response serialization failed: ${(e as Error).message}`); }
     }
 
     return {

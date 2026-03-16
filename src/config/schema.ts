@@ -248,8 +248,8 @@ export const VoiceConfigSchema = z.object({
     agentUrl: z.string().default('http://localhost:8081'),
     /** Default TTS voice name */
     ttsVoice: z.string().default('tara'),
-    /** TTS engine: orpheus | tada | kokoro */
-    ttsEngine: z.string().default('orpheus'),
+    /** TTS engine: orpheus | browser */
+    ttsEngine: z.enum(['orpheus', 'browser']).default('orpheus'),
     /** TTS server URL (Orpheus: 5005) */
     ttsUrl: z.string().default('http://localhost:5005'),
     /** STT server URL (e.g. faster-whisper) */

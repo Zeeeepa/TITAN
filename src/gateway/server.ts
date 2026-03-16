@@ -122,6 +122,13 @@ const authTokens = new Map<string, { createdAt: number }>();
 // Active session abort controllers — keyed by sessionId
 const sessionAborts = new Map<string, AbortController>();
 
+// Periodic cleanup of orphaned abort controllers
+setInterval(() => {
+    for (const [id, controller] of sessionAborts) {
+        if (controller.signal.aborted) sessionAborts.delete(id);
+    }
+}, 60_000).unref();
+
 // Clean expired tokens every 10 minutes
 tokenCleanupInterval = setInterval(() => {
     const now = Date.now();
@@ -1121,6 +1128,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         enabled: Boolean(cfg.voice?.enabled),
         livekitUrl: cfg.voice?.livekitUrl || '',
         agentUrl: cfg.voice?.agentUrl || '',
+        ttsEngine: cfg.voice?.ttsEngine || 'orpheus',
+        ttsUrl: cfg.voice?.ttsUrl || 'http://localhost:5005',
+        ttsVoice: cfg.voice?.ttsVoice || 'tara',
+        sttUrl: cfg.voice?.sttUrl || 'http://localhost:48421',
       },
       agent: cfg.agent,
       autonomy: cfg.autonomy,
@@ -1215,6 +1226,20 @@ export async function startGateway(options?: { port?: number; host?: string; ver
       if (body.gatewayAuthMode !== undefined) { cfg.gateway.auth.mode = body.gatewayAuthMode as 'none' | 'token' | 'password'; changedFields.push('gateway.auth.mode'); }
       if (body.gatewayPassword !== undefined) { cfg.gateway.auth.password = body.gatewayPassword as string; changedFields.push('gateway.auth.password'); }
       if (body.gatewayToken !== undefined) { cfg.gateway.auth.token = body.gatewayToken as string; changedFields.push('gateway.auth.token'); }
+      // Voice settings (nested object from SettingsPanel)
+      if (body.voice !== undefined && typeof body.voice === 'object') {
+        const v = body.voice as Record<string, unknown>;
+        if (v.enabled !== undefined) cfg.voice.enabled = Boolean(v.enabled);
+        if (v.livekitUrl !== undefined) cfg.voice.livekitUrl = String(v.livekitUrl);
+        if (v.livekitApiKey !== undefined) cfg.voice.livekitApiKey = String(v.livekitApiKey);
+        if (v.livekitApiSecret !== undefined) cfg.voice.livekitApiSecret = String(v.livekitApiSecret);
+        if (v.agentUrl !== undefined) cfg.voice.agentUrl = String(v.agentUrl);
+        if (v.ttsVoice !== undefined) cfg.voice.ttsVoice = String(v.ttsVoice);
+        if (v.ttsEngine !== undefined) cfg.voice.ttsEngine = String(v.ttsEngine);
+        if (v.ttsUrl !== undefined) cfg.voice.ttsUrl = String(v.ttsUrl);
+        if (v.sttUrl !== undefined) cfg.voice.sttUrl = String(v.sttUrl);
+        changedFields.push('voice');
+      }
       // Home Assistant
       if (body.homeAssistantUrl !== undefined) { cfg.homeAssistant.url = body.homeAssistantUrl as string; changedFields.push('homeAssistant.url'); }
       if (body.homeAssistantToken !== undefined) { cfg.homeAssistant.token = body.homeAssistantToken as string; changedFields.push('homeAssistant.token'); }
@@ -1233,7 +1258,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
           'togetherKey', 'deepseekKey', 'perplexityKey', 'maxTokens', 'temperature', 'systemPrompt',
           'shieldEnabled', 'shieldMode', 'deniedTools', 'networkAllowlist', 'gatewayPort', 'gatewayAuthMode',
           'gatewayPassword', 'gatewayToken', 'channels', 'googleOAuthClientId', 'googleOAuthClientSecret',
-          'homeAssistantUrl', 'homeAssistantToken'];
+          'homeAssistantUrl', 'homeAssistantToken', 'voice'];
         res.status(400).json({ error: 'No recognized fields in request body', validFields });
         return;
       }
@@ -2304,47 +2329,63 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json(results);
   });
 
-  // Voice preview — synthesize a short sample via TTS server (Orpheus)
+  // Voice preview — synthesize a short sample via TTS server (engine-aware)
   app.post('/api/voice/preview', async (req, res) => {
     const cfg = loadConfig();
+    const engine = cfg.voice?.ttsEngine || 'orpheus';
     const voiceId = req.body?.voice || cfg.voice?.ttsVoice || 'tara';
     const rawText = req.body?.text || 'Hey! I\'m TITAN, your AI assistant.';
     const text = rawText.length > 500 ? rawText.slice(0, 497) + '...' : rawText;
     const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
-    const ttsEndpoint = `${ttsUrl}/v1/audio/speech`;
-    logger.info('Gateway', `TTS request: voice=${voiceId}, text=${text.slice(0, 80)}...`);
+    logger.info('Gateway', `TTS [${engine}] request: voice=${voiceId}, text=${text.slice(0, 80)}...`);
+
+    // Browser engine — no server call, client handles it
+    if (engine === 'browser') {
+      res.json({ engine: 'browser', text, voice: voiceId });
+      return;
+    }
 
     try {
-      const ttsRes = await fetch(ttsEndpoint, {
+      const ttsRes = await fetch(`${ttsUrl}/v1/audio/speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input: text, voice: voiceId, response_format: 'wav' }),
         signal: AbortSignal.timeout(30000),
       });
+
       if (!ttsRes.ok) {
-        res.status(502).json({ error: 'TTS service unavailable' });
+        res.status(502).json({ error: `TTS service unavailable`, status: ttsRes.status });
         return;
       }
       res.setHeader('Content-Type', 'audio/wav');
       const buffer = Buffer.from(await ttsRes.arrayBuffer());
       res.send(buffer);
-    } catch {
-      res.status(502).json({ error: 'TTS service unavailable' });
+    } catch (err) {
+      res.status(502).json({ error: `TTS service unavailable` });
     }
   });
 
-  // Voice available voices — query TTS server or return Orpheus defaults
+  // Voice available voices — engine-aware
   app.get('/api/voice/voices', async (_req, res) => {
     const cfg = loadConfig();
+    const engine = cfg.voice?.ttsEngine || 'orpheus';
     const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
+
+    const ORPHEUS_VOICES = ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'];
+
+    if (engine === 'browser') {
+      res.json({ voices: [], engine: 'browser' });
+      return;
+    }
+
+    // Orpheus (default)
     try {
       const ttsRes = await fetch(`${ttsUrl}/v1/audio/voices`, { signal: AbortSignal.timeout(3000) });
-      if (!ttsRes.ok) { res.json({ voices: ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'] }); return; }
+      if (!ttsRes.ok) { res.json({ voices: ORPHEUS_VOICES, engine: 'orpheus' }); return; }
       const data = await ttsRes.json() as { voices?: string[] };
-      res.json(data);
+      res.json({ ...data, engine: 'orpheus' });
     } catch {
-      // Orpheus default voice set
-      res.json({ voices: ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'] });
+      res.json({ voices: ORPHEUS_VOICES, engine: 'orpheus' });
     }
   });
 

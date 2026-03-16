@@ -160,7 +160,14 @@ function SettingsPanel() {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [livekitUrl, setLivekitUrl] = useState('');
   const [ttsVoice, setTtsVoice] = useState('tara');
+  const [ttsEngine, setTtsEngine] = useState('orpheus');
+  const [ttsUrl, setTtsUrl] = useState('http://localhost:5005');
   const [orpheusVoices, setOrpheusVoices] = useState<string[]>(['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac']);
+
+  const TTS_ENGINES = [
+    { id: 'orpheus', name: 'Orpheus TTS', desc: 'GPU-accelerated emotional speech', defaultUrl: 'http://localhost:5005', defaultVoices: ['tara', 'leah', 'jess', 'mia', 'zoe', 'leo', 'dan', 'zac'] },
+    { id: 'browser', name: 'Browser TTS', desc: 'Built-in, no server needed', defaultUrl: '', defaultVoices: [] },
+  ];
 
   // Voice auto-discovery state
   const [voiceHealth, setVoiceHealth] = useState<VoiceHealth | null>(null);
@@ -180,6 +187,8 @@ function SettingsPanel() {
         setVoiceEnabled(voice.enabled ?? false);
         setLivekitUrl(voice.livekitUrl ?? '');
         setTtsVoice(voice.ttsVoice ?? 'tara');
+        setTtsEngine(voice.ttsEngine ?? 'orpheus');
+        setTtsUrl(voice.ttsUrl ?? 'http://localhost:5005');
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed to load config';
         setLoadError(msg);
@@ -255,8 +264,8 @@ function SettingsPanel() {
           enabled: voiceEnabled,
           livekitUrl,
           ttsVoice,
-          ttsEngine: 'orpheus',
-          ttsUrl: config?.voice?.ttsUrl ?? 'http://localhost:5005',
+          ttsEngine,
+          ttsUrl: ttsUrl || 'http://localhost:5005',
           sttUrl: config?.voice?.sttUrl ?? 'http://localhost:48421',
           livekitApiKey: config?.voice?.livekitApiKey ?? '',
           livekitApiSecret: config?.voice?.livekitApiSecret ?? '',
@@ -340,13 +349,15 @@ function SettingsPanel() {
         />
       </div>
 
-      {/* Voice Section — Orpheus TTS */}
+      {/* Voice Section */}
       <div className="rounded-xl border border-[#3f3f46] bg-[#18181b] p-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mic className="h-4 w-4 text-[#818cf8]" />
             <h3 className="text-sm font-medium text-[#a1a1aa]">Voice</h3>
-            <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-[9px] font-medium text-[#a78bfa]">Orpheus</span>
+            <span className="rounded-full bg-[#6366f1]/20 px-2 py-0.5 text-[9px] font-medium text-[#a78bfa]">
+              {TTS_ENGINES.find((e) => e.id === ttsEngine)?.name || ttsEngine}
+            </span>
           </div>
           <button
             onClick={checkVoiceServices}
@@ -368,7 +379,7 @@ function SettingsPanel() {
                   { label: 'LiveKit Server', ok: voiceHealth.livekit },
                   { label: 'Voice Agent', ok: voiceHealth.agent },
                   { label: 'STT', ok: voiceHealth.stt },
-                  { label: 'TTS (Orpheus)', ok: voiceHealth.tts },
+                  { label: `TTS (${TTS_ENGINES.find((e) => e.id === ttsEngine)?.name || 'TTS'})`, ok: voiceHealth.tts },
                 ].map(({ label, ok }) => (
                   <div key={label} className="flex items-center gap-2">
                     <StatusDot ok={ok} />
@@ -399,9 +410,32 @@ function SettingsPanel() {
             />
             <span className="text-sm text-[#fafafa]">Enable Voice Chat</span>
           </label>
-          <p className="text-xs text-[#52525b] -mt-2">
-            Orpheus TTS — GPU-accelerated, emotional speech with 8 voices
-          </p>
+          {/* TTS Engine Selector */}
+          <div>
+            <label className="mb-2 block text-xs text-[#71717a]">TTS Engine</label>
+            <div className="grid grid-cols-3 gap-2">
+              {TTS_ENGINES.map((engine) => (
+                <button
+                  key={engine.id}
+                  type="button"
+                  onClick={() => {
+                    setTtsEngine(engine.id);
+                    setTtsUrl(engine.defaultUrl);
+                    setTtsVoice(engine.defaultVoices[0] || 'default');
+                    setOrpheusVoices(engine.defaultVoices);
+                  }}
+                  className={`rounded-lg border p-2 text-left transition-all ${
+                    ttsEngine === engine.id
+                      ? 'border-[#6366f1] bg-[#6366f1]/10'
+                      : 'border-[#3f3f46] hover:border-[#52525b]'
+                  }`}
+                >
+                  <div className="text-xs font-medium text-[#fafafa]">{engine.name}</div>
+                  <div className="mt-0.5 text-[10px] text-[#52525b]">{engine.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* LiveKit URL */}
           <div>
@@ -439,7 +473,9 @@ function SettingsPanel() {
               ))}
             </div>
             <p className="mt-2 text-xs text-[#52525b]">
-              Orpheus voices support emotion tags: &lt;laugh&gt;, &lt;sigh&gt;, &lt;chuckle&gt; and more
+              {ttsEngine === 'orpheus' && 'Orpheus voices support emotion tags: <laugh>, <sigh>, <chuckle> and more'}
+              {ttsEngine === 'fish-speech' && 'Upload reference audio to clone any voice via Fish Speech WebUI'}
+              {ttsEngine === 'browser' && "Uses your browser's built-in speech synthesis"}
             </p>
           </div>
 
@@ -450,7 +486,7 @@ function SettingsPanel() {
               <span className="text-xs text-[#71717a]">Selected:</span>
               <span className="text-xs font-mono text-[#a1a1aa]">{ttsVoice}</span>
               <span className="ml-auto rounded bg-[#6366f1]/15 px-1.5 py-0.5 text-[9px] font-medium text-[#a78bfa]">
-                Orpheus
+                {TTS_ENGINES.find((e) => e.id === ttsEngine)?.name || ttsEngine}
               </span>
             </div>
           )}

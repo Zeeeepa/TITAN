@@ -4,6 +4,15 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.39] — 2026-03-16
+
+### Fixed
+- **Security**: Resolved all 23 Dependabot vulnerability alerts (0 remaining)
+- Upgraded matrix-js-sdk v34 → v41
+- Added npm overrides for transitive deps: esbuild ^0.25.0, yauzl ^3.2.1, langsmith ^0.5.0
+
+---
+
 ## [2026.10.38] — 2026-03-16
 
 ### Added

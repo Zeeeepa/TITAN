@@ -287,7 +287,37 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Send user message to TITAN and speak the response via TTS
+  // Helper: play audio queue sequentially (sentence-by-sentence)
+  const playAudioQueue = useCallback((queue: string[], onDone: () => void) => {
+    let idx = 0;
+    let cancelled = false;
+    const levelInterval = setInterval(() => {
+      if (!cancelled) setAudioLevel(0.3 + Math.random() * 0.4);
+    }, 100);
+
+    const playNext = () => {
+      if (cancelled || idx >= queue.length) {
+        clearInterval(levelInterval);
+        setAudioLevel(0);
+        if (!cancelled) onDone();
+        return;
+      }
+      const dataUrl = queue[idx++];
+      const audio = new Audio(dataUrl);
+      currentAudioRef.current = audio;
+      audio.onplay = () => { try { recognitionRef.current?.stop(); } catch { /* ok */ } };
+      audio.onended = () => { URL.revokeObjectURL(dataUrl); playNext(); };
+      audio.onerror = () => { URL.revokeObjectURL(dataUrl); playNext(); };
+      audio.play().catch(() => { URL.revokeObjectURL(dataUrl); playNext(); });
+    };
+
+    // Return cancel function
+    const cancel = () => { cancelled = true; clearInterval(levelInterval); };
+    playNext();
+    return cancel;
+  }, []);
+
+  // Send user message to TITAN and speak the response via streaming TTS
   const handleUserMessage = useCallback(async (text: string) => {
     // Prevent overlapping calls (echo can trigger rapid duplicate messages)
     if (processingRef.current) return;
@@ -311,188 +341,157 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
     abortRef.current = controller;
 
     try {
-      // Send to TITAN with session continuity and timeout
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      // Try streaming endpoint first (sentence-by-sentence TTS)
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const voice = selectedVoiceRef.current || 'tara';
 
-      const res = await fetch('/api/message', {
+      const res = await fetch('/api/voice/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: text,
-          channel: 'voice',
           sessionId: sessionIdRef.current,
+          voice,
         }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
+      // Fallback to old sequential path if streaming endpoint doesn't exist
+      if (res.status === 404) {
+        await handleUserMessageLegacy(text);
+        return;
+      }
       if (!res.ok) throw new Error(`TITAN request failed (${res.status})`);
-      const data = await res.json();
 
-      // Track session for continuity
-      if (data.sessionId) {
-        sessionIdRef.current = data.sessionId;
-      }
+      // Parse SSE stream
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
 
-      // Process response text: markdown → emotion tags → tool narration
-      const rawText = data.content || 'Sorry, I couldn\'t process that.';
-      const cleanText = stripMarkdown(rawText);
-      const displayText = stripToolNarration(stripEmotionTags(cleanText));
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const sentences: string[] = [];
+      const audioUrls: string[] = [];
+      let assistantMsgId = '';
+      let displayText = '';
+      let audioPlaying = false;
+      let cancelAudio: (() => void) | null = null;
 
-      setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
-      setIsThinking(false);
+      // Start playing audio as soon as first chunk arrives
+      const maybeStartAudio = () => {
+        if (audioPlaying || audioUrls.length === 0) return;
+        audioPlaying = true;
+        setIsSpeaking(true);
+        setIsThinking(false);
 
-      // Speak the response — try Orpheus server TTS first (fast GPU), browser TTS fallback
-      setIsSpeaking(true);
-      const voice = selectedVoiceRef.current || 'tara';
-
-      // Use displayText for TTS so spoken words match what's shown
-      // Truncate for TTS to avoid long hangs (max ~500 chars)
-      const ttsText = displayText.length > 500 ? displayText.slice(0, 497) + '...' : displayText;
-
-      // Try server TTS (Orpheus) — separate AbortController so it doesn't kill other requests
-      let useBrowserTTS = false;
-      let url = '';
-
-      try {
-        const ttsController = new AbortController();
-        const ttsTimeoutId = setTimeout(() => ttsController.abort(), 15000); // 15s max
-        const ttsRes = await fetch('/api/voice/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ voice, text: ttsText }),
-          signal: ttsController.signal,
-        });
-        clearTimeout(ttsTimeoutId);
-
-        if (!ttsRes.ok) {
-          useBrowserTTS = true;
-        } else {
-          const blob = await ttsRes.blob();
-          url = URL.createObjectURL(blob);
-        }
-      } catch {
-        useBrowserTTS = true;
-      }
-
-      // Fallback: browser Speech Synthesis API (instant, no server needed)
-      if (useBrowserTTS && 'speechSynthesis' in window) {
-        try { recognitionRef.current?.stop(); } catch { /* ok */ }
-        const utterance = new SpeechSynthesisUtterance(ttsText);
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        const synthInterval = setInterval(() => {
-          setAudioLevel(0.3 + Math.random() * 0.3);
-        }, 100);
-        utterance.onend = () => {
-          clearInterval(synthInterval);
+        cancelAudio = playAudioQueue([...audioUrls], () => {
+          // All audio done
+          currentAudioRef.current = null;
           setIsSpeaking(false);
           setAudioLevel(0);
           currentTranscriptRef.current = '';
+          setInterimText('');
           setTimeout(() => {
             processingRef.current = false;
             if (!isMutedRef.current && phaseRef.current === 'active') {
               try { recognitionRef.current?.start(); } catch { /* ok */ }
             }
-          }, 1500);
-        };
-        utterance.onerror = () => {
-          clearInterval(synthInterval);
-          setIsSpeaking(false);
-          setAudioLevel(0);
+          }, 500);
+        });
+      };
+
+      let currentEvent = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ') && currentEvent) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const evt = currentEvent;
+              currentEvent = '';
+
+              if (evt === 'sentence') {
+                sentences.push(data.text);
+                displayText = sentences.join(' ');
+                if (!assistantMsgId) {
+                  assistantMsgId = nextMsgId();
+                  setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', text: displayText }]);
+                } else {
+                  setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, text: displayText } : m));
+                }
+                setIsThinking(false);
+              } else if (evt === 'audio') {
+                // Convert base64 WAV to blob URL
+                const binary = atob(data.audio);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                const blob = new Blob([bytes], { type: 'audio/wav' });
+                audioUrls.push(URL.createObjectURL(blob));
+                // Start playing as soon as first audio arrives
+                if (!audioPlaying) maybeStartAudio();
+              } else if (evt === 'tool') {
+                setIsThinking(true);
+              } else if (evt === 'done') {
+                if (data.sessionId) sessionIdRef.current = data.sessionId;
+                if (!assistantMsgId && data.fullText) {
+                  const clean = stripToolNarration(stripEmotionTags(stripMarkdown(data.fullText)));
+                  setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: clean }]);
+                }
+                if (data.error) {
+                  setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: 'Sorry, something went wrong.' }]);
+                }
+              }
+            } catch { currentEvent = ''; }
+          } else if (line === '') {
+            currentEvent = '';
+          }
+        }
+      }
+
+      // If no audio was played (browser TTS mode or TTS failure), handle cleanup
+      if (!audioPlaying) {
+        setIsThinking(false);
+        setIsSpeaking(false);
+        // Try browser TTS for the full text
+        if (displayText && 'speechSynthesis' in window) {
+          setIsSpeaking(true);
+          const utterance = new SpeechSynthesisUtterance(displayText.slice(0, 500));
+          utterance.rate = 1.05;
+          const synthInterval = setInterval(() => setAudioLevel(0.3 + Math.random() * 0.3), 100);
+          utterance.onend = () => {
+            clearInterval(synthInterval);
+            setIsSpeaking(false);
+            setAudioLevel(0);
+            currentTranscriptRef.current = '';
+            setTimeout(() => {
+              processingRef.current = false;
+              if (!isMutedRef.current && phaseRef.current === 'active') {
+                try { recognitionRef.current?.start(); } catch { /* ok */ }
+              }
+            }, 500);
+          };
+          utterance.onerror = () => {
+            clearInterval(synthInterval);
+            setIsSpeaking(false);
+            processingRef.current = false;
+            try { recognitionRef.current?.start(); } catch { /* ok */ }
+          };
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+        } else {
           currentTranscriptRef.current = '';
           processingRef.current = false;
           try { recognitionRef.current?.start(); } catch { /* ok */ }
-        };
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
-        return;
-      }
-
-      if (useBrowserTTS) {
-        setIsSpeaking(false);
-        processingRef.current = false;
-        try { recognitionRef.current?.start(); } catch { /* ok */ }
-        return;
-      }
-
-      const audio = new Audio(url);
-      currentAudioRef.current = audio;
-
-      // Simulate audio levels from playback + monitor mic for voice interrupts
-      let levelFrame: number;
-      let interruptFrames = 0; // consecutive frames above threshold
-      const INTERRUPT_THRESHOLD = 0.45; // mic energy needed to interrupt (above TTS bleed)
-      const INTERRUPT_FRAMES = 8; // ~130ms of sustained loud input to trigger interrupt
-
-      const simulateLevel = () => {
-        // Check mic energy — if user is speaking over TITAN, interrupt
-        const analyser = analyserRef.current;
-        if (analyser) {
-          const data = new Uint8Array(analyser.frequencyBinCount);
-          analyser.getByteFrequencyData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i];
-          const micEnergy = sum / data.length / 255;
-
-          if (micEnergy > INTERRUPT_THRESHOLD) {
-            interruptFrames++;
-            if (interruptFrames >= INTERRUPT_FRAMES) {
-              // User is speaking — interrupt TITAN
-              audio.pause();
-              audio.src = '';
-              currentAudioRef.current = null;
-              cancelAnimationFrame(levelFrame);
-              setIsSpeaking(false);
-              setAudioLevel(0);
-              URL.revokeObjectURL(url);
-              // Clear any buffered echo transcript, then resume recognition
-              currentTranscriptRef.current = '';
-              setInterimText('');
-              processingRef.current = false;
-              setTimeout(() => {
-                try { recognitionRef.current?.start(); } catch { /* ok */ }
-              }, 300);
-              return;
-            }
-          } else {
-            interruptFrames = 0;
-          }
         }
-
-        setAudioLevel(0.3 + Math.random() * 0.4);
-        levelFrame = requestAnimationFrame(simulateLevel);
-      };
-
-      audio.onplay = () => {
-        // Fully stop STT during TTS playback to prevent buffered echo
-        try { recognitionRef.current?.stop(); } catch { /* ok */ }
-        simulateLevel();
-      };
-
-      const cleanup = () => {
-        cancelAnimationFrame(levelFrame);
-        URL.revokeObjectURL(url);
-        audio.src = '';
-        currentAudioRef.current = null;
-        setIsSpeaking(false);
-        setAudioLevel(0);
-        // Clear any buffered transcript that might be echo
-        currentTranscriptRef.current = '';
-        setInterimText('');
-        // Grace period — let echo decay before restarting STT
-        setTimeout(() => {
-          processingRef.current = false;
-          if (!isMutedRef.current && phaseRef.current === 'active') {
-            try { recognitionRef.current?.start(); } catch { /* ok */ }
-          }
-        }, 500);
-      };
-
-      audio.onended = cleanup;
-      audio.onerror = cleanup;
-
-      await audio.play();
+      }
     } catch (e: any) {
       // Ignore aborts from component close
       if (e?.name === 'AbortError' && !abortRef.current) return;
@@ -509,7 +508,100 @@ export function VoiceOverlay({ onClose }: VoiceOverlayProps) {
       processingRef.current = false;
       try { recognitionRef.current?.start(); } catch { /* ok */ }
     }
-  }, [stopCurrentAudio]);
+  }, [stopCurrentAudio, playAudioQueue]);
+
+  // Legacy sequential path — fallback when /api/voice/stream is not available
+  const handleUserMessageLegacy = useCallback(async (text: string) => {
+    const controller = abortRef.current;
+    if (!controller) return;
+
+    try {
+      const res = await fetch('/api/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, channel: 'voice', sessionId: sessionIdRef.current }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error(`TITAN request failed (${res.status})`);
+      const data = await res.json();
+      if (data.sessionId) sessionIdRef.current = data.sessionId;
+
+      const rawText = data.content || 'Sorry, I couldn\'t process that.';
+      const displayText = stripToolNarration(stripEmotionTags(stripMarkdown(rawText)));
+      setMessages(prev => [...prev, { id: nextMsgId(), role: 'assistant', text: displayText }]);
+      setIsThinking(false);
+      setIsSpeaking(true);
+
+      const voice = selectedVoiceRef.current || 'tara';
+      const ttsText = displayText.length > 500 ? displayText.slice(0, 497) + '...' : displayText;
+
+      try {
+        const ttsRes = await fetch('/api/voice/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voice, text: ttsText }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (ttsRes.ok) {
+          const blob = await ttsRes.blob();
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          currentAudioRef.current = audio;
+          audio.onplay = () => { try { recognitionRef.current?.stop(); } catch { /* ok */ } };
+          const cleanup = () => {
+            URL.revokeObjectURL(url);
+            audio.src = '';
+            currentAudioRef.current = null;
+            setIsSpeaking(false);
+            setAudioLevel(0);
+            currentTranscriptRef.current = '';
+            setTimeout(() => {
+              processingRef.current = false;
+              if (!isMutedRef.current && phaseRef.current === 'active') {
+                try { recognitionRef.current?.start(); } catch { /* ok */ }
+              }
+            }, 500);
+          };
+          audio.onended = cleanup;
+          audio.onerror = cleanup;
+          await audio.play();
+          return;
+        }
+      } catch { /* TTS failed, fall through */ }
+
+      // Browser TTS fallback
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(ttsText);
+        utterance.rate = 1.05;
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          currentTranscriptRef.current = '';
+          setTimeout(() => {
+            processingRef.current = false;
+            if (!isMutedRef.current && phaseRef.current === 'active') {
+              try { recognitionRef.current?.start(); } catch { /* ok */ }
+            }
+          }, 500);
+        };
+        utterance.onerror = () => {
+          setIsSpeaking(false);
+          processingRef.current = false;
+          try { recognitionRef.current?.start(); } catch { /* ok */ }
+        };
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsSpeaking(false);
+        processingRef.current = false;
+        try { recognitionRef.current?.start(); } catch { /* ok */ }
+      }
+    } catch (e: any) {
+      setIsThinking(false);
+      setIsSpeaking(false);
+      processingRef.current = false;
+      try { recognitionRef.current?.start(); } catch { /* ok */ }
+    }
+  }, []);
 
   // Voice selection handler
   const handleVoiceSelect = useCallback(async (voiceId: string) => {

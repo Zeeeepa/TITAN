@@ -4,6 +4,19 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.37] — 2026-03-15
+
+### Added
+- **Streaming voice endpoint** (`POST /api/voice/stream`) — LLM tokens streamed via SSE, chunked at sentence boundaries, TTS fired per-sentence
+- **Sentence-chunked TTS** — First audio arrives while LLM is still generating; ~1-2s faster time-to-first-audio
+- **Server-side voice text processing** — stripMarkdown, stripEmotionTags, stripToolNarration in streaming endpoint
+- **Audio playback queue** — VoiceOverlay plays sentence chunks sequentially as they stream in
+
+### Changed
+- VoiceOverlay uses `/api/voice/stream` by default with fallback to sequential `/api/message` + `/api/voice/preview`
+
+---
+
 ## [2026.10.36] — 2026-03-15
 
 ### Added

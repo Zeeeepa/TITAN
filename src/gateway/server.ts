@@ -2365,6 +2365,164 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     }
   });
 
+  // ── Streaming voice endpoint: LLM → sentence chunking → TTS per sentence ──
+  // Returns SSE with interleaved text and audio events for low-latency voice
+  app.post('/api/voice/stream', rateLimit(60000, 30), async (req, res) => {
+    const { content, sessionId: requestedSessionId, voice: reqVoice } = req.body || {};
+    if (!content) { res.status(400).json({ error: 'content is required' }); return; }
+
+    const cfg = loadConfig();
+    const ttsUrl = cfg.voice?.ttsUrl || 'http://localhost:5005';
+    const ttsEngine = cfg.voice?.ttsEngine || 'orpheus';
+    const voiceId = reqVoice || cfg.voice?.ttsVoice || 'tara';
+    const channel = 'voice';
+    const userId = 'voice-user';
+
+    // SSE setup
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    let clientDisconnected = false;
+    req.on('close', () => { clientDisconnected = true; });
+    const safeWrite = (data: string) => {
+      if (clientDisconnected) return;
+      try { res.write(data); } catch { clientDisconnected = true; }
+    };
+
+    const abortController = new AbortController();
+    if (requestedSessionId) sessionAborts.set(requestedSessionId, abortController);
+
+    // Sentence buffer and TTS queue
+    let tokenBuffer = '';
+    let sentenceIndex = 0;
+    let firstChunkSent = false;
+    const FIRST_CHUNK_MIN = 60; // chars before forcing first flush (low TTFA)
+    const pendingTTS: Promise<void>[] = [];
+
+    // Strip markdown/emotion/tool narration for voice display+TTS
+    const cleanForVoice = (text: string): string => {
+      return text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/^#+\s+/gm, '')
+        .replace(/^[-*]\s+/gm, '')
+        .replace(/\n{2,}/g, ' ')
+        .replace(/<(?:laugh|chuckle|sigh|cough|sniffle|groan|yawn|gasp)>/gi, '')
+        .replace(/(?:Let me |I'll |I will |I'm going to )(?:use|call|check|run|invoke|execute|try)(?: the)? \w[\w_]*(?: tool)?(?:\s+(?:to|for|and)\b[^.!?]*)?[.!]?\s*/gi, '')
+        .replace(/\b(?:Using|Calling|Running|Checking|Invoking|Executing) (?:the )?\w[\w_]*(?: tool)?(?:\s+(?:to|for)\b[^.!?]*)?[.!]?\s*/gi, '')
+        .replace(/\b\w[\w_]*(?:_\w+)+\b/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    };
+
+    // Fire TTS for a sentence and stream audio back as SSE event
+    const fireTTS = async (sentence: string, index: number) => {
+      const clean = cleanForVoice(sentence);
+      if (!clean || clean.length < 3) return;
+
+      // Send text event immediately so client can display it
+      safeWrite(`event: sentence\ndata: ${JSON.stringify({ text: clean, index })}\n\n`);
+
+      if (ttsEngine === 'browser') return; // client handles browser TTS
+
+      try {
+        const ttsRes = await fetch(`${ttsUrl}/v1/audio/speech`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: clean, voice: voiceId, response_format: 'wav' }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (ttsRes.ok && !clientDisconnected) {
+          const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
+          const audioBase64 = audioBuffer.toString('base64');
+          safeWrite(`event: audio\ndata: ${JSON.stringify({ index, audio: audioBase64, format: 'wav' })}\n\n`);
+        }
+      } catch (e) {
+        logger.debug('Gateway', `Voice stream TTS failed for sentence ${index}: ${(e as Error).message}`);
+      }
+    };
+
+    // Flush accumulated buffer as a sentence
+    const flushSentence = (text: string) => {
+      const trimmed = text.trim();
+      if (trimmed.length < 3) return;
+      const idx = sentenceIndex++;
+      pendingTTS.push(fireTTS(trimmed, idx));
+    };
+
+    activeLlmRequests++;
+    titanActiveSessions.inc();
+    const startTime = process.hrtime.bigint();
+
+    try {
+      const response = await routeMessage(content, channel, userId, {
+        onToken: (token) => {
+          if (clientDisconnected) return;
+          tokenBuffer += token;
+
+          // Force first chunk early for low time-to-first-audio
+          if (!firstChunkSent && tokenBuffer.length >= FIRST_CHUNK_MIN) {
+            const lastSpace = tokenBuffer.lastIndexOf(' ');
+            if (lastSpace > 30) {
+              flushSentence(tokenBuffer.slice(0, lastSpace));
+              tokenBuffer = tokenBuffer.slice(lastSpace + 1);
+              firstChunkSent = true;
+              return;
+            }
+          }
+
+          // Detect sentence boundaries: . ! ? followed by space or end
+          const match = tokenBuffer.match(/^(.*?[.!?])(\s|$)/s);
+          if (match) {
+            flushSentence(match[1]);
+            tokenBuffer = tokenBuffer.slice(match[0].length);
+            firstChunkSent = true;
+          }
+        },
+        onToolCall: (name) => {
+          // Notify client that tools are running (shows "Thinking..." state)
+          safeWrite(`event: tool\ndata: ${JSON.stringify({ name })}\n\n`);
+        },
+      }, undefined, abortController.signal);
+
+      // Flush remaining buffer
+      if (tokenBuffer.trim()) {
+        flushSentence(tokenBuffer);
+        tokenBuffer = '';
+      }
+
+      // Wait for all TTS requests to complete
+      await Promise.allSettled(pendingTTS);
+
+      // Send done event with metadata
+      if (!clientDisconnected) {
+        safeWrite(`event: done\ndata: ${JSON.stringify({
+          sessionId: response.sessionId,
+          model: response.model,
+          durationMs: response.durationMs,
+          toolsUsed: response.toolsUsed,
+          fullText: response.content,
+        })}\n\n`);
+        try { res.end(); } catch { /* client gone */ }
+      }
+    } catch (error) {
+      if (!clientDisconnected) {
+        safeWrite(`event: done\ndata: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+        try { res.end(); } catch { /* client gone */ }
+      }
+    } finally {
+      activeLlmRequests--;
+      titanActiveSessions.dec();
+      const durationSec = Number(process.hrtime.bigint() - startTime) / 1e9;
+      titanRequestDuration.observe(durationSec, { channel });
+      if (requestedSessionId) sessionAborts.delete(requestedSessionId);
+    }
+  });
+
   // Voice available voices — engine-aware
   app.get('/api/voice/voices', async (_req, res) => {
     const cfg = loadConfig();

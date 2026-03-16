@@ -4,6 +4,18 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.38] — 2026-03-16
+
+### Added
+- **`titan doctor --json`** — Machine-readable JSON output with full DoctorReport (Issue #2)
+- **npm download stats** — `titan doctor` now shows weekly npm download count from registry (Issue #4)
+- **Weather skill tests** — 27 unit tests covering registration, execution, forecasts, errors (Issue #6)
+
+### Improved
+- **Provider error messages** — Actionable hints for missing API keys: env var names, config paths, Ollama-specific messages, key validity vs missing (Issue #3)
+
+---
+
 ## [2026.10.37] — 2026-03-15
 
 ### Added

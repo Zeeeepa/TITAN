@@ -4,6 +4,18 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.41] — 2026-03-16
+
+### Fixed
+- **Critical: Tool visibility** — `security.allowedTools` default changed from restrictive whitelist to empty (allow all). New tools added to skills were silently blocked.
+- **Critical: toolSearch.coreTools override** — config-level `coreTools` list overrode `DEFAULT_CORE_TOOLS` entirely. Schema default now empty (falls back to code defaults).
+- **Home Assistant tools invisible** — `ha_control`, `ha_devices`, `ha_status` added to `DEFAULT_CORE_TOOLS` so HA tools are always available without needing tool_search discovery.
+- **OpenAI-compat keepModelPrefix bug** — providers using `keepModelPrefix` (e.g., NIM API) had model prefix stripped when already present, breaking API calls. Fixed in both `chat()` and `chatStream()`.
+- **Voice system prompt** — new `buildVoiceSystemPrompt()` (~500 tokens vs ~3000+) with explicit tool-use rules, HA integration, and TTS emotion tags. Prevents hallucinated tool completion and off-topic responses.
+- **Voice core tools** — dedicated `VOICE_CORE_TOOLS` set (9 tools including HA) for faster voice response with fewer prompt tokens.
+- **Voice model override** — `voice.model` config allows separate model for voice (e.g., fast local model) vs text chat (e.g., cloud model).
+- **ha_control debug logging** — tool now logs raw args, resolved args, HA API call details, and success/failure for easier debugging.
+
 ## [2026.10.40] — 2026-03-16
 
 ### Added

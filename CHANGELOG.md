@@ -4,6 +4,19 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.43] — 2026-03-16
+
+### Added
+- **VRAM Orchestrator** — Automatic GPU VRAM management for RTX 5090 multi-service workloads. Auto-swaps LLM models to smaller fallbacks when GPU services need VRAM.
+  - `src/vram/types.ts` — Interfaces: GpuState, LoadedModel, VRAMLease, AcquireResult, VRAMSnapshot, VRAMEvent
+  - `src/vram/gpuProbe.ts` — nvidia-smi queries, Ollama /api/ps model listing, model eviction (keep_alive:0), preload, getModelInfo
+  - `src/vram/leaseManager.ts` — Time-bounded VRAM reservations with auto-expiry timers
+  - `src/vram/orchestrator.ts` — Core singleton: async mutex, acquire/release with auto-swap and rollback, periodic GPU polling, event bus
+  - `src/skills/builtin/vram.ts` — Agent-facing tools: `vram_status`, `vram_acquire`, `vram_release`
+- **VRAM API endpoints** — `GET /api/vram` (snapshot), `POST /api/vram/acquire`, `POST /api/vram/release`, `GET /api/vram/check?mb=N` (dry run)
+- **VRAM config schema** — `vram.*` config section with `reserveMB`, `autoSwapModel`, `fallbackModel`, `ollamaUrl`, `services` budget map, `pollIntervalMs`
+- **Ollama VRAM env vars** — Applied `OLLAMA_MAX_LOADED_MODELS=1`, `OLLAMA_GPU_MEMORY_FRACTION=0.75`, `OLLAMA_KEEP_ALIVE=5m` on Titan PC
+
 ## [2026.10.42] — 2026-03-16
 
 ### Added

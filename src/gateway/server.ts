@@ -722,6 +722,72 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     res.json({ status: 'ok', version: TITAN_VERSION, uptime: process.uptime(), onboarded: cfg.onboarded });
   });
 
+  // ── VRAM API ────────────────────────────────────────────────
+  app.get('/api/vram', async (_req, res) => {
+    try {
+      const { getVRAMOrchestrator } = await import('../vram/orchestrator.js');
+      const orch = getVRAMOrchestrator();
+      const snapshot = await orch.getSnapshot();
+      if (!snapshot) {
+        res.json({ error: 'GPU state unavailable' });
+        return;
+      }
+      res.json(snapshot);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/vram/acquire', async (req, res) => {
+    try {
+      const { service, requiredMB, leaseDurationMs } = req.body as {
+        service?: string; requiredMB?: number; leaseDurationMs?: number;
+      };
+      if (!service || !requiredMB) {
+        res.status(400).json({ error: 'service and requiredMB required' });
+        return;
+      }
+      const { getVRAMOrchestrator } = await import('../vram/orchestrator.js');
+      const orch = getVRAMOrchestrator();
+      const result = await orch.acquire(service, requiredMB, leaseDurationMs || 300_000);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.post('/api/vram/release', async (req, res) => {
+    try {
+      const { leaseId, restoreModel } = req.body as { leaseId?: string; restoreModel?: boolean };
+      if (!leaseId) {
+        res.status(400).json({ error: 'leaseId required' });
+        return;
+      }
+      const { getVRAMOrchestrator } = await import('../vram/orchestrator.js');
+      const orch = getVRAMOrchestrator();
+      const result = await orch.release(leaseId, restoreModel ?? true);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  app.get('/api/vram/check', async (req, res) => {
+    try {
+      const mb = parseInt(req.query.mb as string, 10);
+      if (!mb || mb <= 0) {
+        res.status(400).json({ error: 'mb query param required (positive integer)' });
+        return;
+      }
+      const { getVRAMOrchestrator } = await import('../vram/orchestrator.js');
+      const orch = getVRAMOrchestrator();
+      const result = await orch.canAcquire(mb);
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   // ── Onboarding API ──────────────────────────────────────────
   app.get('/api/onboarding/status', (_req, res) => {
     const cfg = loadConfig();
@@ -3500,6 +3566,13 @@ td{padding:10px 12px;font-size:14px;vertical-align:middle}
 
   // ── Autopilot — scheduled autonomous agent runs ─────────────
   initAutopilot(config);
+
+  // ── VRAM Orchestrator — GPU memory management ───────────────
+  if (config.vram?.enabled !== false) {
+    import('../vram/orchestrator.js').then(({ initVRAMOrchestrator }) => {
+      initVRAMOrchestrator().catch((e) => logger.warn(COMPONENT, `VRAM orchestrator init: ${(e as Error).message}`));
+    }).catch(() => { /* optional */ });
+  }
 
   // ── Daemon — persistent agent awareness loop ────────────────
   initDaemon();

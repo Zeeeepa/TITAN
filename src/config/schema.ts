@@ -590,6 +590,31 @@ export const TitanConfigSchema = z.object({
         maxActionsPerHour: z.number().default(10),
     }).default({}),
     capsolver: CapsolverConfigSchema.default({}),
+    vram: z.object({
+        /** Master switch for VRAM orchestrator */
+        enabled: z.boolean().default(true),
+        /** GPU polling interval in milliseconds (0 = disabled) */
+        pollIntervalMs: z.number().default(10000),
+        /** Always keep this much VRAM free as a safety buffer (MB) */
+        reserveMB: z.number().default(1024),
+        /** Automatically swap to a smaller model when VRAM is needed */
+        autoSwapModel: z.boolean().default(true),
+        /** Fallback model to load when large model is evicted */
+        fallbackModel: z.string().default('qwen3:7b'),
+        /** Ollama API URL for model management */
+        ollamaUrl: z.string().default('http://localhost:11434'),
+        /** GPU service VRAM budgets and priorities */
+        services: z.record(z.string(), z.object({
+            estimatedMB: z.number(),
+            priority: z.number(),
+            type: z.enum(['ollama', 'docker', 'process']),
+        })).default({
+            ollama: { estimatedMB: 0, priority: 1, type: 'ollama' },
+            orpheus_tts: { estimatedMB: 4000, priority: 2, type: 'docker' },
+            cuopt: { estimatedMB: 5000, priority: 3, type: 'docker' },
+            nemotron_asr: { estimatedMB: 4000, priority: 4, type: 'docker' },
+        }),
+    }).default({}),
     nvidia: z.object({
         /** Master switch — enables all NVIDIA integrations (also triggered by TITAN_NVIDIA=1 env) */
         enabled: z.boolean().default(false),

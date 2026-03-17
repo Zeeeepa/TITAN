@@ -1248,10 +1248,10 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         if (v.livekitApiSecret !== undefined) cfg.voice.livekitApiSecret = String(v.livekitApiSecret);
         if (v.agentUrl !== undefined) cfg.voice.agentUrl = String(v.agentUrl);
         if (v.ttsVoice !== undefined) cfg.voice.ttsVoice = String(v.ttsVoice);
-        if (v.ttsEngine !== undefined) cfg.voice.ttsEngine = String(v.ttsEngine);
+        if (v.ttsEngine !== undefined) cfg.voice.ttsEngine = String(v.ttsEngine) as typeof cfg.voice.ttsEngine;
         if (v.ttsUrl !== undefined) cfg.voice.ttsUrl = String(v.ttsUrl);
         if (v.sttUrl !== undefined) cfg.voice.sttUrl = String(v.sttUrl);
-        if (v.sttEngine !== undefined) cfg.voice.sttEngine = String(v.sttEngine);
+        if (v.sttEngine !== undefined) cfg.voice.sttEngine = String(v.sttEngine) as typeof cfg.voice.sttEngine;
         if (v.model !== undefined) (cfg.voice as Record<string, unknown>).model = String(v.model) || undefined;
         changedFields.push('voice');
       }
@@ -2514,7 +2514,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
     // Sequential TTS queue — processes one sentence at a time to avoid overwhelming Orpheus
     const ttsQueue: Array<{ sentence: string; index: number }> = [];
     let ttsRunning = false;
-    let ttsResolve: (() => void) | null = null;
+    let ttsResolve: (() => void) = () => {};
     const ttsAllDone = new Promise<void>(resolve => { ttsResolve = resolve; });
     let ttsFinished = false;
 
@@ -2527,7 +2527,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
         await fireTTSInternal(item.sentence, item.index);
       }
       ttsRunning = false;
-      if (ttsFinished && ttsQueue.length === 0 && ttsResolve) {
+      if (ttsFinished && ttsQueue.length === 0) {
         ttsResolve();
       }
     };
@@ -2643,7 +2643,7 @@ export async function startGateway(options?: { port?: number; host?: string; ver
 
       // Signal no more sentences coming, wait for TTS queue to drain
       ttsFinished = true;
-      if (!ttsRunning && ttsQueue.length === 0 && ttsResolve) {
+      if (!ttsRunning && ttsQueue.length === 0) {
         ttsResolve();
       }
       await ttsAllDone;

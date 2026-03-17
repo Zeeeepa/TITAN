@@ -4,6 +4,24 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.42] — 2026-03-16
+
+### Added
+- **NVIDIA NIM provider** — OpenAI-compatible provider preset for NVIDIA NIM API (`nvidia/` prefix). Supports Nemotron 3 Nano, Super, and Llama-Nemotron models. Aliases: `nim`, `nvidia-nim`.
+- **NVIDIA skills system** — env-gated (`TITAN_NVIDIA=1` or `nvidia.enabled`) skill loader for optional GPU-accelerated features.
+- **cuOpt GPU optimization skill** — `nvidia_cuopt_solve` + `nvidia_cuopt_health` tools for GPU-accelerated vehicle routing (VRP), MILP, LP via NVIDIA cuOpt v26.02 async API. Tested live.
+- **AI-Q research skill** — `nvidia_aiq_research` tool using Nemotron Super via NIM API for deep multi-source research with citations. Falls back to local AI-Q Docker deployment.
+- **OpenShell sandbox engine** — `sandbox-openshell.ts` wraps NVIDIA OpenShell CLI (v0.0.6) for secure K3s-based code execution with declarative YAML policies. Config: `sandbox.engine: 'openshell'`.
+- **NVIDIA config schema** — `nvidia.*` config section (enabled, apiKey, cuopt, asr, openshell subsections). All disabled by default.
+- **NVIDIA Docker Compose** — `docker-compose.nvidia.yml` with cuOpt, Nemotron-ASR, and Riva bridge services (separate from main compose).
+- **NVIDIA admin panel** — Mission Control UI panel for managing NVIDIA integration settings.
+- **THIRD_PARTY_NOTICES** — NVIDIA attribution for Nemotron, cuOpt, OpenShell, Riva.
+
+### Fixed
+- **Voice mic leak** — VoiceOverlay now sets `phaseRef` before stopping recognition to prevent `onend` auto-restart. Added unmount cleanup `useEffect` for mic stream, AudioContext, and timers.
+- **6 TypeScript errors** — sandbox-openshell `killed` type, server ttsEngine/sttEngine union casts, a2a_protocol `auth` → `oauth`, cuOpt fetchWithRetry timeout param, workflows prefer-const.
+- **cuOpt image tag** — corrected from `py3.14` (doesn't exist) to `py3.13`.
+
 ## [2026.10.41] — 2026-03-16
 
 ### Fixed

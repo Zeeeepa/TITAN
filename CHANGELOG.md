@@ -4,6 +4,13 @@ All notable changes to TITAN are documented in this file.
 
 ---
 
+## [2026.10.44] — 2026-03-16
+
+### Changed
+- **README** — Updated "What's New" banner (VRAM orchestrator + NVIDIA GPU skills), tool count ~155, test count 4,321, added NVIDIA/VRAM to comparison table, tools table, sandbox section, and roadmap
+- **CLAUDE.md** — Updated version, stats, project structure (added `vram/` dir), API endpoints (VRAM), key files, recent history
+- **GitHub** — New release v2026.10.43, updated repo description + topics (gpu, vram, nvidia)
+
 ## [2026.10.43] — 2026-03-16
 
 ### Added
